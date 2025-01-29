@@ -1,4 +1,4 @@
-package crood_test
+package croodgorm_test
 
 import (
 	"context"

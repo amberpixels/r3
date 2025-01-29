@@ -1,10 +1,11 @@
-package crood_test
+package croodgorm_test
 
 import (
 	"context"
 	"testing"
 
 	"github.com/amberpixels/crood"
+	croodgorm "github.com/amberpixels/crood/transports/gorm"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -27,7 +28,7 @@ func TestGormRepository(t *testing.T) {
 	}()
 
 	// Create the repository
-	repo := crood.NewGormRepository[Apple, int](db)
+	repo := croodgorm.NewGormRepository[Apple, int](db)
 
 	// Insert sample data
 	apples := []Apple{

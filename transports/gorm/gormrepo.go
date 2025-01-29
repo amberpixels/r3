@@ -1,10 +1,11 @@
-package crood
+package croodgorm
 
 import (
 	"context"
 	"errors"
 	"sync"
 
+	"github.com/amberpixels/crood"
 	"gorm.io/gorm"
 )
 
@@ -16,9 +17,8 @@ type GormRepository[T any, ID comparable] struct {
 }
 
 type RepositoryDefaultParams struct {
-	ListParams   ListParams
-	GetParams    GetParams
-	UpdateParams UpdateParams
+	ListParams crood.ListParams
+	GetParams  crood.GetParams
 }
 
 // NewGormRepository creates a new GORM-based
@@ -26,9 +26,8 @@ func NewGormRepository[T any, ID comparable](db *gorm.DB) *GormRepository[T, ID]
 	return &GormRepository[T, ID]{
 		db: db,
 		defaultParams: RepositoryDefaultParams{
-			ListParams:   ListParams{}, // Add default values as needed
-			GetParams:    GetParams{},
-			UpdateParams: UpdateParams{},
+			ListParams: crood.ListParams{}, // Add default values as needed
+			GetParams:  crood.GetParams{},
 		},
 	}
 }
@@ -41,19 +40,19 @@ func (r *GormRepository[T, ID]) SetDefaultParams(params RepositoryDefaultParams)
 }
 
 // mergeListParams merges request-level params with repository-level default params.
-func (r *GormRepository[T, ID]) mergeListParams(params ListParams) ListParams {
+func (r *GormRepository[T, ID]) mergeListParams(params crood.ListParams) crood.ListParams {
 	r.defaultParamsM.RLock()
 	defer r.defaultParamsM.RUnlock()
 
 	// Merge logic: Filters, Sort, Fields, etc.
 	merged := params
-	if len(params.Filters) == 0 {
+	if params.Filters != nil {
 		merged.Filters = r.defaultParams.ListParams.Filters
 	}
-	if len(params.Sort) == 0 {
+	if params.Sort != nil {
 		merged.Sort = r.defaultParams.ListParams.Sort
 	}
-	if len(params.Fields) == 0 {
+	if params.Fields != nil {
 		merged.Fields = r.defaultParams.ListParams.Fields
 	}
 	if len(params.Preloads) == 0 {
@@ -65,13 +64,13 @@ func (r *GormRepository[T, ID]) mergeListParams(params ListParams) ListParams {
 }
 
 // mergeGetParams merges request-level params with repository-level default params.
-func (r *GormRepository[T, ID]) mergeGetParams(params GetParams) GetParams {
+func (r *GormRepository[T, ID]) mergeGetParams(params crood.GetParams) crood.GetParams {
 	r.defaultParamsM.RLock()
 	defer r.defaultParamsM.RUnlock()
 
 	// Merge logic: Fields, Preloads, etc.
 	merged := params
-	if len(params.Fields) == 0 {
+	if params.Fields == nil || len(params.Fields.Fields()) == 0 {
 		merged.Fields = r.defaultParams.GetParams.Fields
 	}
 	if len(params.Preloads) == 0 {
@@ -89,7 +88,7 @@ func (r *GormRepository[T, ID]) Create(ctx context.Context, entity T) (T, error)
 	return entity, nil
 }
 
-func (r *GormRepository[T, ID]) List(ctx context.Context, params ListParams) ([]T, error) {
+func (r *GormRepository[T, ID]) List(ctx context.Context, params crood.ListParams) ([]T, error) {
 	var entities []T
 
 	// Merge params with defaults
@@ -97,16 +96,24 @@ func (r *GormRepository[T, ID]) List(ctx context.Context, params ListParams) ([]
 
 	// Apply filters, sorting, fields, and preloads
 	query := r.db.WithContext(ctx)
-	for _, filter := range params.Filters {
-		query = query.Where(filter.GetField().GetName()+" "+filter.GetOperator().String(), filter.GetValue())
+	if params.Filters != nil {
+		for _, filter := range params.Filters.GetFilters() {
+			query = query.Where(filter.GetField().String()+" "+filter.GetOperator().String(), filter.GetValue())
+		}
 	}
-	for _, sort := range params.Sort {
-		query = query.Order(sort.GetField() + " " + sort.GetOrder())
+
+	if params.Sort != nil {
+		for _, sort := range params.Sort.GetSortCriterias() {
+			query = query.Order(sort.String())
+		}
 	}
-	// Apply field selection
-	if len(params.Fields) > 0 {
-		query = query.Select(params.Fields.GetNames())
+
+	if params.Fields != nil {
+		if len(params.Fields.Fields()) > 0 {
+			query = query.Select(params.Fields.Strings())
+		}
 	}
+
 	for _, preload := range params.Preloads {
 		query = query.Preload(preload.GetName(), preload.GetNestedPreloads())
 	}
@@ -124,7 +131,7 @@ func (r *GormRepository[T, ID]) List(ctx context.Context, params ListParams) ([]
 	return entities, nil
 }
 
-func (r *GormRepository[T, ID]) Get(ctx context.Context, id ID, params GetParams) (T, error) {
+func (r *GormRepository[T, ID]) Get(ctx context.Context, id ID, params crood.GetParams) (T, error) {
 	var entity T
 
 	// Merge params with defaults
@@ -154,26 +161,23 @@ func (r *GormRepository[T, ID]) Update(ctx context.Context, entity T) (T, error)
 	return entity, nil
 }
 
-func (r *GormRepository[T, ID]) Patch(ctx context.Context, model T, fields FieldList) error {
+func (r *GormRepository[T, ID]) Patch(ctx context.Context, model T, fields crood.Fieldables) error {
 	// Validate the fields list (should not be empty)
-	if len(fields) == 0 {
+	if fields == nil || len(fields.Fields()) == 0 {
 		return errors.New("no fields specified for update")
 	}
 
-	// Extract field names from FieldList
-	fieldNames := make([]string, len(fields))
-	for i, field := range fields {
-		fieldNames[i] = field.GetName()
-	}
-
 	// Perform partial update using GORM's `Select` to specify fields
-	if err := r.db.WithContext(ctx).Model(&model).Select(fieldNames).Updates(&model).Error; err != nil {
+	if err := r.db.WithContext(ctx).
+		Model(&model).
+		Select(fields.Strings()).
+		Updates(&model).Error; err != nil {
 		return err
 	}
 	return nil
 }
 
-func (r *GormRepository[T, ID]) PatchRaw(ctx context.Context, id ID, updates map[Field]any) error {
+func (r *GormRepository[T, ID]) PatchRaw(ctx context.Context, id ID, updates map[crood.Fieldable]any) error {
 	// Validate the updates map (should not be empty)
 	if len(updates) == 0 {
 		return errors.New("no fields to update")
@@ -182,7 +186,7 @@ func (r *GormRepository[T, ID]) PatchRaw(ctx context.Context, id ID, updates map
 	// Build the raw updates map with field names as keys
 	rawUpdates := map[string]any{}
 	for field, value := range updates {
-		rawUpdates[field.GetName()] = value
+		rawUpdates[field.String()] = value
 	}
 
 	// Perform the update using GORM's `Updates` method
