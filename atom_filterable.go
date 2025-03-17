@@ -1,4 +1,4 @@
-package crood
+package depo
 
 // FilterOperator defines the type for filter operations.
 type FilterOperator string

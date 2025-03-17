@@ -1,4 +1,4 @@
-package crood
+package depo
 
 // Preload defines a single preload rule.
 type Preloadable interface {

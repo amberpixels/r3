@@ -1,12 +1,11 @@
-package croodgorm_test
+package depogorm_test
 
 import (
 	"context"
 	"testing"
 
-	"github.com/amberpixels/crood"
-	croodgorm "github.com/amberpixels/crood/transports/gorm"
-
+	"github.com/amberpixels/depo"
+	depogorm "github.com/amberpixels/depo/dialects/gorm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -28,7 +27,7 @@ func TestGormRepository(t *testing.T) {
 	}()
 
 	// Create the repository
-	repo := croodgorm.NewGormRepository[Apple, int](db)
+	repo := depogorm.NewGormRepository[Apple, int](db)
 
 	// Insert sample data
 	apples := []Apple{
@@ -43,7 +42,7 @@ func TestGormRepository(t *testing.T) {
 
 	// Test List
 	t.Run("List apples", func(t *testing.T) {
-		results, err := repo.List(ctx, crood.ListParams{})
+		results, err := repo.List(ctx, depo.ListParams{})
 		require.NoError(t, err, "failed to list apples")
 
 		assert.Len(t, results, 3, "expected 3 apples")
@@ -63,7 +62,7 @@ func TestGormRepository(t *testing.T) {
 
 	// Test Get
 	t.Run("Get apple by ID", func(t *testing.T) {
-		result, err := repo.Get(ctx, 1, crood.GetParams{})
+		result, err := repo.Get(ctx, 1, depo.GetParams{})
 		require.NoError(t, err, "failed to get apple")
 
 		assert.Equal(t, 1, result.ID, "unexpected ID")
@@ -88,7 +87,7 @@ func TestGormRepository(t *testing.T) {
 		require.NoError(t, err, "failed to delete apple")
 
 		// Ensure it no longer exists
-		_, err = repo.Get(ctx, 1, crood.GetParams{})
+		_, err = repo.Get(ctx, 1, depo.GetParams{})
 		assert.Error(t, err, "expected error when getting a deleted apple")
 	})
 }

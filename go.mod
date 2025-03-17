@@ -1,6 +1,6 @@
-module github.com/amberpixels/crood
+module github.com/amberpixels/depo
 
-go 1.23.5
+go 1.24
 
 require (
 	github.com/stretchr/testify v1.9.0

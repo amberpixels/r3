@@ -1,11 +1,11 @@
-package croodgorm
+package depogorm
 
 import (
 	"context"
 	"errors"
 	"sync"
 
-	"github.com/amberpixels/crood"
+	"github.com/amberpixels/depo"
 	"gorm.io/gorm"
 )
 
@@ -17,8 +17,8 @@ type GormRepository[T any, ID comparable] struct {
 }
 
 type RepositoryDefaultParams struct {
-	ListParams crood.ListParams
-	GetParams  crood.GetParams
+	ListParams depo.ListParams
+	GetParams  depo.GetParams
 }
 
 // NewGormRepository creates a new GORM-based
@@ -26,8 +26,8 @@ func NewGormRepository[T any, ID comparable](db *gorm.DB) *GormRepository[T, ID]
 	return &GormRepository[T, ID]{
 		db: db,
 		defaultParams: RepositoryDefaultParams{
-			ListParams: crood.ListParams{}, // Add default values as needed
-			GetParams:  crood.GetParams{},
+			ListParams: depo.ListParams{}, // Add default values as needed
+			GetParams:  depo.GetParams{},
 		},
 	}
 }
@@ -40,7 +40,7 @@ func (r *GormRepository[T, ID]) SetDefaultParams(params RepositoryDefaultParams)
 }
 
 // mergeListParams merges request-level params with repository-level default params.
-func (r *GormRepository[T, ID]) mergeListParams(params crood.ListParams) crood.ListParams {
+func (r *GormRepository[T, ID]) mergeListParams(params depo.ListParams) depo.ListParams {
 	r.defaultParamsM.RLock()
 	defer r.defaultParamsM.RUnlock()
 
@@ -64,7 +64,7 @@ func (r *GormRepository[T, ID]) mergeListParams(params crood.ListParams) crood.L
 }
 
 // mergeGetParams merges request-level params with repository-level default params.
-func (r *GormRepository[T, ID]) mergeGetParams(params crood.GetParams) crood.GetParams {
+func (r *GormRepository[T, ID]) mergeGetParams(params depo.GetParams) depo.GetParams {
 	r.defaultParamsM.RLock()
 	defer r.defaultParamsM.RUnlock()
 
@@ -88,7 +88,7 @@ func (r *GormRepository[T, ID]) Create(ctx context.Context, entity T) (T, error)
 	return entity, nil
 }
 
-func (r *GormRepository[T, ID]) List(ctx context.Context, params crood.ListParams) ([]T, error) {
+func (r *GormRepository[T, ID]) List(ctx context.Context, params depo.ListParams) ([]T, error) {
 	var entities []T
 
 	// Merge params with defaults
@@ -131,7 +131,7 @@ func (r *GormRepository[T, ID]) List(ctx context.Context, params crood.ListParam
 	return entities, nil
 }
 
-func (r *GormRepository[T, ID]) Get(ctx context.Context, id ID, params crood.GetParams) (T, error) {
+func (r *GormRepository[T, ID]) Get(ctx context.Context, id ID, params depo.GetParams) (T, error) {
 	var entity T
 
 	// Merge params with defaults
@@ -161,7 +161,7 @@ func (r *GormRepository[T, ID]) Update(ctx context.Context, entity T) (T, error)
 	return entity, nil
 }
 
-func (r *GormRepository[T, ID]) Patch(ctx context.Context, model T, fields crood.Fieldables) error {
+func (r *GormRepository[T, ID]) Patch(ctx context.Context, model T, fields depo.Fieldables) error {
 	// Validate the fields list (should not be empty)
 	if fields == nil || len(fields.Fields()) == 0 {
 		return errors.New("no fields specified for update")
@@ -177,7 +177,7 @@ func (r *GormRepository[T, ID]) Patch(ctx context.Context, model T, fields crood
 	return nil
 }
 
-func (r *GormRepository[T, ID]) PatchRaw(ctx context.Context, id ID, updates map[crood.Fieldable]any) error {
+func (r *GormRepository[T, ID]) PatchRaw(ctx context.Context, id ID, updates map[depo.Fieldable]any) error {
 	// Validate the updates map (should not be empty)
 	if len(updates) == 0 {
 		return errors.New("no fields to update")
