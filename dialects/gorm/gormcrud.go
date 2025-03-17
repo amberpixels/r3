@@ -9,62 +9,73 @@ import (
 	"gorm.io/gorm"
 )
 
-type GormRepository[T any, ID comparable] struct {
+// GormCRUD is a richfull CRUD repository based on gorm.DB
+type GormCRUD[T any, ID comparable] struct {
 	db *gorm.DB
 
-	defaultParams  RepositoryDefaultParams
+	defaultParams  defaultParams
 	defaultParamsM sync.RWMutex
+
+	raw *GormRaw[T, ID]
 }
 
-var _ depo.CRUD[any, any] = &GormRepository[any, any]{}
+var _ depo.CRUD[any, any] = &GormCRUD[any, any]{}
 
-type RepositoryDefaultParams struct {
+type defaultParams struct {
 	ListParams depo.ListParams
 	GetParams  depo.GetParams
 }
 
-// NewGormRepository creates a new GORM-based
-func NewGormRepository[T any, ID comparable](db *gorm.DB) *GormRepository[T, ID] {
-	return &GormRepository[T, ID]{
+// NewGormCRUD creates a new GORM-based
+func NewGormCRUD[T any, ID comparable](db *gorm.DB) *GormCRUD[T, ID] {
+	return &GormCRUD[T, ID]{
 		db: db,
-		defaultParams: RepositoryDefaultParams{
+		defaultParams: defaultParams{
 			ListParams: depo.ListParams{}, // Add default values as needed
 			GetParams:  depo.GetParams{},
 		},
+		raw: NewGormRaw[T, ID](db),
 	}
 }
 
 // SetDefaultParams sets default params for the
-func (r *GormRepository[T, ID]) SetDefaultParams(params RepositoryDefaultParams) {
+func (r *GormCRUD[T, ID]) SetDefaultParams(listParams depo.ListParams) {
 	r.defaultParamsM.Lock()
 	defer r.defaultParamsM.Unlock()
-	r.defaultParams = params
+	r.defaultParams.ListParams = listParams
+}
+
+// SetDefaultParams sets default params for the
+func (r *GormCRUD[T, ID]) SetDefaultGetParams(getParams depo.GetParams) {
+	r.defaultParamsM.Lock()
+	defer r.defaultParamsM.Unlock()
+	r.defaultParams.GetParams = getParams
 }
 
 // mergeListParams merges request-level params with repository-level default params.
-func (r *GormRepository[T, ID]) mergeListParams(paramsArg ...depo.ListParams) depo.ListParams {
+func (r *GormCRUD[T, ID]) mergeListParams(paramsArg ...depo.ListParams) depo.ListParams {
 	r.defaultParamsM.RLock()
 	defer r.defaultParamsM.RUnlock()
 
-	// TODO real merge logic
-	var params depo.ListParams
-	if len(paramsArg) > 0 {
-		params = paramsArg[0]
+	if len(paramsArg) == 0 {
+		return r.defaultParams.ListParams.Clone()
+	}
+	params := paramsArg[0]
+
+	merged := r.defaultParams.ListParams.Clone()
+
+	if params.Filters != nil {
+		merged.Filters = params.Filters
+	}
+	if params.Sort != nil {
+		merged.Sort = params.Sort
+	}
+	if params.Fields != nil {
+		merged.Fields = params.Fields
 	}
 
-	// Merge logic: Filters, Sort, Fields, etc.
-	merged := params
-	if params.Filters == nil {
-		merged.Filters = r.defaultParams.ListParams.Filters
-	}
-	if params.Sort == nil {
-		merged.Sort = r.defaultParams.ListParams.Sort
-	}
-	if params.Fields == nil {
-		merged.Fields = r.defaultParams.ListParams.Fields
-	}
-	if len(params.Preloads) == 0 {
-		merged.Preloads = r.defaultParams.ListParams.Preloads
+	if params.Preloads != nil {
+		merged.Preloads = params.Preloads
 	}
 	merged.IncludeTrashed = merged.IncludeTrashed || r.defaultParams.ListParams.IncludeTrashed
 
@@ -72,7 +83,7 @@ func (r *GormRepository[T, ID]) mergeListParams(paramsArg ...depo.ListParams) de
 }
 
 // mergeGetParams merges request-level params with repository-level default params.
-func (r *GormRepository[T, ID]) mergeGetParams(paramsArg ...depo.GetParams) depo.GetParams {
+func (r *GormCRUD[T, ID]) mergeGetParams(paramsArg ...depo.GetParams) depo.GetParams {
 	r.defaultParamsM.RLock()
 	defer r.defaultParamsM.RUnlock()
 
@@ -94,14 +105,14 @@ func (r *GormRepository[T, ID]) mergeGetParams(paramsArg ...depo.GetParams) depo
 	return merged
 }
 
-func (r *GormRepository[T, ID]) Create(ctx context.Context, entity T) (T, error) {
+func (r *GormCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 	if err := r.db.WithContext(ctx).Create(&entity).Error; err != nil {
 		return entity, err
 	}
 	return entity, nil
 }
 
-func (r *GormRepository[T, ID]) List(ctx context.Context, paramsArg ...depo.ListParams) ([]T, error) {
+func (r *GormCRUD[T, ID]) List(ctx context.Context, paramsArg ...depo.ListParams) ([]T, error) {
 	var entities []T
 
 	// Merge params with defaults
@@ -144,7 +155,7 @@ func (r *GormRepository[T, ID]) List(ctx context.Context, paramsArg ...depo.List
 	return entities, nil
 }
 
-func (r *GormRepository[T, ID]) Get(ctx context.Context, id ID, paramsArg ...depo.GetParams) (T, error) {
+func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, paramsArg ...depo.GetParams) (T, error) {
 	var entity T
 
 	// Merge params with defaults
@@ -166,7 +177,7 @@ func (r *GormRepository[T, ID]) Get(ctx context.Context, id ID, paramsArg ...dep
 	return entity, nil
 }
 
-func (r *GormRepository[T, ID]) Update(ctx context.Context, entity T) (T, error) {
+func (r *GormCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	// Perform a full update using GORM's `Save` method, rewriting the entire model.
 	if err := r.db.WithContext(ctx).Save(&entity).Error; err != nil {
 		return entity, err
@@ -174,7 +185,7 @@ func (r *GormRepository[T, ID]) Update(ctx context.Context, entity T) (T, error)
 	return entity, nil
 }
 
-func (r *GormRepository[T, ID]) Patch(ctx context.Context, model T, fields depo.Fieldables) (T, error) {
+func (r *GormCRUD[T, ID]) Patch(ctx context.Context, model T, fields depo.Fieldables) (T, error) {
 	var entity T
 
 	// Validate the fields list (should not be empty)
@@ -195,7 +206,7 @@ func (r *GormRepository[T, ID]) Patch(ctx context.Context, model T, fields depo.
 	return entity, nil
 }
 
-func (r *GormRepository[T, ID]) PatchRaw(ctx context.Context, id ID, patches ...depo.Patchable) (T, error) {
+func (r *GormCRUD[T, ID]) PatchRaw(ctx context.Context, id ID, patches ...depo.Patchable) (T, error) {
 	var entity T
 
 	// Validate the updates map (should not be empty)
@@ -220,9 +231,11 @@ func (r *GormRepository[T, ID]) PatchRaw(ctx context.Context, id ID, patches ...
 	return entity, nil
 }
 
-func (r *GormRepository[T, ID]) Delete(ctx context.Context, id ID) error {
+func (r *GormCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 	if err := r.db.WithContext(ctx).Delete(new(T), id).Error; err != nil {
 		return err
 	}
 	return nil
 }
+
+func (r *GormCRUD[T, ID]) Raw() *GormRaw[T, ID] { return r.raw }

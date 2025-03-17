@@ -2,6 +2,8 @@ package depogorm_test
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/amberpixels/depo"
@@ -10,6 +12,7 @@ import (
 	"github.com/pressly/goose"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/gorm"
 )
 
 func TestGormRepository(t *testing.T) {
@@ -74,10 +77,10 @@ func TestGormRepository(t *testing.T) {
 	assert.Len(t, artists, 3, "expected 3 artists")
 
 	// Create repositories for each model
-	cityRepo := depogorm.NewGormRepository[City, int64](db)
-	locRepo := depogorm.NewGormRepository[Location, int64](db)
-	eventRepo := depogorm.NewGormRepository[Event, int64](db)
-	artistRepo := depogorm.NewGormRepository[Artist, int64](db)
+	cityRepo := depogorm.NewGormCRUD[City, int64](db)
+	locRepo := depogorm.NewGormCRUD[Location, int64](db)
+	eventRepo := depogorm.NewGormCRUD[Event, int64](db)
+	artistRepo := depogorm.NewGormCRUD[Artist, int64](db)
 
 	_ = artistRepo
 
@@ -138,6 +141,38 @@ func TestGormRepository(t *testing.T) {
 
 		// Two events should belong to the second location
 		assert.Len(t, result, 2, "expected 2 events for the location")
+	})
+
+	t.Run("Aggregate location event weights using Raw", func(t *testing.T) {
+		// Define a struct to hold the aggregate results.
+		type AggResult struct {
+			ID          int64  `gorm:"column:id"`
+			Name        string `gorm:"column:name"`
+			TotalWeight int64  `gorm:"column:total_weight"`
+		}
+
+		results, err := locRepo.Raw().Find(ctx, func(tx *gorm.DB) *gorm.DB {
+			return tx.Select("locations.id, locations.name, SUM(events.weight) as total_weight").
+				Joins("JOIN events ON locations.id = events.venue_id").
+				Where("locations.visible = ? AND locations.city_id = ? AND events.weight > ?", true, 1, 0).
+				Group("locations.id, locations.name").
+				Order("total_weight DESC")
+		})
+		if err != nil {
+			fmt.Println(",.,,. ", err)
+			// handle error
+		}
+		jj, _ := json.Marshal(results)
+		fmt.Println(",.,,. ", string(jj))
+		require.NoError(t, err, "failed to run aggregate query via Raw")
+
+		// Log the results for debugging.
+		//for _, res := range results {
+		//	t.Logf("Location ID: %d, Name: %s, TotalWeight: %d", res.ID, res.Name, res.TotalWeight)
+		//}
+
+		// You can add assertions here based on expected results.
+		assert.NotEmpty(t, results, "expected at least one location with aggregated event weights")
 	})
 
 	// Subtest: Delete an event and verify it no longer exists
