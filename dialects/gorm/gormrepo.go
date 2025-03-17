@@ -44,15 +44,17 @@ func (r *GormRepository[T, ID]) mergeListParams(params depo.ListParams) depo.Lis
 	r.defaultParamsM.RLock()
 	defer r.defaultParamsM.RUnlock()
 
+	// TODO real merge logic
+
 	// Merge logic: Filters, Sort, Fields, etc.
 	merged := params
-	if params.Filters != nil {
+	if params.Filters == nil {
 		merged.Filters = r.defaultParams.ListParams.Filters
 	}
-	if params.Sort != nil {
+	if params.Sort == nil {
 		merged.Sort = r.defaultParams.ListParams.Sort
 	}
-	if params.Fields != nil {
+	if params.Fields == nil {
 		merged.Fields = r.defaultParams.ListParams.Fields
 	}
 	if len(params.Preloads) == 0 {
@@ -98,7 +100,7 @@ func (r *GormRepository[T, ID]) List(ctx context.Context, params depo.ListParams
 	query := r.db.WithContext(ctx)
 	if params.Filters != nil {
 		for _, filter := range params.Filters.GetFilters() {
-			query = query.Where(filter.GetField().String()+" "+filter.GetOperator().String(), filter.GetValue())
+			query = query.Where(filter.GetField().String()+" "+filter.GetOperator().String()+" ?", filter.GetValue())
 		}
 	}
 

@@ -2,7 +2,6 @@ package depo
 
 import (
 	"fmt"
-	"strings"
 )
 
 type Order int
@@ -30,7 +29,8 @@ type Sortable interface {
 }
 
 type Sortables interface {
-	GetSortCriterias() SortCriterias
+	GetSortCriterias() []SortCriteria
+	Len() int
 }
 
 // SortCriteria defines a single sorting rule with a field and order (e.g., ASC or DESC).
@@ -43,17 +43,14 @@ func (s SortCriteria) String() string {
 	return fmt.Sprintf("%s %s", s.Field, s.Order)
 }
 
-// SortCriterias is a slice of SortCriteria.
-type SortCriterias []SortCriteria
+// func (s SortCriterias) String() string {
+// 	var strs []string
+// 	for _, sc := range s {
+// 		strs = append(strs, sc.String())
+// 	}
+// 	return strings.Join(strs, ",")
+// }
 
-func (s SortCriterias) String() string {
-	var strs []string
-	for _, sc := range s {
-		strs = append(strs, sc.String())
-	}
-	return strings.Join(strs, ",")
-}
-
-func (s SortCriterias) GetSortCriterias() SortCriterias {
-	return s
-}
+// func (s SortCriterias) GetSortCriterias() SortCriterias {
+// 	return s
+// }
