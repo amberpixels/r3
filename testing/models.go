@@ -31,4 +31,19 @@ type Event struct {
 	Active     bool
 
 	Location *Location `gorm:"foreignKey:VenueID"`
+
+	Artists []Artist `gorm:"many2many:artists_to_events;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+}
+
+// Artist represents a person who performs at events.
+type Artist struct {
+	ID   int64 `gorm:"primaryKey"`
+	Name string
+	// Add more fields as needed (e.g., Bio, Genre, etc.)
+}
+
+// ArtistToEvent represents the many-to-many relationship between artists and events.
+type ArtistToEvent struct {
+	ArtistID int64 `gorm:"primaryKey"`
+	EventID  int   `gorm:"primaryKey"`
 }

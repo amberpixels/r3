@@ -29,13 +29,14 @@ func TestGormRepository(t *testing.T) {
 	}()
 
 	// Migrate the new models
-	err = db.AutoMigrate(&City{}, &Location{}, &Event{})
+	err = db.AutoMigrate(&City{}, &Location{}, &Event{}, &Artist{}, &ArtistToEvent{})
 	require.NoError(t, err, "failed to migrate models")
 
 	// Create repositories for each model
 	cityRepo := depogorm.NewGormRepository[City, int64](db)
 	locRepo := depogorm.NewGormRepository[Location, int64](db)
 	eventRepo := depogorm.NewGormRepository[Event, int64](db)
+	artistRepo := depogorm.NewGormRepository[Artist, int64](db)
 
 	// Pre-fill test data
 
@@ -80,6 +81,33 @@ func TestGormRepository(t *testing.T) {
 		}
 	}
 
+	// Create 3 artists.
+	artists := []Artist{
+		{Name: "David Bowie"},
+		{Name: "Michael C. Hall"},
+		{Name: "Thom Yorke"},
+	}
+	for i, artist := range artists {
+		created, err := artistRepo.Create(ctx, artist)
+		require.NoError(t, err, "failed to create artist")
+		artists[i] = created
+	}
+
+	// Associate artists with events.
+	// For even-indexed events, assign Artist One and Artist Two.
+	// For odd-indexed events, assign Artist Two and Artist Three.
+	for i, event := range events {
+		var assocArtists []Artist
+		if i%2 == 0 {
+			assocArtists = []Artist{artists[0], artists[1]}
+		} else {
+			assocArtists = []Artist{artists[1], artists[2]}
+		}
+		// Use GORM's Association Mode to append the artists.
+		err := db.Model(&event).Association("Artists").Append(assocArtists)
+		require.NoError(t, err, "failed to associate artists with event")
+	}
+
 	// Subtest: List cities
 	t.Run("List cities", func(t *testing.T) {
 		result, err := cityRepo.List(ctx, depo.ListParams{})
@@ -120,6 +148,20 @@ func TestGormRepository(t *testing.T) {
 
 		// Two events should belong to the second location
 		assert.Len(t, result, 2, "expected 2 events for the location")
+	})
+
+	// Subtest: Verify artists are associated with events.
+	t.Run("Verify event artist associations", func(t *testing.T) {
+		// Reload an event to check its associated artists.
+		var testEvent Event
+		err := db.Preload("Artists").First(&testEvent, events[0].ID).Error
+		require.NoError(t, err, "failed to preload event artists")
+		// For an even-indexed event, we expect 2 artists: Artist One and Artist Two.
+		assert.Len(t, testEvent.Artists, 2, "expected 2 associated artists")
+		// Verify the expected artist names.
+		names := []string{testEvent.Artists[0].Name, testEvent.Artists[1].Name}
+		assert.Contains(t, names, "David Bowie")
+		assert.Contains(t, names, "Michael C. Hall")
 	})
 
 	// Subtest: Delete an event and verify it no longer exists
