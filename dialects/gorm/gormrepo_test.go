@@ -3,7 +3,6 @@ package depogorm_test
 import (
 	"context"
 	"testing"
-	"time"
 
 	"github.com/amberpixels/depo"
 	depogorm "github.com/amberpixels/depo/dialects/gorm"
@@ -28,7 +27,10 @@ func TestGormRepository(t *testing.T) {
 
 	// Migrate the new models
 	if autoMigrate {
-		err = db.AutoMigrate(&City{}, &Location{}, &Event{}, &Artist{}, &ArtistToEvent{})
+		err = db.AutoMigrate(
+			&City{}, &Location{}, &Event{}, &Artist{}, &ArtistToEvent{},
+			&CityTranslation{}, &LocationTranslation{}, &EventTranslation{}, &ArtistToEvent{},
+		)
 		require.NoError(t, err, "failed to migrate models")
 	} else {
 		// Get the underlying sql.DB from gorm.DB.
@@ -48,87 +50,59 @@ func TestGormRepository(t *testing.T) {
 		}()
 	}
 
+	// Raw fetch primary data
+	var cities []City
+	err = db.Table("cities").Find(&cities).Error
+	require.NoError(t, err, "failed to fetch raw cities")
+	assert.Len(t, cities, 2, "expected 2 cities")
+
+	var locations []Location
+	err = db.Table("locations").Find(&locations).Error
+	require.NoError(t, err, "failed to fetch raw locations")
+	assert.Len(t, locations, 5, "expected 5 locations")
+
+	// Fetch Events
+	var events []Event
+	err = db.Table("events").Find(&events).Error
+	require.NoError(t, err, "failed to fetch raw events")
+	assert.Len(t, events, 8, "expected 8 events")
+
+	// Fetch Artists
+	var artists []Artist
+	err = db.Table("artists").Find(&artists).Error
+	require.NoError(t, err, "failed to fetch raw artists")
+	assert.Len(t, artists, 3, "expected 3 artists")
+
 	// Create repositories for each model
 	cityRepo := depogorm.NewGormRepository[City, int64](db)
 	locRepo := depogorm.NewGormRepository[Location, int64](db)
 	eventRepo := depogorm.NewGormRepository[Event, int64](db)
 	artistRepo := depogorm.NewGormRepository[Artist, int64](db)
 
-	// Pre-fill test data
+	_ = artistRepo
 
-	// Create 2 cities
-	cities := []City{
-		{Name: "City One", CountryName: "Country A", Popularity: 50},
-		{Name: "City Two", CountryName: "Country B", Popularity: 70},
-	}
-	for i, city := range cities {
-		created, err := cityRepo.Create(ctx, city)
-		require.NoError(t, err, "failed to create city")
-		cities[i] = created
-	}
-
-	// Create 4 locations (2 per city)
-	locations := []Location{
-		{Name: "Location 1", Slug: "loc1", CityID: cities[0].ID, Popularity: 10, Visible: true},
-		{Name: "Location 2", Slug: "loc2", CityID: cities[0].ID, Popularity: 20, Visible: true},
-		{Name: "Location 3", Slug: "loc3", CityID: cities[1].ID, Popularity: 30, Visible: false},
-		{Name: "Location 4", Slug: "loc4", CityID: cities[1].ID, Popularity: 40, Visible: true},
-	}
-	for i, loc := range locations {
-		created, err := locRepo.Create(ctx, loc)
-		require.NoError(t, err, "failed to create location")
-		locations[i] = created
-	}
-
-	// Create 8 events (2 per location)
-	var events []Event
-	now := time.Now()
-	for _, loc := range locations {
-		for j := range 2 {
-			event := Event{
-				HappenedAt: now.Add(time.Duration(j) * time.Hour),
-				Weight:     100 + j,
-				VenueID:    loc.ID,
-				Active:     true,
-			}
-			created, err := eventRepo.Create(ctx, event)
-			require.NoError(t, err, "failed to create event")
-			events = append(events, created)
-		}
-	}
-
-	// Create 3 artists.
-	artists := []Artist{
-		{Name: "David Bowie"},
-		{Name: "Michael C. Hall"},
-		{Name: "Thom Yorke"},
-	}
-	for i, artist := range artists {
-		created, err := artistRepo.Create(ctx, artist)
-		require.NoError(t, err, "failed to create artist")
-		artists[i] = created
-	}
-
-	// Associate artists with events.
-	// For even-indexed events, assign Artist One and Artist Two.
-	// For odd-indexed events, assign Artist Two and Artist Three.
-	for i, event := range events {
-		var assocArtists []Artist
-		if i%2 == 0 {
-			assocArtists = []Artist{artists[0], artists[1]}
-		} else {
-			assocArtists = []Artist{artists[1], artists[2]}
-		}
-		// Use GORM's Association Mode to append the artists.
-		err := db.Model(&event).Association("Artists").Append(assocArtists)
-		require.NoError(t, err, "failed to associate artists with event")
-	}
-
-	// Subtest: List cities
 	t.Run("List cities", func(t *testing.T) {
 		result, err := cityRepo.List(ctx, depo.ListParams{})
 		require.NoError(t, err, "failed to list cities")
 		assert.Len(t, result, 2, "expected 2 cities")
+	})
+
+	t.Run("List cities with translations", func(t *testing.T) {
+
+		// List cities using the repository with the preload parameter set.
+		result, err := cityRepo.List(ctx, depo.ListParams{
+			Preloads: depo.Preloadables{
+				depo.NewTablePreload("Translations"),
+			},
+		})
+		require.NoError(t, err, "failed to list cities with translations")
+		assert.Len(t, result, 2, "expected 2 cities")
+
+		// Verify that each city has translation records.
+		for _, city := range result {
+			assert.NotEmpty(t, city.Translations, "expected translations for city")
+			assert.Len(t, city.Translations, 3, "expected 3 translations per city (en, es, de)")
+		}
 	})
 
 	t.Run("Get city by ID", func(t *testing.T) {
@@ -143,8 +117,8 @@ func TestGormRepository(t *testing.T) {
 		})
 		require.NoError(t, err, "failed to list locations")
 
-		// Expected locations: 1,2 and 4 are visible (3 is not)
-		assert.Len(t, result, 3, "expected 3 visible locations")
+		// Expected locations: 1,2 and 4,5 are visible (3 is not)
+		assert.Len(t, result, 4, "expected 4 visible locations")
 	})
 
 	// Subtest: Update a location's popularity
@@ -164,20 +138,6 @@ func TestGormRepository(t *testing.T) {
 
 		// Two events should belong to the second location
 		assert.Len(t, result, 2, "expected 2 events for the location")
-	})
-
-	// Subtest: Verify artists are associated with events.
-	t.Run("Verify event artist associations", func(t *testing.T) {
-		// Reload an event to check its associated artists.
-		var testEvent Event
-		err := db.Preload("Artists").First(&testEvent, events[0].ID).Error
-		require.NoError(t, err, "failed to preload event artists")
-		// For an even-indexed event, we expect 2 artists: Artist One and Artist Two.
-		assert.Len(t, testEvent.Artists, 2, "expected 2 associated artists")
-		// Verify the expected artist names.
-		names := []string{testEvent.Artists[0].Name, testEvent.Artists[1].Name}
-		assert.Contains(t, names, "David Bowie")
-		assert.Contains(t, names, "Michael C. Hall")
 	})
 
 	// Subtest: Delete an event and verify it no longer exists

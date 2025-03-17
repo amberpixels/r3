@@ -16,6 +16,8 @@ type GormRepository[T any, ID comparable] struct {
 	defaultParamsM sync.RWMutex
 }
 
+var _ depo.CRUD[any, any] = &GormRepository[any, any]{}
+
 type RepositoryDefaultParams struct {
 	ListParams depo.ListParams
 	GetParams  depo.GetParams
@@ -40,11 +42,15 @@ func (r *GormRepository[T, ID]) SetDefaultParams(params RepositoryDefaultParams)
 }
 
 // mergeListParams merges request-level params with repository-level default params.
-func (r *GormRepository[T, ID]) mergeListParams(params depo.ListParams) depo.ListParams {
+func (r *GormRepository[T, ID]) mergeListParams(paramsArg ...depo.ListParams) depo.ListParams {
 	r.defaultParamsM.RLock()
 	defer r.defaultParamsM.RUnlock()
 
 	// TODO real merge logic
+	var params depo.ListParams
+	if len(paramsArg) > 0 {
+		params = paramsArg[0]
+	}
 
 	// Merge logic: Filters, Sort, Fields, etc.
 	merged := params
@@ -66,11 +72,16 @@ func (r *GormRepository[T, ID]) mergeListParams(params depo.ListParams) depo.Lis
 }
 
 // mergeGetParams merges request-level params with repository-level default params.
-func (r *GormRepository[T, ID]) mergeGetParams(params depo.GetParams) depo.GetParams {
+func (r *GormRepository[T, ID]) mergeGetParams(paramsArg ...depo.GetParams) depo.GetParams {
 	r.defaultParamsM.RLock()
 	defer r.defaultParamsM.RUnlock()
 
 	// Merge logic: Fields, Preloads, etc.
+	var params depo.GetParams
+	if len(paramsArg) > 0 {
+		params = paramsArg[0]
+	}
+
 	merged := params
 	if params.Fields == nil || len(params.Fields.Fields()) == 0 {
 		merged.Fields = r.defaultParams.GetParams.Fields
@@ -90,11 +101,11 @@ func (r *GormRepository[T, ID]) Create(ctx context.Context, entity T) (T, error)
 	return entity, nil
 }
 
-func (r *GormRepository[T, ID]) List(ctx context.Context, params depo.ListParams) ([]T, error) {
+func (r *GormRepository[T, ID]) List(ctx context.Context, paramsArg ...depo.ListParams) ([]T, error) {
 	var entities []T
 
 	// Merge params with defaults
-	params = r.mergeListParams(params)
+	params := r.mergeListParams(paramsArg...)
 
 	// Apply filters, sorting, fields, and preloads
 	query := r.db.WithContext(ctx)
@@ -133,11 +144,11 @@ func (r *GormRepository[T, ID]) List(ctx context.Context, params depo.ListParams
 	return entities, nil
 }
 
-func (r *GormRepository[T, ID]) Get(ctx context.Context, id ID, params depo.GetParams) (T, error) {
+func (r *GormRepository[T, ID]) Get(ctx context.Context, id ID, paramsArg ...depo.GetParams) (T, error) {
 	var entity T
 
 	// Merge params with defaults
-	params = r.mergeGetParams(params)
+	params := r.mergeGetParams(paramsArg...)
 
 	// Apply preloads
 	query := r.db.WithContext(ctx)
@@ -163,10 +174,12 @@ func (r *GormRepository[T, ID]) Update(ctx context.Context, entity T) (T, error)
 	return entity, nil
 }
 
-func (r *GormRepository[T, ID]) Patch(ctx context.Context, model T, fields depo.Fieldables) error {
+func (r *GormRepository[T, ID]) Patch(ctx context.Context, model T, fields depo.Fieldables) (T, error) {
+	var entity T
+
 	// Validate the fields list (should not be empty)
 	if fields == nil || len(fields.Fields()) == 0 {
-		return errors.New("no fields specified for update")
+		return entity, errors.New("no fields specified for update")
 	}
 
 	// Perform partial update using GORM's `Select` to specify fields
@@ -174,28 +187,37 @@ func (r *GormRepository[T, ID]) Patch(ctx context.Context, model T, fields depo.
 		Model(&model).
 		Select(fields.Strings()).
 		Updates(&model).Error; err != nil {
-		return err
+		return entity, err
 	}
-	return nil
+
+	// TODO: fetch again
+
+	return entity, nil
 }
 
-func (r *GormRepository[T, ID]) PatchRaw(ctx context.Context, id ID, updates map[depo.Fieldable]any) error {
+func (r *GormRepository[T, ID]) PatchRaw(ctx context.Context, id ID, patches ...depo.Patchable) (T, error) {
+	var entity T
+
 	// Validate the updates map (should not be empty)
-	if len(updates) == 0 {
-		return errors.New("no fields to update")
+	if len(patches) == 0 {
+		return entity, errors.New("no fields to update")
 	}
 
 	// Build the raw updates map with field names as keys
 	rawUpdates := map[string]any{}
-	for field, value := range updates {
-		rawUpdates[field.String()] = value
+	for field, value := range patches {
+		_ = field
+		_ = value
+		// TODO FIXME
+		//rawUpdates[field.String()] = value
 	}
 
 	// Perform the update using GORM's `Updates` method
 	if err := r.db.WithContext(ctx).Model(new(T)).Where("id = ?", id).Updates(rawUpdates).Error; err != nil {
-		return err
+		return entity, err
 	}
-	return nil
+	// TODO: re-fetch model
+	return entity, nil
 }
 
 func (r *GormRepository[T, ID]) Delete(ctx context.Context, id ID) error {

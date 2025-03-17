@@ -1,14 +1,5 @@
 package depo
 
-// Preload defines a single preload rule.
-type Preloadable interface {
-	GetName() string                // The name of the related entity, e.g., "Author".
-	GetNestedPreloads() Preloadable // Nested preloads, e.g., "Author.Books".
-}
-
-// Preloadables is a slice of Preloadable.
-type Preloadables []Preloadable
-
 // ListParams defines parameters for filtering, sorting, and field selection.
 type ListParams struct {
 	Filters Filterables
