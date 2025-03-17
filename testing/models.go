@@ -32,7 +32,7 @@ type Event struct {
 
 	Location *Location `gorm:"foreignKey:VenueID"`
 
-	Artists []Artist `gorm:"many2many:artists_to_events;constraint:OnUpdate:CASCADE,OnDelete:CASCADE;"`
+	Artists []Artist `gorm:"many2many:artist_to_events"`
 }
 
 // Artist represents a person who performs at events.

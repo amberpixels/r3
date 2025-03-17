@@ -8,15 +8,10 @@ import (
 	"github.com/amberpixels/depo"
 	depogorm "github.com/amberpixels/depo/dialects/gorm"
 	. "github.com/amberpixels/depo/testing"
+	"github.com/pressly/goose"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-type Apple struct {
-	ID    int    `gorm:"primaryKey"`
-	Name  string `gorm:"not null"`
-	Color string `gorm:"not null"`
-}
 
 func TestGormRepository(t *testing.T) {
 	ctx := context.Background()
@@ -28,9 +23,30 @@ func TestGormRepository(t *testing.T) {
 		_ = container.Terminate(context.Background())
 	}()
 
+	const autoMigrate = false
+	const pathToMigrations = "../../testing/migrations"
+
 	// Migrate the new models
-	err = db.AutoMigrate(&City{}, &Location{}, &Event{}, &Artist{}, &ArtistToEvent{})
-	require.NoError(t, err, "failed to migrate models")
+	if autoMigrate {
+		err = db.AutoMigrate(&City{}, &Location{}, &Event{}, &Artist{}, &ArtistToEvent{})
+		require.NoError(t, err, "failed to migrate models")
+	} else {
+		// Get the underlying sql.DB from gorm.DB.
+		sqlDB, err := db.DB()
+		require.NoError(t, err, "failed to get underlying sql.DB")
+
+		// Run migrations using Goose.
+		// Assumes that your migration scripts are located in the "./migrations" directory.
+		err = goose.Up(sqlDB, pathToMigrations)
+		require.NoError(t, err, "failed to run migrations")
+
+		defer func() {
+			// Run down migrations
+			if err := goose.Down(sqlDB, pathToMigrations); err != nil {
+				t.Logf("failed to run down migration: %v", err)
+			}
+		}()
+	}
 
 	// Create repositories for each model
 	cityRepo := depogorm.NewGormRepository[City, int64](db)

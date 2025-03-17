@@ -3,6 +3,7 @@ package depogorm_test
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/testcontainers/testcontainers-go"
@@ -50,6 +51,8 @@ func setupPostgresContainer() (testcontainers.Container, *gorm.DB, error) {
 	// Build the PostgreSQL DSN
 	dsn := fmt.Sprintf("host=%s port=%s user=test password=test dbname=testdb sslmode=disable", host, port.Port())
 
+	slog.Info("PostgreSQL DSN: ", "dsn", dsn)
+
 	// Connect to the PostgreSQL database
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info), // Enable verbose logging
@@ -57,12 +60,6 @@ func setupPostgresContainer() (testcontainers.Container, *gorm.DB, error) {
 	if err != nil {
 		_ = container.Terminate(ctx)
 
-		return nil, nil, err
-	}
-
-	// Migrate the Apple model
-	if err := db.AutoMigrate(&Apple{}); err != nil {
-		_ = container.Terminate(ctx)
 		return nil, nil, err
 	}
 
