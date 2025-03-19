@@ -158,13 +158,10 @@ func TestGormRepository(t *testing.T) {
 				Group("locations.id, locations.name").
 				Order("total_weight DESC")
 		})
-		if err != nil {
-			fmt.Println(",.,,. ", err)
-			// handle error
-		}
+		require.NoError(t, err, "failed to run aggregate query via Raw")
+
 		jj, _ := json.Marshal(results)
 		fmt.Println(",.,,. ", string(jj))
-		require.NoError(t, err, "failed to run aggregate query via Raw")
 
 		// Log the results for debugging.
 		//for _, res := range results {
