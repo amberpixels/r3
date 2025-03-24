@@ -1,11 +1,11 @@
-package depogorm
+package r3gorm
 
 import (
 	"context"
 	"errors"
 	"sync"
 
-	"github.com/amberpixels/depo"
+	"github.com/amberpixels/r3"
 	"gorm.io/gorm"
 )
 

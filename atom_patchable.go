@@ -1,4 +1,4 @@
-package depo
+package r3
 
 // Patchable defines a single patch (field + its value)
 type Patchable interface {

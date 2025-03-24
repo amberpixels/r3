@@ -1,4 +1,4 @@
-package depogorm_test
+package r3gorm_test
 
 import (
 	"context"

@@ -1,4 +1,4 @@
-package depo
+package r3
 
 // Preloadable defines a single preload rule.
 type Preloadable interface {

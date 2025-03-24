@@ -1,4 +1,4 @@
-package depotesting
+package r3testing
 
 import "time"
 

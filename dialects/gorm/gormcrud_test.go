@@ -1,4 +1,4 @@
-package depogorm_test
+package r3gorm_test
 
 import (
 	"context"
@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/amberpixels/depo"
-	depogorm "github.com/amberpixels/depo/dialects/gorm"
-	. "github.com/amberpixels/depo/testing"
+	"github.com/amberpixels/r3"
+	depogorm "github.com/amberpixels/r3/dialects/gorm"
+	. "github.com/amberpixels/r3/testing"
 	"github.com/pressly/goose"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"

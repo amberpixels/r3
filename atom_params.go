@@ -1,4 +1,4 @@
-package depo
+package r3
 
 import "slices"
 

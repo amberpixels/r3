@@ -1,10 +1,10 @@
-module github.com/amberpixels/depo
+module github.com/amberpixels/r3
 
 go 1.24
 
 require (
 	github.com/pressly/goose v2.7.0+incompatible
-	github.com/stretchr/testify v1.9.0
+	github.com/stretchr/testify v1.10.0
 	github.com/testcontainers/testcontainers-go v0.35.0
 	gorm.io/driver/postgres v1.5.11
 	gorm.io/gorm v1.25.12

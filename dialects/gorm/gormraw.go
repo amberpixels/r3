@@ -1,4 +1,4 @@
-package depogorm
+package r3gorm
 
 import (
 	"context"
