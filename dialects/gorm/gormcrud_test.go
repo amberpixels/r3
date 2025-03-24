@@ -85,7 +85,7 @@ func TestGormRepository(t *testing.T) {
 	_ = artistRepo
 
 	t.Run("List cities", func(t *testing.T) {
-		result, err := cityRepo.List(ctx, depo.ListParams{})
+		result, err := cityRepo.List(ctx, r3.ListParams{})
 		require.NoError(t, err, "failed to list cities")
 		assert.Len(t, result, 2, "expected 2 cities")
 	})
@@ -93,9 +93,11 @@ func TestGormRepository(t *testing.T) {
 	t.Run("List cities with translations", func(t *testing.T) {
 
 		// List cities using the repository with the preload parameter set.
-		result, err := cityRepo.List(ctx, depo.ListParams{
-			Preloads: depo.Preloadables{
-				depo.NewTablePreload("Translations"),
+		result, err := cityRepo.List(ctx, r3.ListParams{
+			GetParams: r3.GetParams{
+				Preloads: r3.Preloadables{
+					r3.NewTablePreload("Translations"),
+				},
 			},
 		})
 		require.NoError(t, err, "failed to list cities with translations")
@@ -109,14 +111,14 @@ func TestGormRepository(t *testing.T) {
 	})
 
 	t.Run("Get city by ID", func(t *testing.T) {
-		city, err := cityRepo.Get(ctx, cities[0].ID, depo.GetParams{})
+		city, err := cityRepo.Get(ctx, cities[0].ID, r3.GetParams{})
 		require.NoError(t, err, "failed to get city")
 		assert.Equal(t, "City One", city.Name, "unexpected city name")
 	})
 
 	t.Run("List visible locations", func(t *testing.T) {
-		result, err := locRepo.List(ctx, depo.ListParams{
-			Filters: depo.NewFiltersGroup().WhereTrue("visible"),
+		result, err := locRepo.List(ctx, r3.ListParams{
+			Filters: r3.NewFiltersGroup().WhereTrue("visible"),
 		})
 		require.NoError(t, err, "failed to list locations")
 
@@ -134,8 +136,8 @@ func TestGormRepository(t *testing.T) {
 	})
 
 	t.Run("List events for a location", func(t *testing.T) {
-		result, err := eventRepo.List(ctx, depo.ListParams{
-			Filters: depo.NewFiltersGroup().WhereEq("venue_id", locations[1].ID),
+		result, err := eventRepo.List(ctx, r3.ListParams{
+			Filters: r3.NewFiltersGroup().WhereEq("venue_id", locations[1].ID),
 		})
 		require.NoError(t, err, "failed to list events")
 
@@ -179,7 +181,7 @@ func TestGormRepository(t *testing.T) {
 		require.NoError(t, err, "failed to delete event")
 
 		// Try to retrieve the deleted event
-		_, err = eventRepo.Get(ctx, events[0].ID, depo.GetParams{})
+		_, err = eventRepo.Get(ctx, events[0].ID, r3.GetParams{})
 		assert.Error(t, err, "expected error when getting a deleted event")
 	})
 }

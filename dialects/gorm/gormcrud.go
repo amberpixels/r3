@@ -19,11 +19,11 @@ type GormCRUD[T any, ID comparable] struct {
 	raw *GormRaw[T, ID]
 }
 
-var _ depo.CRUD[any, any] = &GormCRUD[any, any]{}
+var _ r3.CRUD[any, any] = &GormCRUD[any, any]{}
 
 type defaultParams struct {
-	ListParams depo.ListParams
-	GetParams  depo.GetParams
+	ListParams r3.ListParams
+	GetParams  r3.GetParams
 }
 
 // NewGormCRUD creates a new GORM-based
@@ -31,29 +31,29 @@ func NewGormCRUD[T any, ID comparable](db *gorm.DB) *GormCRUD[T, ID] {
 	return &GormCRUD[T, ID]{
 		db: db,
 		defaultParams: defaultParams{
-			ListParams: depo.ListParams{}, // Add default values as needed
-			GetParams:  depo.GetParams{},
+			ListParams: r3.ListParams{}, // Add default values as needed
+			GetParams:  r3.GetParams{},
 		},
 		raw: NewGormRaw[T, ID](db),
 	}
 }
 
 // SetDefaultParams sets default params for the
-func (r *GormCRUD[T, ID]) SetDefaultParams(listParams depo.ListParams) {
+func (r *GormCRUD[T, ID]) SetDefaultParams(listParams r3.ListParams) {
 	r.defaultParamsM.Lock()
 	defer r.defaultParamsM.Unlock()
 	r.defaultParams.ListParams = listParams
 }
 
 // SetDefaultParams sets default params for the
-func (r *GormCRUD[T, ID]) SetDefaultGetParams(getParams depo.GetParams) {
+func (r *GormCRUD[T, ID]) SetDefaultGetParams(getParams r3.GetParams) {
 	r.defaultParamsM.Lock()
 	defer r.defaultParamsM.Unlock()
 	r.defaultParams.GetParams = getParams
 }
 
 // mergeListParams merges request-level params with repository-level default params.
-func (r *GormCRUD[T, ID]) mergeListParams(paramsArg ...depo.ListParams) depo.ListParams {
+func (r *GormCRUD[T, ID]) mergeListParams(paramsArg ...r3.ListParams) r3.ListParams {
 	r.defaultParamsM.RLock()
 	defer r.defaultParamsM.RUnlock()
 
@@ -83,12 +83,12 @@ func (r *GormCRUD[T, ID]) mergeListParams(paramsArg ...depo.ListParams) depo.Lis
 }
 
 // mergeGetParams merges request-level params with repository-level default params.
-func (r *GormCRUD[T, ID]) mergeGetParams(paramsArg ...depo.GetParams) depo.GetParams {
+func (r *GormCRUD[T, ID]) mergeGetParams(paramsArg ...r3.GetParams) r3.GetParams {
 	r.defaultParamsM.RLock()
 	defer r.defaultParamsM.RUnlock()
 
 	// Merge logic: Fields, Preloads, etc.
-	var params depo.GetParams
+	var params r3.GetParams
 	if len(paramsArg) > 0 {
 		params = paramsArg[0]
 	}
@@ -112,7 +112,7 @@ func (r *GormCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 	return entity, nil
 }
 
-func (r *GormCRUD[T, ID]) List(ctx context.Context, paramsArg ...depo.ListParams) ([]T, error) {
+func (r *GormCRUD[T, ID]) List(ctx context.Context, paramsArg ...r3.ListParams) ([]T, error) {
 	var entities []T
 
 	// Merge params with defaults
@@ -155,7 +155,7 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, paramsArg ...depo.ListParams
 	return entities, nil
 }
 
-func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, paramsArg ...depo.GetParams) (T, error) {
+func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, paramsArg ...r3.GetParams) (T, error) {
 	var entity T
 
 	// Merge params with defaults
@@ -185,7 +185,7 @@ func (r *GormCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	return entity, nil
 }
 
-func (r *GormCRUD[T, ID]) Patch(ctx context.Context, model T, fields depo.Fieldables) (T, error) {
+func (r *GormCRUD[T, ID]) Patch(ctx context.Context, model T, fields r3.Fieldables) (T, error) {
 	var entity T
 
 	// Validate the fields list (should not be empty)
@@ -206,7 +206,7 @@ func (r *GormCRUD[T, ID]) Patch(ctx context.Context, model T, fields depo.Fielda
 	return entity, nil
 }
 
-func (r *GormCRUD[T, ID]) PatchRaw(ctx context.Context, id ID, patches ...depo.Patchable) (T, error) {
+func (r *GormCRUD[T, ID]) PatchRaw(ctx context.Context, id ID, patches ...r3.Patchable) (T, error) {
 	var entity T
 
 	// Validate the updates map (should not be empty)

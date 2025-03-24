@@ -4,14 +4,13 @@ import "slices"
 
 // ListParams defines parameters for filtering, sorting, and field selection.
 type ListParams struct {
+	GetParams
+
 	Filters Filterables
 	Sort    Sortables
-	Fields  Fieldables
-	Limit   int
-	Offset  int
 
-	IncludeTrashed bool         // Include trashed (soft-deleted) records.
-	Preloads       Preloadables // List of related entities to preload.
+	Limit  int
+	Offset int
 }
 
 // Clone returns a copy of the ListParams.
