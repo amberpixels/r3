@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/amberpixels/r3"
+	r3atoms "github.com/amberpixels/r3/atoms"
 	"gorm.io/gorm"
 )
 
@@ -22,8 +23,8 @@ type GormCRUD[T any, ID comparable] struct {
 var _ r3.CRUD[any, any] = &GormCRUD[any, any]{}
 
 type defaultParams struct {
-	ListParams r3.ListParams
-	GetParams  r3.GetParams
+	ListParams r3atoms.ListParams
+	GetParams  r3atoms.GetParams
 }
 
 // NewGormCRUD creates a new GORM-based
@@ -31,29 +32,29 @@ func NewGormCRUD[T any, ID comparable](db *gorm.DB) *GormCRUD[T, ID] {
 	return &GormCRUD[T, ID]{
 		db: db,
 		defaultParams: defaultParams{
-			ListParams: r3.ListParams{}, // Add default values as needed
-			GetParams:  r3.GetParams{},
+			ListParams: r3atoms.ListParams{}, // Add default values as needed
+			GetParams:  r3atoms.GetParams{},
 		},
 		raw: NewGormRaw[T, ID](db),
 	}
 }
 
 // SetDefaultParams sets default params for the
-func (r *GormCRUD[T, ID]) SetDefaultParams(listParams r3.ListParams) {
+func (r *GormCRUD[T, ID]) SetDefaultParams(listParams r3atoms.ListParams) {
 	r.defaultParamsM.Lock()
 	defer r.defaultParamsM.Unlock()
 	r.defaultParams.ListParams = listParams
 }
 
 // SetDefaultParams sets default params for the
-func (r *GormCRUD[T, ID]) SetDefaultGetParams(getParams r3.GetParams) {
+func (r *GormCRUD[T, ID]) SetDefaultGetParams(getParams r3atoms.GetParams) {
 	r.defaultParamsM.Lock()
 	defer r.defaultParamsM.Unlock()
 	r.defaultParams.GetParams = getParams
 }
 
 // mergeListParams merges request-level params with repository-level default params.
-func (r *GormCRUD[T, ID]) mergeListParams(paramsArg ...r3.ListParams) r3.ListParams {
+func (r *GormCRUD[T, ID]) mergeListParams(paramsArg ...r3atoms.ListParams) r3atoms.ListParams {
 	r.defaultParamsM.RLock()
 	defer r.defaultParamsM.RUnlock()
 
@@ -67,8 +68,8 @@ func (r *GormCRUD[T, ID]) mergeListParams(paramsArg ...r3.ListParams) r3.ListPar
 	if params.Filters != nil {
 		merged.Filters = params.Filters
 	}
-	if params.Sort != nil {
-		merged.Sort = params.Sort
+	if params.Sorts != nil {
+		merged.Sorts = params.Sorts
 	}
 	if params.Fields != nil {
 		merged.Fields = params.Fields
@@ -83,18 +84,18 @@ func (r *GormCRUD[T, ID]) mergeListParams(paramsArg ...r3.ListParams) r3.ListPar
 }
 
 // mergeGetParams merges request-level params with repository-level default params.
-func (r *GormCRUD[T, ID]) mergeGetParams(paramsArg ...r3.GetParams) r3.GetParams {
+func (r *GormCRUD[T, ID]) mergeGetParams(paramsArg ...r3atoms.GetParams) r3atoms.GetParams {
 	r.defaultParamsM.RLock()
 	defer r.defaultParamsM.RUnlock()
 
 	// Merge logic: Fields, Preloads, etc.
-	var params r3.GetParams
+	var params r3atoms.GetParams
 	if len(paramsArg) > 0 {
 		params = paramsArg[0]
 	}
 
 	merged := params
-	if params.Fields == nil || len(params.Fields.Fields()) == 0 {
+	if len(params.Fields) == 0 {
 		merged.Fields = r.defaultParams.GetParams.Fields
 	}
 	if len(params.Preloads) == 0 {
@@ -112,50 +113,62 @@ func (r *GormCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 	return entity, nil
 }
 
-func (r *GormCRUD[T, ID]) List(ctx context.Context, paramsArg ...r3.ListParams) ([]T, error) {
+func (r *GormCRUD[T, ID]) List(ctx context.Context, paramsArg ...r3atoms.ListParams) ([]T, int64, error) {
 	var entities []T
+	var totalCount int64
 
 	// Merge params with defaults
 	params := r.mergeListParams(paramsArg...)
 
-	// Apply filters, sorting, fields, and preloads
-	query := r.db.WithContext(ctx)
-	if params.Filters != nil {
-		for _, filter := range params.Filters.GetFilters() {
-			query = query.Where(filter.GetField().String()+" "+filter.GetOperator().String()+" ?", filter.GetValue())
+	var entity T
+	query := r.db.WithContext(ctx).Debug().Model(&entity)
+
+	// Handle custom filters:
+	if len(params.Filters) > 0 {
+		for _, join := range params.Filters.ExtractJoins() {
+			query = query.Joins(join)
 		}
+
+		safeSQL, args := params.Filters.DialectString()
+		query = query.Where(safeSQL, args...)
 	}
 
-	if params.Sort != nil {
-		for _, sort := range params.Sort.GetSortCriterias() {
-			query = query.Order(sort.String())
+	// Sorting.
+	for _, sort := range params.Sorts {
+		query = query.Order(sort.DialectString())
+	}
+
+	// If Pagination is given, then we need to first Count all results without pagination:
+	var isPaginated bool
+	if params.Pagination.IsPaginated() {
+		if err := query.Count(&totalCount).Error; err != nil {
+			return nil, 0, err
 		}
-	}
 
-	if params.Fields != nil {
-		if len(params.Fields.Fields()) > 0 {
-			query = query.Select(params.Fields.Strings())
+		if totalCount == 0 {
+			// no reason to call Find() if it has zero data
+			return nil, 0, nil
 		}
+
+		// Apply pagination
+		query = query.Limit(params.Pagination.GetLimit(100)) // 100 for default
+		query = query.Offset(params.Pagination.Offset)
+		isPaginated = true
 	}
 
-	for _, preload := range params.Preloads {
-		query = query.Preload(preload.GetName(), preload.GetNestedPreloads())
-	}
-	if params.Limit > 0 {
-		query = query.Limit(params.Limit)
-	}
-	if params.Offset > 0 {
-		query = query.Offset(params.Offset)
-	}
-
-	// Fetch the records
 	if err := query.Find(&entities).Error; err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	return entities, nil
+
+	// If there was no pagination, let's simply count results
+	if !isPaginated {
+		totalCount = int64(len(entities))
+	}
+
+	return entities, totalCount, nil
 }
 
-func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, paramsArg ...r3.GetParams) (T, error) {
+func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, paramsArg ...r3atoms.GetParams) (T, error) {
 	var entity T
 
 	// Merge params with defaults
@@ -185,18 +198,18 @@ func (r *GormCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	return entity, nil
 }
 
-func (r *GormCRUD[T, ID]) Patch(ctx context.Context, model T, fields r3.Fieldables) (T, error) {
+func (r *GormCRUD[T, ID]) Patch(ctx context.Context, model T, fields r3atoms.Fields) (T, error) {
 	var entity T
 
 	// Validate the fields list (should not be empty)
-	if fields == nil || len(fields.Fields()) == 0 {
+	if len(fields) == 0 {
 		return entity, errors.New("no fields specified for update")
 	}
 
 	// Perform partial update using GORM's `Select` to specify fields
 	if err := r.db.WithContext(ctx).
 		Model(&model).
-		Select(fields.Strings()).
+		// Select(fields.Strings()). TODO(!)
 		Updates(&model).Error; err != nil {
 		return entity, err
 	}
@@ -206,7 +219,7 @@ func (r *GormCRUD[T, ID]) Patch(ctx context.Context, model T, fields r3.Fieldabl
 	return entity, nil
 }
 
-func (r *GormCRUD[T, ID]) PatchRaw(ctx context.Context, id ID, patches ...r3.Patchable) (T, error) {
+func (r *GormCRUD[T, ID]) PatchRaw(ctx context.Context, id ID, patches ...r3atoms.Patch) (T, error) {
 	var entity T
 
 	// Validate the updates map (should not be empty)
