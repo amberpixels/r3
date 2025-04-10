@@ -88,7 +88,7 @@ func TestGormRepository(t *testing.T) {
 		result, total, err := cityRepo.List(ctx, r3atoms.ListParams{})
 		require.NoError(t, err, "failed to list cities")
 		assert.Len(t, result, 2, "expected 2 cities")
-		assert.Equal(t, total, 2, "expected 2 total cities")
+		assert.Equal(t, total, int64(2), "expected 2 total cities")
 	})
 
 	t.Run("List cities with translations", func(t *testing.T) {
@@ -103,7 +103,7 @@ func TestGormRepository(t *testing.T) {
 		})
 		require.NoError(t, err, "failed to list cities with translations")
 		assert.Len(t, result, 2, "expected 2 cities")
-		assert.Equal(t, total, 2, "expected 2 total cities")
+		assert.Equal(t, total, int64(2), "expected 2 total cities")
 
 		// Verify that each city has translation records.
 		for _, city := range result {

@@ -3,6 +3,7 @@ package r3gorm
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/amberpixels/r3"
@@ -32,8 +33,10 @@ func NewGormCRUD[T any, ID comparable](db *gorm.DB) *GormCRUD[T, ID] {
 	return &GormCRUD[T, ID]{
 		db: db,
 		defaultParams: defaultParams{
-			ListParams: r3atoms.ListParams{}, // Add default values as needed
-			GetParams:  r3atoms.GetParams{},
+			ListParams: r3atoms.ListParams{
+				Pagination: r3atoms.NewPagination(100, 0),
+			}, // Add default values as needed
+			GetParams: r3atoms.GetParams{},
 		},
 		raw: NewGormRaw[T, ID](db),
 	}
@@ -74,7 +77,6 @@ func (r *GormCRUD[T, ID]) mergeListParams(paramsArg ...r3atoms.ListParams) r3ato
 	if params.Fields != nil {
 		merged.Fields = params.Fields
 	}
-
 	if params.Preloads != nil {
 		merged.Preloads = params.Preloads
 	}
@@ -151,6 +153,7 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, paramsArg ...r3atoms.ListPar
 		}
 
 		// Apply pagination
+		fmt.Println("<><>< ", params.Pagination)
 		query = query.Limit(params.Pagination.GetLimit(100)) // 100 for default
 		query = query.Offset(params.Pagination.Offset)
 		isPaginated = true
