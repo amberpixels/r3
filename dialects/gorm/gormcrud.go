@@ -3,7 +3,6 @@ package r3gorm
 import (
 	"context"
 	"errors"
-	"fmt"
 	"sync"
 
 	"github.com/amberpixels/r3"
@@ -66,23 +65,25 @@ func (r *GormCRUD[T, ID]) mergeListParams(paramsArg ...r3atoms.ListParams) r3ato
 	}
 	params := paramsArg[0]
 
-	merged := r.defaultParams.ListParams.Clone()
+	result := r.defaultParams.ListParams.Clone()
 
 	if params.Filters != nil {
-		merged.Filters = params.Filters
+		result.Filters = params.Filters
 	}
 	if params.Sorts != nil {
-		merged.Sorts = params.Sorts
+		result.Sorts = params.Sorts
 	}
 	if params.Fields != nil {
-		merged.Fields = params.Fields
+		result.Fields = params.Fields
 	}
 	if params.Preloads != nil {
-		merged.Preloads = params.Preloads
+		result.Preloads = params.Preloads
 	}
-	merged.IncludeTrashed = merged.IncludeTrashed || r.defaultParams.ListParams.IncludeTrashed
+	if params.IncludeTrashed.Some() {
+		result.IncludeTrashed = params.IncludeTrashed
+	}
 
-	return merged
+	return result
 }
 
 // mergeGetParams merges request-level params with repository-level default params.
@@ -96,16 +97,18 @@ func (r *GormCRUD[T, ID]) mergeGetParams(paramsArg ...r3atoms.GetParams) r3atoms
 		params = paramsArg[0]
 	}
 
-	merged := params
+	result := params
 	if len(params.Fields) == 0 {
-		merged.Fields = r.defaultParams.GetParams.Fields
+		result.Fields = r.defaultParams.GetParams.Fields
 	}
 	if len(params.Preloads) == 0 {
-		merged.Preloads = r.defaultParams.GetParams.Preloads
+		result.Preloads = r.defaultParams.GetParams.Preloads
 	}
-	merged.IncludeTrashed = merged.IncludeTrashed || r.defaultParams.GetParams.IncludeTrashed
+	if params.IncludeTrashed.Some() {
+		result.IncludeTrashed = params.IncludeTrashed
+	}
 
-	return merged
+	return result
 }
 
 func (r *GormCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
@@ -142,7 +145,9 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, paramsArg ...r3atoms.ListPar
 
 	// If Pagination is given, then we need to first Count all results without pagination:
 	var isPaginated bool
-	if params.Pagination.IsPaginated() {
+	if params.Pagination.Some() {
+		pagination := params.Pagination.Unwrap()
+
 		if err := query.Count(&totalCount).Error; err != nil {
 			return nil, 0, err
 		}
@@ -153,9 +158,8 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, paramsArg ...r3atoms.ListPar
 		}
 
 		// Apply pagination
-		fmt.Println("<><>< ", params.Pagination)
-		query = query.Limit(params.Pagination.GetLimit(100)) // 100 for default
-		query = query.Offset(params.Pagination.Offset)
+		query = query.Limit(pagination.GetLimit(100)) // 100 for default
+		query = query.Offset(pagination.Offset)
 		isPaginated = true
 	}
 
@@ -184,7 +188,8 @@ func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, paramsArg ...r3atoms.G
 	}
 
 	// Fetch the record
-	if params.IncludeTrashed {
+	if params.IncludeTrashed.Some() {
+		// TODO: it can be negative!
 		query = query.Unscoped() // Include soft-deleted records
 	}
 	if err := query.First(&entity, id).Error; err != nil {

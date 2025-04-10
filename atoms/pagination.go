@@ -1,5 +1,7 @@
 package r3atoms
 
+import "github.com/amberpixels/r3/internal/option"
+
 const (
 	// NoLimit is a special value for pagination limit that means no limit.
 	// Here it's -1 but we'll check any negative value for infinite limit.
@@ -13,16 +15,15 @@ type Pagination struct {
 }
 
 // NewPagination returns a new Pagination with the given limit and offset.
-func NewPagination(limit, offset int) Pagination {
-	return Pagination{
-		Limit:  limit,
-		Offset: offset,
-	}
+func NewPagination(limit, offset int) option.Option[Pagination] {
+	return option.Some(Pagination{
+		Limit: limit, Offset: offset,
+	})
 }
 
 // NoLimitPagination returns a new Pagination with no limit and offset
-func NoLimitPagination() Pagination {
-	return Pagination{Limit: NoLimit}
+func NoLimitPagination() option.Option[Pagination] {
+	return option.Some(Pagination{Limit: NoLimit})
 }
 
 // TODO(better-repos@v2): gRPC controllers use PageNumber & PageSize for pagination
