@@ -18,6 +18,8 @@ type Option[T comparable] struct {
 // Bool is just a shortcut for Option[bool].
 type Bool = Option[bool]
 
+type Int = Option[int]
+
 // None returns true if the Option does not contain a valid value.
 func (o *Option[T]) None() bool {
 	return !o.ok
@@ -143,5 +145,9 @@ func (o *Option[T]) UnmarshalText(text []byte) error {
 
 // IsZero returns true if Option is none (for `omitzero` interface)
 func (o *Option[T]) IsZero() bool {
-	return o.None()
+	if o.None() {
+		return true
+	}
+	var zero T
+	return o.Unwrap() == zero
 }

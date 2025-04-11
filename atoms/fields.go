@@ -1,6 +1,8 @@
 package r3atoms
 
-import "fmt"
+import (
+	"fmt"
+)
 
 // Field defines a single field selection rule.
 type Field interface {
@@ -13,6 +15,17 @@ type Field interface {
 }
 
 type Fields []Field
+
+// MergeWith merges (combines) fields with other fields ()
+func (fs Fields) MergeWith(other Fields) Fields { return mergeWith(fs, other) }
+
+// Dedupe removes duplicates from the fields list
+// Not: it's not super-performant because of types and go-generics. Refactor if needed
+func (fs *Fields) Dedupe() {
+	v := []Field(*fs)
+	dedupe[Field](&v)
+	*fs = Fields(v)
+}
 
 // ColumnField is the simplest possible implementation of Fieldable
 // Here, we just mean Field for a column in the database.

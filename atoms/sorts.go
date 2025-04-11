@@ -56,6 +56,8 @@ var _ Sort = (*ColumnSort)(nil)
 // Sorts represents a list of ColumnSort-s.
 type Sorts []Sort
 
+func (sorts Sorts) MergeWith(other Sorts) Sorts { return mergeWith(sorts, other) }
+
 // NewSorts parses the given raw sorting string and returns a list of Sorts.
 // Currently, we do support curator's API handler's `field ASC NULLS FIRST` syntax.
 // Later, we should reconsider the string syntax and it may be changed.

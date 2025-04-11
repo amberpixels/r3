@@ -29,6 +29,9 @@ type Filter interface {
 // It is intentionally a slice of interface, so any filter can be inside.
 type Filters []Filter
 
+// MergeWith merges (combines) filters with other filters
+func (fs Filters) MergeWith(other Filters) Filters { return mergeWith(fs, other) }
+
 // RawFilter is a raw SQL filter that can perform ANY given SQL query.
 // RawFilter can't have children (it's always a final leaf).
 type RawFilter struct {

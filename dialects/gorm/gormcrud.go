@@ -10,32 +10,31 @@ import (
 	"gorm.io/gorm"
 )
 
+// defaults stores the default values for repo params
+type defaults struct {
+	ListParams r3atoms.ListParams
+	GetParams  r3atoms.GetParams
+}
+
 // GormCRUD is a richfull CRUD repository based on gorm.DB
 type GormCRUD[T any, ID comparable] struct {
 	db *gorm.DB
 
-	defaultParams  defaultParams
-	defaultParamsM sync.RWMutex
+	defaults   defaults
+	defaultsMu sync.RWMutex
 
 	raw *GormRaw[T, ID]
 }
 
 var _ r3.CRUD[any, any] = &GormCRUD[any, any]{}
 
-type defaultParams struct {
-	ListParams r3atoms.ListParams
-	GetParams  r3atoms.GetParams
-}
-
 // NewGormCRUD creates a new GORM-based
 func NewGormCRUD[T any, ID comparable](db *gorm.DB) *GormCRUD[T, ID] {
 	return &GormCRUD[T, ID]{
 		db: db,
-		defaultParams: defaultParams{
-			ListParams: r3atoms.ListParams{
-				Pagination: r3atoms.NewPagination(100, 0),
-			}, // Add default values as needed
-			GetParams: r3atoms.GetParams{},
+		defaults: defaults{
+			ListParams: r3atoms.DefaultListParams(),
+			GetParams:  r3atoms.DefaultGetParams(),
 		},
 		raw: NewGormRaw[T, ID](db),
 	}
@@ -43,72 +42,28 @@ func NewGormCRUD[T any, ID comparable](db *gorm.DB) *GormCRUD[T, ID] {
 
 // SetDefaultParams sets default params for the
 func (r *GormCRUD[T, ID]) SetDefaultParams(listParams r3atoms.ListParams) {
-	r.defaultParamsM.Lock()
-	defer r.defaultParamsM.Unlock()
-	r.defaultParams.ListParams = listParams
+	r.defaultsMu.Lock()
+	r.defaults.ListParams = listParams
+	r.defaultsMu.Unlock()
 }
 
 // SetDefaultParams sets default params for the
 func (r *GormCRUD[T, ID]) SetDefaultGetParams(getParams r3atoms.GetParams) {
-	r.defaultParamsM.Lock()
-	defer r.defaultParamsM.Unlock()
-	r.defaultParams.GetParams = getParams
+	r.defaultsMu.Lock()
+	r.defaults.GetParams = getParams
+	r.defaultsMu.Unlock()
 }
 
-// mergeListParams merges request-level params with repository-level default params.
-func (r *GormCRUD[T, ID]) mergeListParams(paramsArg ...r3atoms.ListParams) r3atoms.ListParams {
-	r.defaultParamsM.RLock()
-	defer r.defaultParamsM.RUnlock()
-
-	if len(paramsArg) == 0 {
-		return r.defaultParams.ListParams.Clone()
-	}
-	params := paramsArg[0]
-
-	result := r.defaultParams.ListParams.Clone()
-
-	if params.Filters != nil {
-		result.Filters = params.Filters
-	}
-	if params.Sorts != nil {
-		result.Sorts = params.Sorts
-	}
-	if params.Fields != nil {
-		result.Fields = params.Fields
-	}
-	if params.Preloads != nil {
-		result.Preloads = params.Preloads
-	}
-	if params.IncludeTrashed.Some() {
-		result.IncludeTrashed = params.IncludeTrashed
-	}
-
-	return result
+func (r *GormCRUD[T, ID]) getDefaultListParams() r3atoms.ListParams {
+	r.defaultsMu.RLock()
+	defer r.defaultsMu.Unlock()
+	return r.defaults.ListParams
 }
 
-// mergeGetParams merges request-level params with repository-level default params.
-func (r *GormCRUD[T, ID]) mergeGetParams(paramsArg ...r3atoms.GetParams) r3atoms.GetParams {
-	r.defaultParamsM.RLock()
-	defer r.defaultParamsM.RUnlock()
-
-	// Merge logic: Fields, Preloads, etc.
-	var params r3atoms.GetParams
-	if len(paramsArg) > 0 {
-		params = paramsArg[0]
-	}
-
-	result := params
-	if len(params.Fields) == 0 {
-		result.Fields = r.defaultParams.GetParams.Fields
-	}
-	if len(params.Preloads) == 0 {
-		result.Preloads = r.defaultParams.GetParams.Preloads
-	}
-	if params.IncludeTrashed.Some() {
-		result.IncludeTrashed = params.IncludeTrashed
-	}
-
-	return result
+func (r *GormCRUD[T, ID]) getDefaultGetParams() r3atoms.GetParams {
+	r.defaultsMu.RLock()
+	defer r.defaultsMu.Unlock()
+	return r.defaults.GetParams
 }
 
 func (r *GormCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
@@ -123,7 +78,10 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, paramsArg ...r3atoms.ListPar
 	var totalCount int64
 
 	// Merge params with defaults
-	params := r.mergeListParams(paramsArg...)
+	params := r.getDefaultListParams()
+	for _, other := range paramsArg {
+		params = params.MergeWith(other)
+	}
 
 	var entity T
 	query := r.db.WithContext(ctx).Debug().Model(&entity)
@@ -145,21 +103,20 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, paramsArg ...r3atoms.ListPar
 
 	// If Pagination is given, then we need to first Count all results without pagination:
 	var isPaginated bool
-	if params.Pagination.Some() {
-		pagination := params.Pagination.Unwrap()
-
+	if params.Pagination.IsPaginated() {
+		// We have to count first:
 		if err := query.Count(&totalCount).Error; err != nil {
 			return nil, 0, err
 		}
-
 		if totalCount == 0 {
 			// no reason to call Find() if it has zero data
 			return nil, 0, nil
 		}
 
-		// Apply pagination
-		query = query.Limit(pagination.GetLimit(100)) // 100 for default
-		query = query.Offset(pagination.Offset)
+		// Then to add limit & offset for main Find() query
+		limit, offset := params.Pagination.GetDialectLimitOffset()
+		query = query.Limit(limit)
+		query = query.Offset(offset)
 		isPaginated = true
 	}
 
@@ -179,7 +136,10 @@ func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, paramsArg ...r3atoms.G
 	var entity T
 
 	// Merge params with defaults
-	params := r.mergeGetParams(paramsArg...)
+	params := r.getDefaultGetParams()
+	for _, other := range paramsArg {
+		params = params.MergeWith(other)
+	}
 
 	// Apply preloads
 	query := r.db.WithContext(ctx)

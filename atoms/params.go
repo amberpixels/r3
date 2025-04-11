@@ -6,9 +6,22 @@ import "github.com/amberpixels/r3/internal/option"
 type ListParams struct {
 	GetParams
 
-	Filters    Filters                   `json:"filters"`
-	Sorts      Sorts                     `json:"sorts"`
-	Pagination option.Option[Pagination] `json:"pagination"`
+	Filters    Filters    `json:"filters"`
+	Sorts      Sorts      `json:"sorts"`
+	Pagination Pagination `json:"pagination"`
+}
+
+func NewListParams() ListParams {
+	return ListParams{
+		GetParams: NewGetParams(),
+	}
+}
+
+func DefaultListParams() ListParams {
+	lp := NewListParams()
+	lp.Pagination = DefaultPagination()
+
+	return lp
 }
 
 // Clone returns a copy of the ListParams.
@@ -19,6 +32,19 @@ func (lp ListParams) Clone() ListParams {
 	return clone
 }
 
+// MergeWith merges given ListParams with some other ListParams
+func (lp ListParams) MergeWith(other ListParams) ListParams {
+	result := lp.Clone()
+
+	result.GetParams = result.GetParams.MergeWith(other.GetParams)
+
+	result.Filters = result.Filters.MergeWith(other.Filters)
+	result.Sorts = result.Sorts.MergeWith(other.Sorts)
+	result.Pagination = result.Pagination.MergeWith(other.Pagination)
+
+	return result
+}
+
 // GetParams defines optional parameters for the Get operation.
 type GetParams struct {
 	Fields   Fields   `json:"fields"`   // Specific fields to retrieve.
@@ -27,8 +53,31 @@ type GetParams struct {
 	IncludeTrashed option.Bool `json:"include_trashed,omitzero"` // Include trashed (soft-deleted) records.
 }
 
+func NewGetParams() GetParams {
+	return GetParams{}
+}
+
+func DefaultGetParams() GetParams {
+	return NewGetParams() // same as new
+}
+
+// MergeWith merges given GetParams with some other GetParams
+func (gp GetParams) MergeWith(other GetParams) GetParams {
+	result := gp.Clone()
+
+	result.Fields = result.Fields.MergeWith(other.Fields)
+	result.Preloads = result.Preloads.MergeWith(other.Preloads)
+
+	if other.IncludeTrashed.Some() {
+		result.IncludeTrashed = other.IncludeTrashed
+	}
+
+	return result
+}
+
 // Clone clones GetParams
 func (gp GetParams) Clone() GetParams {
 	// TODO(p2): real deep clone
-	return gp
+	var clone = gp
+	return clone
 }
