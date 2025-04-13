@@ -19,6 +19,12 @@ func (l Lookup[T]) Delete(k T) {
 	delete(l, k)
 }
 
+func (l Lookup[T]) Clear() {
+	for k := range l {
+		delete(l, k)
+	}
+}
+
 // NewLookup returns new ready to use lookup map.
 func NewLookup[T comparable](initialKeys ...T) Lookup[T] {
 	l := make(Lookup[T], len(initialKeys))

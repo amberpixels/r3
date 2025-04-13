@@ -1,9 +1,9 @@
-package r3atoms_test
+package r3_test
 
 import (
 	"testing"
 
-	. "github.com/amberpixels/r3/atoms"
+	. "github.com/amberpixels/r3"
 	"github.com/stretchr/testify/assert"
 )
 

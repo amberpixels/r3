@@ -1,4 +1,4 @@
-package r3atoms
+package r3
 
 import "github.com/amberpixels/r3/internal/option"
 

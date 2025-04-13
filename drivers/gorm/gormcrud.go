@@ -3,17 +3,18 @@ package r3gorm
 import (
 	"context"
 	"errors"
+	"fmt"
 	"sync"
 
 	"github.com/amberpixels/r3"
-	r3atoms "github.com/amberpixels/r3/atoms"
+	r3sql "github.com/amberpixels/r3/dialects/sql"
 	"gorm.io/gorm"
 )
 
 // defaults stores the default values for repo params
 type defaults struct {
-	ListParams r3atoms.ListParams
-	GetParams  r3atoms.GetParams
+	ListParams r3.ListParams
+	GetParams  r3.GetParams
 }
 
 // GormCRUD is a richfull CRUD repository based on gorm.DB
@@ -33,34 +34,34 @@ func NewGormCRUD[T any, ID comparable](db *gorm.DB) *GormCRUD[T, ID] {
 	return &GormCRUD[T, ID]{
 		db: db,
 		defaults: defaults{
-			ListParams: r3atoms.DefaultListParams(),
-			GetParams:  r3atoms.DefaultGetParams(),
+			ListParams: r3.DefaultListParams(),
+			GetParams:  r3.DefaultGetParams(),
 		},
 		raw: NewGormRaw[T, ID](db),
 	}
 }
 
 // SetDefaultParams sets default params for the
-func (r *GormCRUD[T, ID]) SetDefaultParams(listParams r3atoms.ListParams) {
+func (r *GormCRUD[T, ID]) SetDefaultParams(listParams r3.ListParams) {
 	r.defaultsMu.Lock()
 	r.defaults.ListParams = listParams
 	r.defaultsMu.Unlock()
 }
 
 // SetDefaultParams sets default params for the
-func (r *GormCRUD[T, ID]) SetDefaultGetParams(getParams r3atoms.GetParams) {
+func (r *GormCRUD[T, ID]) SetDefaultGetParams(getParams r3.GetParams) {
 	r.defaultsMu.Lock()
 	r.defaults.GetParams = getParams
 	r.defaultsMu.Unlock()
 }
 
-func (r *GormCRUD[T, ID]) getDefaultListParams() r3atoms.ListParams {
+func (r *GormCRUD[T, ID]) getDefaultListParams() r3.ListParams {
 	r.defaultsMu.RLock()
 	defer r.defaultsMu.Unlock()
 	return r.defaults.ListParams
 }
 
-func (r *GormCRUD[T, ID]) getDefaultGetParams() r3atoms.GetParams {
+func (r *GormCRUD[T, ID]) getDefaultGetParams() r3.GetParams {
 	r.defaultsMu.RLock()
 	defer r.defaultsMu.Unlock()
 	return r.defaults.GetParams
@@ -73,7 +74,7 @@ func (r *GormCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 	return entity, nil
 }
 
-func (r *GormCRUD[T, ID]) List(ctx context.Context, paramsArg ...r3atoms.ListParams) ([]T, int64, error) {
+func (r *GormCRUD[T, ID]) List(ctx context.Context, paramsArg ...r3.ListParams) ([]T, int64, error) {
 	var entities []T
 	var totalCount int64
 
@@ -86,20 +87,34 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, paramsArg ...r3atoms.ListPar
 	var entity T
 	query := r.db.WithContext(ctx).Debug().Model(&entity)
 
+	// TODO:
+	// FIELDS
+
 	// Handle custom filters:
-	if len(params.Filters) > 0 {
-		for _, join := range params.Filters.ExtractJoins() {
+	clauses, err := r3sql.FiltersToSQLClauses(params.Filters)
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to convert filters to SQL: %w", err)
+	}
+
+	if len(clauses) > 0 {
+		for _, join := range clauses.Joins() {
 			query = query.Joins(join)
 		}
 
-		safeSQL, args := params.Filters.DialectString()
-		query = query.Where(safeSQL, args...)
+		for _, clause := range clauses {
+			query = query.Where(clause.Clause, clause.Args...)
+		}
 	}
 
 	// Sorting.
-	for _, sort := range params.Sorts {
-		query = query.Order(sort.DialectString())
-	}
+	//sorts, err := r3sql.NewSorts(params.Sorts)
+	//if err != nil {
+	//	return nil, 0, fmt.Errorf("failed to convert sorts to SQL: %w", err)
+	//}
+	//
+	//for _, sort := range sorts {
+	//	query = query.Order(sort.ToSQL()) // TODO: to Gorm objects instead of plain SQL
+	//}
 
 	// If Pagination is given, then we need to first Count all results without pagination:
 	var isPaginated bool
@@ -132,7 +147,7 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, paramsArg ...r3atoms.ListPar
 	return entities, totalCount, nil
 }
 
-func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, paramsArg ...r3atoms.GetParams) (T, error) {
+func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, paramsArg ...r3.GetParams) (T, error) {
 	var entity T
 
 	// Merge params with defaults
@@ -166,7 +181,7 @@ func (r *GormCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	return entity, nil
 }
 
-func (r *GormCRUD[T, ID]) Patch(ctx context.Context, model T, fields r3atoms.Fields) (T, error) {
+func (r *GormCRUD[T, ID]) Patch(ctx context.Context, model T, fields r3.Fields) (T, error) {
 	var entity T
 
 	// Validate the fields list (should not be empty)
@@ -187,7 +202,7 @@ func (r *GormCRUD[T, ID]) Patch(ctx context.Context, model T, fields r3atoms.Fie
 	return entity, nil
 }
 
-func (r *GormCRUD[T, ID]) PatchRaw(ctx context.Context, id ID, patches ...r3atoms.Patch) (T, error) {
+func (r *GormCRUD[T, ID]) PatchRaw(ctx context.Context, id ID, patches ...r3.Patch) (T, error) {
 	var entity T
 
 	// Validate the updates map (should not be empty)

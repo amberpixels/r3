@@ -6,9 +6,9 @@ import (
 	"fmt"
 	"testing"
 
-	r3atoms "github.com/amberpixels/r3/atoms"
-	depogorm "github.com/amberpixels/r3/dialects/gorm"
-	. "github.com/amberpixels/r3/testing"
+	"github.com/amberpixels/r3"
+	depogorm "github.com/amberpixels/r3/drivers/gorm"
+	. "github.com/amberpixels/r3/internal/testing"
 	"github.com/pressly/goose"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -85,7 +85,7 @@ func TestGormRepository(t *testing.T) {
 	_ = artistRepo
 
 	t.Run("List cities", func(t *testing.T) {
-		result, total, err := cityRepo.List(ctx, r3atoms.ListParams{})
+		result, total, err := cityRepo.List(ctx, r3.ListParams{})
 		require.NoError(t, err, "failed to list cities")
 		assert.Len(t, result, 2, "expected 2 cities")
 		assert.Equal(t, total, int64(2), "expected 2 total cities")
@@ -94,10 +94,10 @@ func TestGormRepository(t *testing.T) {
 	t.Run("List cities with translations", func(t *testing.T) {
 
 		// List cities using the repository with the preload parameter set.
-		result, total, err := cityRepo.List(ctx, r3atoms.ListParams{
-			GetParams: r3atoms.GetParams{
-				Preloads: r3atoms.Preloads{
-					r3atoms.NewEntityPreload("Translations"),
+		result, total, err := cityRepo.List(ctx, r3.ListParams{
+			GetParams: r3.GetParams{
+				Preloads: r3.Preloads{
+					r3.NewEntityPreload("Translations"),
 				},
 			},
 		})
@@ -113,15 +113,15 @@ func TestGormRepository(t *testing.T) {
 	})
 
 	t.Run("Get city by ID", func(t *testing.T) {
-		city, err := cityRepo.Get(ctx, cities[0].ID, r3atoms.GetParams{})
+		city, err := cityRepo.Get(ctx, cities[0].ID, r3.GetParams{})
 		require.NoError(t, err, "failed to get city")
 		assert.Equal(t, "City One", city.Name, "unexpected city name")
 	})
 
 	t.Run("List visible locations", func(t *testing.T) {
-		result, _, err := locRepo.List(ctx, r3atoms.ListParams{
-			Filters: r3atoms.Filters{
-				r3atoms.F("visible", true),
+		result, _, err := locRepo.List(ctx, r3.ListParams{
+			Filters: r3.Filters{
+				r3.F(r3.ColumnField("visible"), true),
 			},
 		})
 		require.NoError(t, err, "failed to list locations")
@@ -140,9 +140,9 @@ func TestGormRepository(t *testing.T) {
 	})
 
 	t.Run("List events for a location", func(t *testing.T) {
-		result, _, err := eventRepo.List(ctx, r3atoms.ListParams{
-			Filters: r3atoms.Filters{
-				r3atoms.F("venue_id", locations[1].ID),
+		result, _, err := eventRepo.List(ctx, r3.ListParams{
+			Filters: r3.Filters{
+				r3.F(r3.ColumnField("venue_id"), locations[1].ID),
 			},
 		})
 		require.NoError(t, err, "failed to list events")
@@ -187,7 +187,7 @@ func TestGormRepository(t *testing.T) {
 		require.NoError(t, err, "failed to delete event")
 
 		// Try to retrieve the deleted event
-		_, err = eventRepo.Get(ctx, events[0].ID, r3atoms.GetParams{})
+		_, err = eventRepo.Get(ctx, events[0].ID, r3.GetParams{})
 		assert.Error(t, err, "expected error when getting a deleted event")
 	})
 }

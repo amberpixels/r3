@@ -1,4 +1,4 @@
-package r3atoms
+package r3
 
 // Preload defines a single preload rule.
 type Preload interface {

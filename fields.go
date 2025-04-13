@@ -1,4 +1,4 @@
-package r3atoms
+package r3
 
 import (
 	"fmt"
@@ -8,13 +8,27 @@ import (
 type Field interface {
 	fmt.Stringer
 
-	DialectString() string
+	// ToDialect converts the Field into its dialect-specific representation.
+	ToDialect(FieldDialector) (DialectValue, error)
 
 	// TODO: Nested subfields e.g., "address.city"
 	// GetSubfields() Fields
 }
 
+// Fields is a slice of Field-s.
 type Fields []Field
+
+type (
+	// FieldDialector is a generic dialector (visitor) interface for conversion.
+	FieldDialector interface {
+		FromColumnField(cf ColumnField) (DialectValue, error)
+	}
+
+	// FieldInboundDialector is a generic inbound dialector (visitor) interface for conversion.
+	FieldInboundDialector interface {
+		ToField(f DialectValue) (Field, error)
+	}
+)
 
 // MergeWith merges (combines) fields with other fields ()
 func (fs Fields) MergeWith(other Fields) Fields { return mergeWith(fs, other) }
@@ -34,7 +48,10 @@ type ColumnField string
 // String simply returns its value
 func (f ColumnField) String() string { return string(f) }
 
-func (f ColumnField) DialectString() string { return string(f) }
+// ToDialect converts the Field into its dialect-specific representation.
+func (f ColumnField) ToDialect(dialector FieldDialector) (DialectValue, error) {
+	return dialector.FromColumnField(f)
+}
 
 // TODO(?) More complex way of storing a field
 // It can be something like

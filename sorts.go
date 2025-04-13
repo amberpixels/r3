@@ -1,4 +1,4 @@
-package r3atoms
+package r3
 
 import (
 	"fmt"
@@ -24,11 +24,12 @@ type ColumnSort struct {
 
 // DialectString returns a SQL-ready string representation of ColumnSort.
 func (s *ColumnSort) DialectString() string {
-	str := s.Column.DialectString() + " " + s.Direction.DialectString()
-	if s.NullsPosition != NullsPositionNotSpecified {
-		str += " " + s.NullsPosition.DialectString()
-	}
+	//str := s.Column.DialectString() + " " + s.Direction.DialectString()
+	//if s.NullsPosition != NullsPositionNotSpecified {
+	//	str += " " + s.NullsPosition.DialectString()
+	//}
 
+	str := "todo"
 	return str
 }
 

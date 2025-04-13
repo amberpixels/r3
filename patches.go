@@ -1,4 +1,4 @@
-package r3atoms
+package r3
 
 // Patch defines a single patch (field + its value)
 type Patch interface {
