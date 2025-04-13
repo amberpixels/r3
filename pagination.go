@@ -23,7 +23,7 @@ func NewPagination(limit int, offset ...int) Pagination {
 	return p
 }
 
-// NoLimitPagination returns a new Pagination with no limit and offset
+// NoLimitPagination returns a new Pagination with no limit and offset.
 func NoLimitPagination() Pagination {
 	return Pagination{}
 }
@@ -46,7 +46,7 @@ func (p Pagination) GetDialectLimitOffset() (int, int) {
 
 func (p Pagination) Clone() Pagination { return Pagination{Limit: p.Limit, Offset: p.Offset} }
 
-// MergeWith overrides pagination with some new values given
+// MergeWith overrides pagination with some new values given.
 func (p Pagination) MergeWith(other Pagination) Pagination {
 	result := p.Clone()
 

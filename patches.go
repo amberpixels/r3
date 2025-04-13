@@ -1,6 +1,6 @@
 package r3
 
-// Patch defines a single patch (field + its value)
+// Patch defines a single patch (field + its value).
 type Patch interface {
 	// GetField returns the field that should be patched
 	GetField() Field

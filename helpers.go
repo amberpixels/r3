@@ -2,7 +2,7 @@ package r3
 
 import "github.com/amberpixels/r3/internal/gx"
 
-// mergeWith merges (combines) things A with things B
+// mergeWith merges (combines) things A with things B.
 func mergeWith[T comparable](a, b []T) []T {
 	return gx.Qappend(a, b...)
 }
@@ -24,5 +24,4 @@ func dedupe[T comparable](things *[]T) {
 
 	// truncate the rest
 	*things = (*things)[:idx]
-	return
 }

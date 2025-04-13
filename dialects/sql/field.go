@@ -6,6 +6,6 @@ import (
 
 type ColumnField string
 
-func (sv *SqlDialector) FromColumnField(cf r3.ColumnField) (r3.DialectValue, error) {
+func (sv *SQLDialector) FromColumnField(cf r3.ColumnField) (r3.DialectValue, error) {
 	return ColumnField(cf.String()), nil
 }

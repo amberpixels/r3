@@ -3,65 +3,65 @@ package r3_test
 import (
 	"testing"
 
-	. "github.com/amberpixels/r3"
+	"github.com/amberpixels/r3"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestFieldsMergeWith(t *testing.T) {
 	testCases := []struct {
 		name     string
-		a        Fields
-		b        Fields
-		expected Fields
+		a        r3.Fields
+		b        r3.Fields
+		expected r3.Fields
 	}{
 		{
 			name: "Non-overlapping merge",
-			a:    Fields{ColumnField("a"), ColumnField("b")},
-			b:    Fields{ColumnField("c"), ColumnField("d")},
-			expected: Fields{
-				ColumnField("a"),
-				ColumnField("b"),
-				ColumnField("c"),
-				ColumnField("d"),
+			a:    r3.Fields{r3.ColumnField("a"), r3.ColumnField("b")},
+			b:    r3.Fields{r3.ColumnField("c"), r3.ColumnField("d")},
+			expected: r3.Fields{
+				r3.ColumnField("a"),
+				r3.ColumnField("b"),
+				r3.ColumnField("c"),
+				r3.ColumnField("d"),
 			},
 		},
 		{
 			name: "Overlapping merge",
-			a:    Fields{ColumnField("a"), ColumnField("b")},
-			b:    Fields{ColumnField("b"), ColumnField("c")},
-			expected: Fields{
-				ColumnField("a"),
-				ColumnField("b"),
-				ColumnField("c"),
+			a:    r3.Fields{r3.ColumnField("a"), r3.ColumnField("b")},
+			b:    r3.Fields{r3.ColumnField("b"), r3.ColumnField("c")},
+			expected: r3.Fields{
+				r3.ColumnField("a"),
+				r3.ColumnField("b"),
+				r3.ColumnField("c"),
 			},
 		},
 		{
 			name:     "Empty a slice",
-			a:        Fields{},
-			b:        Fields{ColumnField("a"), ColumnField("b")},
-			expected: Fields{ColumnField("a"), ColumnField("b")},
+			a:        r3.Fields{},
+			b:        r3.Fields{r3.ColumnField("a"), r3.ColumnField("b")},
+			expected: r3.Fields{r3.ColumnField("a"), r3.ColumnField("b")},
 		},
 		{
 			name:     "Empty b slice",
-			a:        Fields{ColumnField("a"), ColumnField("b")},
-			b:        Fields{},
-			expected: Fields{ColumnField("a"), ColumnField("b")},
+			a:        r3.Fields{r3.ColumnField("a"), r3.ColumnField("b")},
+			b:        r3.Fields{},
+			expected: r3.Fields{r3.ColumnField("a"), r3.ColumnField("b")},
 		},
 		{
 			name:     "Both slices empty",
-			a:        Fields{},
-			b:        Fields{},
-			expected: Fields{},
+			a:        r3.Fields{},
+			b:        r3.Fields{},
+			expected: r3.Fields{},
 		},
 		{
 			name: "Existed duplicates are respected",
-			a:    Fields{ColumnField("a"), ColumnField("b"), ColumnField("b")},
-			b:    Fields{ColumnField("b"), ColumnField("c")},
-			expected: Fields{
-				ColumnField("a"),
-				ColumnField("b"),
-				ColumnField("b"),
-				ColumnField("c"),
+			a:    r3.Fields{r3.ColumnField("a"), r3.ColumnField("b"), r3.ColumnField("b")},
+			b:    r3.Fields{r3.ColumnField("b"), r3.ColumnField("c")},
+			expected: r3.Fields{
+				r3.ColumnField("a"),
+				r3.ColumnField("b"),
+				r3.ColumnField("b"),
+				r3.ColumnField("c"),
 			},
 		},
 	}
@@ -78,42 +78,42 @@ func TestFieldsMergeWith(t *testing.T) {
 func TestFieldsDedupe(t *testing.T) {
 	testCases := []struct {
 		name     string
-		input    Fields
-		expected Fields
+		input    r3.Fields
+		expected r3.Fields
 	}{
 		{
 			name:     "No duplicates",
-			input:    Fields{ColumnField("a"), ColumnField("b"), ColumnField("c")},
-			expected: Fields{ColumnField("a"), ColumnField("b"), ColumnField("c")},
+			input:    r3.Fields{r3.ColumnField("a"), r3.ColumnField("b"), r3.ColumnField("c")},
+			expected: r3.Fields{r3.ColumnField("a"), r3.ColumnField("b"), r3.ColumnField("c")},
 		},
 		{
 			name: "Duplicates present",
-			input: Fields{
-				ColumnField("a"),
-				ColumnField("b"),
-				ColumnField("b"),
-				ColumnField("a"),
-				ColumnField("c"),
-				ColumnField("c"),
+			input: r3.Fields{
+				r3.ColumnField("a"),
+				r3.ColumnField("b"),
+				r3.ColumnField("b"),
+				r3.ColumnField("a"),
+				r3.ColumnField("c"),
+				r3.ColumnField("c"),
 			},
-			expected: Fields{ColumnField("a"), ColumnField("b"), ColumnField("c")},
+			expected: r3.Fields{r3.ColumnField("a"), r3.ColumnField("b"), r3.ColumnField("c")},
 		},
 		{
 			name:     "All duplicates",
-			input:    Fields{ColumnField("a"), ColumnField("a"), ColumnField("a")},
-			expected: Fields{ColumnField("a")},
+			input:    r3.Fields{r3.ColumnField("a"), r3.ColumnField("a"), r3.ColumnField("a")},
+			expected: r3.Fields{r3.ColumnField("a")},
 		},
 		{
 			name:     "Empty slice",
-			input:    Fields{},
-			expected: Fields{},
+			input:    r3.Fields{},
+			expected: r3.Fields{},
 		},
 	}
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			// Work on a copy of tc.input since Dedupe mutates the slice.
-			input := make(Fields, len(tc.input))
+			input := make(r3.Fields, len(tc.input))
 			copy(input, tc.input)
 
 			input.Dedupe()

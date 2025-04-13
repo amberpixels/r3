@@ -9,7 +9,7 @@ import (
 	"math/rand"
 	"time"
 
-	. "github.com/amberpixels/r3/internal/gx"
+	"github.com/amberpixels/r3/internal/gx"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -78,7 +78,7 @@ func TestQappend(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Qappend(tt.a, tt.b...)
+			result := gx.Qappend(tt.a, tt.b...)
 			assert.Equal(t, tt.expected, result, "Qappend result should match expected value")
 
 			// Verify that the function doesn't modify the original slices
@@ -97,7 +97,7 @@ func TestQappend(t *testing.T) {
 	}
 }
 
-// TestQappendWithStrings tests Qappend with string slices to verify generic functionality
+// TestQappendWithStrings tests gx.Qappend with string slices to verify generic functionality.
 func TestQappendWithStrings(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -127,18 +127,18 @@ func TestQappendWithStrings(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := Qappend(tt.a, tt.b...)
+			result := gx.Qappend(tt.a, tt.b...)
 			assert.Equal(t, tt.expected, result, "Qappend result should match expected value")
 		})
 	}
 }
 
-// TestQappendBehavior tests specific behaviors of Qappend
+// TestQappendBehavior tests specific behaviors of gx.Qappend.
 func TestQappendBehavior(t *testing.T) {
 	t.Run("capacity is optimized", func(t *testing.T) {
 		a := []int{1, 2, 3}
 		b := []int{4, 5, 6}
-		result := Qappend(a, b...)
+		result := gx.Qappend(a, b...)
 
 		// Result should have exactly the capacity needed
 		assert.Equal(t, len(result), cap(result), "Result capacity should match its length")
@@ -147,7 +147,7 @@ func TestQappendBehavior(t *testing.T) {
 	t.Run("result is independent of original slices", func(t *testing.T) {
 		a := []int{1, 2, 3}
 		b := []int{4, 5, 6}
-		result := Qappend(a, b...)
+		result := gx.Qappend(a, b...)
 
 		// Modify original slices
 		if len(a) > 0 {
@@ -163,7 +163,7 @@ func TestQappendBehavior(t *testing.T) {
 }
 
 func SlowAppend[T comparable](a []T, b ...T) []T {
-	result := make([]T, len(a))
+	result := make([]T, 0, len(a))
 	copy(result, a)
 
 	for _, e := range b {
@@ -200,12 +200,12 @@ func BenchmarkQappendVsSlowAppend(b *testing.B) {
 	b.Logf("Test data: A=%d strings (%d unique), B=%d strings (%d unique)",
 		len(aSlice), len(aUnique), len(bSlice), len(bUnique))
 
-	// Benchmark Qappend
+	// Benchmark gx.Qappend
 	b.Run("Qappend", func(b *testing.B) {
 		var result []string
 		// Measure memory allocation
 		allocBytes, allocObjects, freeObjects := measureMemory(func() {
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				b.StopTimer()
 				// Clone slices to ensure fair comparison
 				aCopy := make([]string, len(aSlice))
@@ -214,7 +214,7 @@ func BenchmarkQappendVsSlowAppend(b *testing.B) {
 				copy(bCopy, bSlice)
 				b.StartTimer()
 
-				result = Qappend(aCopy, bCopy...)
+				result = gx.Qappend(aCopy, bCopy...)
 			}
 		})
 		b.ReportMetric(float64(allocBytes)/float64(b.N), "bytes/op")
@@ -228,7 +228,7 @@ func BenchmarkQappendVsSlowAppend(b *testing.B) {
 		var result []string
 		// Measure memory allocation
 		allocBytes, allocObjects, freeObjects := measureMemory(func() {
-			for i := 0; i < b.N; i++ {
+			for range b.N {
 				b.StopTimer()
 				// Clone slices to ensure fair comparison
 				aCopy := make([]string, len(aSlice))
@@ -247,7 +247,7 @@ func BenchmarkQappendVsSlowAppend(b *testing.B) {
 	})
 }
 
-// A specific benchmark case with large overlapping datasets
+// A specific benchmark case with large overlapping datasets.
 func BenchmarkQappendOverlapping(b *testing.B) {
 	// Generate data where A and B have significant overlap
 	const (
@@ -261,13 +261,13 @@ func BenchmarkQappendOverlapping(b *testing.B) {
 
 	// Create A with some duplicates
 	aSlice := make([]string, sliceSize)
-	for i := 0; i < sliceSize; i++ {
+	for i := range sliceSize {
 		aSlice[i] = uniquePool[r.Intn(sliceSize)]
 	}
 
 	// Create B with overlap from A and some new elements
 	bSlice := make([]string, sliceSize)
-	for i := 0; i < sliceSize; i++ {
+	for i := range sliceSize {
 		if float64(i)/float64(sliceSize) < overlapPercentage {
 			// Take from A's pool
 			bSlice[i] = uniquePool[r.Intn(sliceSize)]
@@ -279,19 +279,19 @@ func BenchmarkQappendOverlapping(b *testing.B) {
 
 	// Run benchmarks
 	b.Run("Qappend-Overlapping", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
-			Qappend(aSlice, bSlice...)
+		for range b.N {
+			gx.Qappend(aSlice, bSlice...)
 		}
 	})
 
 	b.Run("SlowAppend-Overlapping", func(b *testing.B) {
-		for i := 0; i < b.N; i++ {
+		for range b.N {
 			SlowAppend(aSlice, bSlice...)
 		}
 	})
 }
 
-// A more comprehensive benchmark testing different sizes and overlap percentages
+// A more comprehensive benchmark testing different sizes and overlap percentages.
 func BenchmarkComprehensive(b *testing.B) {
 	sizes := []int{100, 1000, 10000}
 	overlaps := []float64{0.2, 0.5, 0.8}
@@ -319,7 +319,7 @@ func BenchmarkComprehensive(b *testing.B) {
 			uniqueCount := size - int(float64(size)*overlap)
 			uniqueB := generateRandomStrings(uniqueCount, 7, 0)
 
-			for i := 0; i < size; i++ {
+			for i := range size {
 				if float64(i)/float64(size) < overlap && len(aUnique) > 0 {
 					// Pick from A
 					bSlice[i] = aUnique[r.Intn(len(aUnique))]
@@ -332,13 +332,13 @@ func BenchmarkComprehensive(b *testing.B) {
 			benchName := fmt.Sprintf("Size-%d-Overlap-%.1f", size, overlap)
 
 			b.Run("Qappend-"+benchName, func(b *testing.B) {
-				for i := 0; i < b.N; i++ {
-					Qappend(aSlice, bSlice...)
+				for range b.N {
+					gx.Qappend(aSlice, bSlice...)
 				}
 			})
 
 			b.Run("SlowAppend-"+benchName, func(b *testing.B) {
-				for i := 0; i < b.N; i++ {
+				for range b.N {
 					SlowAppend(aSlice, bSlice...)
 				}
 			})
@@ -346,7 +346,9 @@ func BenchmarkComprehensive(b *testing.B) {
 	}
 }
 
-// generateRandomStrings generates n random strings of specified length with duplicateRate percentage of duplicates
+// generateRandomStrings generates n random strings of specified length with duplicateRate percentage of duplicates.
+//
+//nolint:unparam // it's for future
 func generateRandomStrings(n int, strLen int, duplicateRate float64) []string {
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
 	result := make([]string, n)
@@ -365,7 +367,7 @@ func generateRandomStrings(n int, strLen int, duplicateRate float64) []string {
 	i := 0
 	for i < uniqueCount {
 		b := make([]byte, strLen)
-		for j := 0; j < strLen; j++ {
+		for j := range strLen {
 			b[j] = chars[r.Intn(len(chars))]
 		}
 		s := string(b)
@@ -389,7 +391,7 @@ func generateRandomStrings(n int, strLen int, duplicateRate float64) []string {
 	return result
 }
 
-// measureMemory returns memory stats after running a function
+// measureMemory returns memory stats after running a function.
 func measureMemory(f func()) (uint64, uint64, uint64) {
 	// Run GC before measurement
 	runtime.GC()

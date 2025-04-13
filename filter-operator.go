@@ -1,10 +1,11 @@
 package r3
 
 import (
+	"errors"
 	"fmt"
 )
 
-var ErrUnsupportedOperator = fmt.Errorf("unsupported operator")
+var ErrUnsupportedOperator = errors.New("unsupported operator")
 
 // FilterOperator represents an operator to be used in a filter.
 // For now, not all r3 operators are supported by every possible dialect.

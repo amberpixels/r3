@@ -1,11 +1,12 @@
 package r3json
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
 
-var ErrInvalidFilterOperator = fmt.Errorf("invalid filter operator")
+var ErrInvalidFilterOperator = errors.New("invalid filter operator")
 
 type FilterOperator int8
 
@@ -29,9 +30,9 @@ const (
 	OperatorILike
 )
 
-// Enum value maps for Operator
+// Enum value maps for Operator.
 var (
-	FilterOperator_name = map[FilterOperator]string{
+	FilterOperatorNames = map[FilterOperator]string{
 		OperatorUnspecified:  "",
 		OperatorEq:           "eq",
 		OperatorNe:           "ne",
@@ -50,7 +51,7 @@ var (
 		OperatorNotLike:      "notlike",
 		OperatorILike:        "ilike",
 	}
-	FilterOperator_value = map[string]FilterOperator{
+	FilterOperatorValues = map[string]FilterOperator{
 		"":                OperatorUnspecified,
 		"eq":              OperatorEq,
 		"==":              OperatorEq,
@@ -82,7 +83,7 @@ var (
 )
 
 // String is implemented for debugging purposes, so the FilterOperator is a fmt.Stringer.
-func (op FilterOperator) String() string { return FilterOperator_name[op] }
+func (op FilterOperator) String() string { return FilterOperatorNames[op] }
 
 // UnmarshalJSON implements the json.Unmarshaler interface.
 // It expects the JSON value to be a string representing the operator.
@@ -90,7 +91,7 @@ func (op *FilterOperator) UnmarshalJSON(data []byte) error {
 	str := string(data)
 	str = strings.Trim(str, `"`)
 
-	parsed := FilterOperator_value[str]
+	parsed := FilterOperatorValues[str]
 	if parsed == OperatorUnspecified {
 		return fmt.Errorf("%w: %s", ErrInvalidFilterOperator, string(data))
 	}
@@ -104,7 +105,7 @@ func (op FilterOperator) MarshalJSON() ([]byte, error) { return []byte(op.String
 // UnmarshalText implements the encoding.TextUnmarshaler interface.
 // This is used to decode operator from plain text.
 func (op *FilterOperator) UnmarshalText(text []byte) error {
-	parsed := FilterOperator_value[string(text)]
+	parsed := FilterOperatorValues[string(text)]
 	if parsed == OperatorUnspecified {
 		return fmt.Errorf("%w: %s", ErrInvalidFilterOperator, string(text))
 	}

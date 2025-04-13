@@ -1,9 +1,6 @@
 package gx
 
-// Qappend stands for QuickAppend (quick version of Append if not exists).
-// It does work about 200% faster than native `if !slices.Contains() { append() }`
-//
-// Qappend DOESN'T make NEW duplicates. (But it respects the old duplicates)
+// Qappend DOESN'T make NEW duplicates. (But it respects the old duplicates).
 func Qappend[T comparable](a []T, b ...T) []T {
 	m := len(b)
 	if m == 0 {

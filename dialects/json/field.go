@@ -22,9 +22,9 @@ func (fields Fields) String() string {
 	return strings.Join(parts, ",")
 }
 
-var _ r3.FilterInboundDialector = (*JsonInboundDialector)(nil)
+var _ r3.FilterInboundDialector = (*JSONInboundDialector)(nil)
 
-func (d *JsonInboundDialector) ToField(dialectValue r3.DialectValue) (r3.Field, error) {
+func (d *JSONInboundDialector) ToField(dialectValue r3.DialectValue) (r3.Field, error) {
 	inboundFilter, ok := dialectValue.(Field)
 	if !ok {
 		if ptr, ok := dialectValue.(*Field); ok {
@@ -37,7 +37,7 @@ func (d *JsonInboundDialector) ToField(dialectValue r3.DialectValue) (r3.Field, 
 	return inboundFilter.ToColumnField()
 }
 
-func (d *JsonInboundDialector) ToFields(dialectValue r3.DialectValue) (r3.Fields, error) {
+func (d *JSONInboundDialector) ToFields(dialectValue r3.DialectValue) (r3.Fields, error) {
 	inboundFields, ok := dialectValue.(Fields)
 	if !ok {
 		inboundFilter, ok := dialectValue.(Field)
@@ -55,8 +55,8 @@ func (d *JsonInboundDialector) ToFields(dialectValue r3.DialectValue) (r3.Fields
 	return inboundFields.ToColumnFields()
 }
 
-func JsonFieldsToFields(fields Fields) (r3.Fields, error) {
-	return (&JsonInboundDialector{}).ToFields(fields)
+func JSONFieldsToFields(fields Fields) (r3.Fields, error) {
+	return (&JSONInboundDialector{}).ToFields(fields)
 }
 
 // UnmarshalJSON is optional, depending on how you want to handle the Value.
@@ -65,9 +65,9 @@ func (f *Field) UnmarshalJSON(data []byte) error {
 	return json.Unmarshal(data, (*alias)(f))
 }
 
-func (jsf Fields) ToColumnFields() (r3.Fields, error) {
-	columnFields := make(r3.Fields, len(jsf))
-	for i, f := range jsf {
+func (fields Fields) ToColumnFields() (r3.Fields, error) {
+	columnFields := make(r3.Fields, len(fields))
+	for i, f := range fields {
 		columnField, err := f.ToColumnField()
 		if err != nil {
 			return nil, err

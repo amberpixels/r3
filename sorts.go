@@ -13,8 +13,7 @@ type Sort interface {
 	GetCriteria() string
 }
 
-// ColumnSort represents a single sort criteria
-// Will be part of further ht-repo thing
+// ColumnSort represents a single sort criteria.
 type ColumnSort struct {
 	Column    ColumnField
 	Direction SortDirection // Asc | Desc | Unspecified (default)
@@ -24,10 +23,10 @@ type ColumnSort struct {
 
 // DialectString returns a SQL-ready string representation of ColumnSort.
 func (s *ColumnSort) DialectString() string {
-	//str := s.Column.DialectString() + " " + s.Direction.DialectString()
-	//if s.NullsPosition != NullsPositionNotSpecified {
+	// str := s.Column.DialectString() + " " + s.Direction.DialectString()
+	// if s.NullsPosition != NullsPositionNotSpecified {
 	//	str += " " + s.NullsPosition.DialectString()
-	//}
+	// }
 
 	str := "todo"
 	return str
@@ -127,6 +126,8 @@ func (s SortNullsPosition) DialectString() string {
 		return "NULLS FIRST"
 	case NullsPositionLast:
 		return "NULLS LAST"
+	case NullsPositionNotSpecified:
+		fallthrough
 	default:
 		return ""
 	}
@@ -166,6 +167,8 @@ func (s SortDirection) DialectString() string {
 		return "ASC"
 	case SortDirectionDesc:
 		return "DESC"
+	case SortDirectionUnspecified:
+		fallthrough
 	default:
 		return "DESC" // as default
 	}

@@ -1,6 +1,7 @@
 package r3sql
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -31,13 +32,13 @@ func (cs SQLClauses) Joins() []string {
 	return joins
 }
 
-// SqlDialector is a visitor for r3.Filter that converts it to an SQLClause.
-type SqlDialector struct{}
+// SQLDialector is a visitor for r3.Filter that converts it to an SQLClause.
+type SQLDialector struct{}
 
-var _ r3.FilterDialector = (*SqlDialector)(nil)
+var _ r3.FilterDialector = (*SQLDialector)(nil)
 
 // FromColumnFilter converts a ColumnFilter to an SQLClause, handling both simple and group filters.
-func (sv *SqlDialector) FromColumnFilter(cf *r3.ColumnFilter) (r3.DialectValue, error) {
+func (sv *SQLDialector) FromColumnFilter(cf *r3.ColumnFilter) (r3.DialectValue, error) {
 	// Case 1. A simple filter when Field is set.
 	fieldRaw, err := cf.Field.ToDialect(sv)
 	if err != nil {
@@ -53,16 +54,15 @@ func (sv *SqlDialector) FromColumnFilter(cf *r3.ColumnFilter) (r3.DialectValue, 
 		joins := extractJoinFromField(field)
 		// Nil value means we need to generate an "IS NULL" or "IS NOT NULL" clause.
 		if cf.Value == nil {
-			switch cf.Operator {
-			case r3.OperatorEq:
+			if cf.Operator == r3.OperatorEq { //nolint: staticcheck // we care only about these 2 values here
 				clause := fmt.Sprintf("%s IS NULL", cf.Field)
 				return SQLClause{Clause: clause, Args: nil, Joins: joins}, nil
-			case r3.OperatorNe:
+			} else if cf.Operator == r3.OperatorNe {
 				clause := fmt.Sprintf("%s IS NOT NULL", cf.Field)
 				return SQLClause{Clause: clause, Args: nil, Joins: joins}, nil
-			default:
-				return nil, fmt.Errorf("unsupported operator %q for nil value", cf.Operator)
 			}
+
+			return nil, fmt.Errorf("unsupported operator %q for nil value", cf.Operator)
 		}
 		// Simple case: Field is set and Value is non-nil.
 		// Use our helper to convert the operator to its dialect string.
@@ -70,8 +70,12 @@ func (sv *SqlDialector) FromColumnFilter(cf *r3.ColumnFilter) (r3.DialectValue, 
 		if err != nil {
 			return nil, err
 		}
+		sqlClauseOperator, ok := opDialect.(SQLClauseOperator)
+		if !ok {
+			return nil, errors.New("unexpected type returned from SQLClauseOperator conversion")
+		}
 
-		clause := fmt.Sprintf("%s %s ?", cf.Field, opDialect.(SQLClauseOperator))
+		clause := fmt.Sprintf("%s %s ?", cf.Field, sqlClauseOperator)
 		return SQLClause{
 			Clause: clause,
 			Args:   []any{cf.Value},
@@ -96,13 +100,17 @@ func (sv *SqlDialector) FromColumnFilter(cf *r3.ColumnFilter) (r3.DialectValue, 
 
 	// Process each child filter recursively.
 	for _, child := range children {
-		result, err := sv.FromColumnFilter(child.(*r3.ColumnFilter))
+		childFilter, ok := child.(*r3.ColumnFilter)
+		if !ok {
+			return nil, errors.New("unexpected type returned from child filter conversion")
+		}
+		result, err := sv.FromColumnFilter(childFilter)
 		if err != nil {
 			return nil, err
 		}
 		childClause, ok := result.(SQLClause)
 		if !ok {
-			return nil, fmt.Errorf("unexpected type returned from child filter conversion")
+			return nil, errors.New("unexpected type returned from child filter conversion")
 		}
 		conditions = append(conditions, childClause.Clause)
 		args = append(args, childClause.Args...)
@@ -118,7 +126,7 @@ func (sv *SqlDialector) FromColumnFilter(cf *r3.ColumnFilter) (r3.DialectValue, 
 	}, nil
 }
 
-func (sv *SqlDialector) FromFilters(filters r3.Filters) (SQLClauses, error) {
+func (sv *SQLDialector) FromFilters(filters r3.Filters) (SQLClauses, error) {
 	if len(filters) == 0 {
 		return nil, nil
 	}
@@ -132,7 +140,7 @@ func (sv *SqlDialector) FromFilters(filters r3.Filters) (SQLClauses, error) {
 
 		clause, ok := clauseRaw.(SQLClause)
 		if !ok {
-			return nil, fmt.Errorf("sql dialector returned unexpected result type")
+			return nil, errors.New("sql dialector returned unexpected result type")
 		}
 
 		result[i] = clause
@@ -142,7 +150,7 @@ func (sv *SqlDialector) FromFilters(filters r3.Filters) (SQLClauses, error) {
 }
 
 func FiltersToSQLClauses(filters r3.Filters) (SQLClauses, error) {
-	sv := &SqlDialector{}
+	sv := &SQLDialector{}
 	return sv.FromFilters(filters)
 }
 

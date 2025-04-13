@@ -7,7 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// TestNewLookupAndFill
+// TestNewLookupAndFill.
 func TestNewLookupAndFill(t *testing.T) {
 	l := gx.NewLookup[string]()
 

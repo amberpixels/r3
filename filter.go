@@ -32,7 +32,7 @@ type (
 	}
 )
 
-// MergeWith merges (combines) filters with other filters
+// MergeWith merges (combines) filters with other filters.
 func (fs Filters) MergeWith(other Filters) Filters { return mergeWith(fs, other) }
 
 // ColumnFilter represents a filtering criteria with a field, an operator, and a value.
@@ -80,7 +80,7 @@ func Fop(field Field, operator FilterOperator, value any) *ColumnFilter {
 	return NewColumnFilter(field, operator, value)
 }
 
-// F is a shorthand for NewColumnFilter(field, OperatorEq, value)
+// F is a shorthand for NewColumnFilter(field, OperatorEq, value).
 func F(field Field, value any) *ColumnFilter      { return Fop(field, OperatorEq, value) }
 func FLike(field Field, value any) *ColumnFilter  { return Fop(field, OperatorLike, value) }
 func FILike(field Field, value any) *ColumnFilter { return Fop(field, OperatorILike, value) }

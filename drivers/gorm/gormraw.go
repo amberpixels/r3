@@ -6,8 +6,8 @@ import (
 	"gorm.io/gorm"
 )
 
-// GormRaw is a gorm wrapper that allows call any gorm request
-// Is considered to be embedded in GormCRUD
+// GormRaw is a gorm wrapper that allows call any gorm request.
+// Is considered to be embedded in GormCRUD.
 type GormRaw[T any, ID any] struct {
 	db        *gorm.DB
 	tableName string

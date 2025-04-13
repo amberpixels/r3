@@ -2,6 +2,6 @@ package r3json
 
 import "github.com/amberpixels/r3"
 
-type JsonInboundDialector struct{}
+type JSONInboundDialector struct{}
 
-var _ r3.FieldInboundDialector = (*JsonInboundDialector)(nil)
+var _ r3.FieldInboundDialector = (*JSONInboundDialector)(nil)

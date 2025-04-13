@@ -11,13 +11,13 @@ import (
 	"gorm.io/gorm"
 )
 
-// defaults stores the default values for repo params
+// defaults stores the default values for repo params.
 type defaults struct {
 	ListParams r3.ListParams
 	GetParams  r3.GetParams
 }
 
-// GormCRUD is a richfull CRUD repository based on gorm.DB
+// GormCRUD is a richfull CRUD repository based on gorm.DB.
 type GormCRUD[T any, ID comparable] struct {
 	db *gorm.DB
 
@@ -29,7 +29,7 @@ type GormCRUD[T any, ID comparable] struct {
 
 var _ r3.CRUD[any, any] = &GormCRUD[any, any]{}
 
-// NewGormCRUD creates a new GORM-based
+// NewGormCRUD creates a new GORM-based.
 func NewGormCRUD[T any, ID comparable](db *gorm.DB) *GormCRUD[T, ID] {
 	return &GormCRUD[T, ID]{
 		db: db,
@@ -41,14 +41,14 @@ func NewGormCRUD[T any, ID comparable](db *gorm.DB) *GormCRUD[T, ID] {
 	}
 }
 
-// SetDefaultParams sets default params for the
-func (r *GormCRUD[T, ID]) SetDefaultParams(listParams r3.ListParams) {
+// SetDefaultListParams sets default ListParams.
+func (r *GormCRUD[T, ID]) SetDefaultListParams(listParams r3.ListParams) {
 	r.defaultsMu.Lock()
 	r.defaults.ListParams = listParams
 	r.defaultsMu.Unlock()
 }
 
-// SetDefaultParams sets default params for the
+// SetDefaultGetParams sets default GetParams.
 func (r *GormCRUD[T, ID]) SetDefaultGetParams(getParams r3.GetParams) {
 	r.defaultsMu.Lock()
 	r.defaults.GetParams = getParams
@@ -107,14 +107,14 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, paramsArg ...r3.ListParams) 
 	}
 
 	// Sorting.
-	//sorts, err := r3sql.NewSorts(params.Sorts)
-	//if err != nil {
+	// sorts, err := r3sql.NewSorts(params.Sorts)
+	// if err != nil {
 	//	return nil, 0, fmt.Errorf("failed to convert sorts to SQL: %w", err)
-	//}
+	// }
 	//
-	//for _, sort := range sorts {
+	// for _, sort := range sorts {
 	//	query = query.Order(sort.ToSQL()) // TODO: to Gorm objects instead of plain SQL
-	//}
+	// }
 
 	// If Pagination is given, then we need to first Count all results without pagination:
 	var isPaginated bool
@@ -216,7 +216,7 @@ func (r *GormCRUD[T, ID]) PatchRaw(ctx context.Context, id ID, patches ...r3.Pat
 		_ = field
 		_ = value
 		// TODO FIXME
-		//rawUpdates[field.String()] = value
+		// rawUpdates[field.String()] = value
 	}
 
 	// Perform the update using GORM's `Updates` method

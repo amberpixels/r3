@@ -32,7 +32,7 @@ func (lp ListParams) Clone() ListParams {
 	return clone
 }
 
-// MergeWith merges given ListParams with some other ListParams
+// MergeWith merges given ListParams with some other ListParams.
 func (lp ListParams) MergeWith(other ListParams) ListParams {
 	result := lp.Clone()
 
@@ -61,7 +61,7 @@ func DefaultGetParams() GetParams {
 	return NewGetParams() // same as new
 }
 
-// MergeWith merges given GetParams with some other GetParams
+// MergeWith merges given GetParams with some other GetParams.
 func (gp GetParams) MergeWith(other GetParams) GetParams {
 	result := gp.Clone()
 
@@ -75,7 +75,7 @@ func (gp GetParams) MergeWith(other GetParams) GetParams {
 	return result
 }
 
-// Clone clones GetParams
+// Clone clones GetParams.
 func (gp GetParams) Clone() GetParams {
 	// TODO(p2): real deep clone
 	var clone = gp

@@ -143,7 +143,7 @@ func (o *Option[T]) UnmarshalText(text []byte) error {
 	return fmt.Errorf("type %T does not implement encoding.TextUnmarshaler and no fallback conversion is defined", v)
 }
 
-// IsZero returns true if Option is none (for `omitzero` interface)
+// IsZero returns true if Option is none (for `omitzero` interface).
 func (o *Option[T]) IsZero() bool {
 	if o.None() {
 		return true

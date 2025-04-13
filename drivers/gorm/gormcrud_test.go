@@ -1,14 +1,12 @@
 package r3gorm_test
 
 import (
-	"context"
 	"encoding/json"
-	"fmt"
 	"testing"
 
 	"github.com/amberpixels/r3"
 	depogorm "github.com/amberpixels/r3/drivers/gorm"
-	. "github.com/amberpixels/r3/internal/testing"
+	. "github.com/amberpixels/r3/internal/testing" //nolint: revive // testing is OK
 	"github.com/pressly/goose"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -16,13 +14,13 @@ import (
 )
 
 func TestGormRepository(t *testing.T) {
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Set up the PostgreSQL container
 	container, db, err := setupPostgresContainer()
 	require.NoError(t, err, "failed to start container")
 	defer func() {
-		_ = container.Terminate(context.Background())
+		_ = container.Terminate(t.Context())
 	}()
 
 	const autoMigrate = false
@@ -88,11 +86,10 @@ func TestGormRepository(t *testing.T) {
 		result, total, err := cityRepo.List(ctx, r3.ListParams{})
 		require.NoError(t, err, "failed to list cities")
 		assert.Len(t, result, 2, "expected 2 cities")
-		assert.Equal(t, total, int64(2), "expected 2 total cities")
+		assert.Equal(t, int64(2), total, "expected 2 total cities")
 	})
 
 	t.Run("List cities with translations", func(t *testing.T) {
-
 		// List cities using the repository with the preload parameter set.
 		result, total, err := cityRepo.List(ctx, r3.ListParams{
 			GetParams: r3.GetParams{
@@ -103,7 +100,7 @@ func TestGormRepository(t *testing.T) {
 		})
 		require.NoError(t, err, "failed to list cities with translations")
 		assert.Len(t, result, 2, "expected 2 cities")
-		assert.Equal(t, total, int64(2), "expected 2 total cities")
+		assert.Equal(t, int64(2), total, "expected 2 total cities")
 
 		// Verify that each city has translation records.
 		for _, city := range result {
@@ -153,11 +150,11 @@ func TestGormRepository(t *testing.T) {
 
 	t.Run("Aggregate location event weights using Raw", func(t *testing.T) {
 		// Define a struct to hold the aggregate results.
-		type AggResult struct {
-			ID          int64  `gorm:"column:id"`
-			Name        string `gorm:"column:name"`
-			TotalWeight int64  `gorm:"column:total_weight"`
-		}
+		// type AggResult struct {
+		//	ID          int64  `gorm:"column:id"`
+		//	Name        string `gorm:"column:name"`
+		//	TotalWeight int64  `gorm:"column:total_weight"`
+		//}
 
 		results, err := locRepo.Raw().Find(ctx, func(tx *gorm.DB) *gorm.DB {
 			return tx.Select("locations.id, locations.name, SUM(events.weight) as total_weight").
@@ -169,10 +166,11 @@ func TestGormRepository(t *testing.T) {
 		require.NoError(t, err, "failed to run aggregate query via Raw")
 
 		jj, _ := json.Marshal(results)
-		fmt.Println(",.,,. ", string(jj))
+		_ = jj
+		// fmt.Println(",.,,. ", string(jj))
 
 		// Log the results for debugging.
-		//for _, res := range results {
+		// for _, res := range results {
 		//	t.Logf("Location ID: %d, Name: %s, TotalWeight: %d", res.ID, res.Name, res.TotalWeight)
 		//}
 

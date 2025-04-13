@@ -20,7 +20,7 @@ func ExampleFilters() {
 
 	fmt.Println(inboundFilters)
 
-	filters, err := r3json.JsonFiltersToFilters(inboundFilters)
+	filters, err := r3json.JSONFiltersToFilters(inboundFilters)
 	if err != nil {
 		fmt.Println(err)
 		panic(err)

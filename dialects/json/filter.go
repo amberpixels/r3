@@ -31,7 +31,7 @@ func (jsf Filters) String() string {
 	return string(jj)
 }
 
-func (d *JsonInboundDialector) ToFilter(dialectValue r3.DialectValue) (r3.Filter, error) {
+func (d *JSONInboundDialector) ToFilter(dialectValue r3.DialectValue) (r3.Filter, error) {
 	inboundFilter, ok := dialectValue.(*Filter)
 	if !ok {
 		return nil, fmt.Errorf("invalid filter type: %T", dialectValue)
@@ -40,7 +40,7 @@ func (d *JsonInboundDialector) ToFilter(dialectValue r3.DialectValue) (r3.Filter
 	return inboundFilter.ToColumnFilter()
 }
 
-func (d *JsonInboundDialector) ToFilters(dialectValue r3.DialectValue) (r3.Filters, error) {
+func (d *JSONInboundDialector) ToFilters(dialectValue r3.DialectValue) (r3.Filters, error) {
 	inboundFilters, ok := dialectValue.(Filters)
 	if !ok {
 		inboundFilter, ok := dialectValue.(*Filter)
@@ -54,8 +54,8 @@ func (d *JsonInboundDialector) ToFilters(dialectValue r3.DialectValue) (r3.Filte
 	return inboundFilters.ToColumnFilters()
 }
 
-func JsonFiltersToFilters(filters Filters) (r3.Filters, error) {
-	return (&JsonInboundDialector{}).ToFilters(filters)
+func JSONFiltersToFilters(filters Filters) (r3.Filters, error) {
+	return (&JSONInboundDialector{}).ToFilters(filters)
 }
 
 // UnmarshalJSON is optional, depending on how you want to handle the Value.

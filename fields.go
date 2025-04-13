@@ -30,22 +30,22 @@ type (
 	}
 )
 
-// MergeWith merges (combines) fields with other fields ()
+// MergeWith merges (combines) fields with other fields ().
 func (fs Fields) MergeWith(other Fields) Fields { return mergeWith(fs, other) }
 
-// Dedupe removes duplicates from the fields list
-// Not: it's not super-performant because of types and go-generics. Refactor if needed
+// Dedupe removes duplicates from the fields list.
+// Note: it's not super-performant because of types and go-generics. Refactor if needed.
 func (fs *Fields) Dedupe() {
 	v := []Field(*fs)
 	dedupe[Field](&v)
-	*fs = Fields(v)
+	*fs = v
 }
 
 // ColumnField is the simplest possible implementation of Fieldable
 // Here, we just mean Field for a column in the database.
 type ColumnField string
 
-// String simply returns its value
+// String simply returns its value.
 func (f ColumnField) String() string { return string(f) }
 
 // ToDialect converts the Field into its dialect-specific representation.
