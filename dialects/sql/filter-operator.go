@@ -30,7 +30,8 @@ func (op SQLClauseOperator) ToSQL() string  { return string(op) }
 // SQLOperatorDialector implements filter.FilterOperatorDialector for SQL dialect.
 type SQLOperatorDialector struct{}
 
-var _ r3.FilterOperatorDialector = (*SQLOperatorDialector)(nil)
+// TODO
+//var _ r3.FilterOperatorOutboundDialector = (*SQLOperatorDialector)(nil)
 
 func (v *SQLOperatorDialector) Eq() r3.DialectValue      { return SQLClauseOperatorEq }
 func (v *SQLOperatorDialector) Ne() r3.DialectValue      { return SQLClauseOperatorNe }

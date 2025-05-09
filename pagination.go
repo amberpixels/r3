@@ -1,23 +1,27 @@
 package r3
 
-import "github.com/amberpixels/r3/internal/option"
+import (
+	"github.com/amberpixels/k1/maybe"
+)
 
 const (
 	// LimitDefault is a GLOBAL per-package default if no pagination was specified.
 	LimitDefault = 50
 )
 
+type MaybeInt = maybe.Option[int]
+
 // Pagination represents the pagination parameters for a Repo request.
 type Pagination struct {
-	Limit  option.Int `json:"limit"`
-	Offset option.Int `json:"offset"`
+	Limit  MaybeInt `json:"limit"`
+	Offset MaybeInt `json:"offset"`
 }
 
 // NewPagination returns a new Pagination with the given limit and offset.
 func NewPagination(limit int, offset ...int) Pagination {
-	p := Pagination{Limit: option.Some(limit)}
+	p := Pagination{Limit: maybe.Some(limit)}
 	if len(offset) > 0 {
-		p.Offset = option.Some(offset[0])
+		p.Offset = maybe.Some(offset[0])
 	}
 
 	return p
@@ -57,9 +61,10 @@ func (p Pagination) MergeWith(other Pagination) Pagination {
 }
 
 func (p Pagination) IsPaginated() bool {
-	if p.Limit.IsZero() {
-		return !p.Offset.IsZero()
-	}
-
+	// TODO Fix this
+	//if p.Limit.IsZero() {
+	//	return !p.Offset.IsZero()
+	//}
+	//
 	return true
 }

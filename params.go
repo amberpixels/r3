@@ -1,6 +1,6 @@
 package r3
 
-import "github.com/amberpixels/r3/internal/option"
+import "github.com/amberpixels/k1/maybe"
 
 // ListParams defines parameters for filtering, sorting, and field selection.
 type ListParams struct {
@@ -50,7 +50,7 @@ type GetParams struct {
 	Fields   Fields   `json:"fields"`   // Specific fields to retrieve.
 	Preloads Preloads `json:"preloads"` // List of related entities to preload.
 
-	IncludeTrashed option.Bool `json:"include_trashed,omitzero"` // Include trashed (soft-deleted) records.
+	IncludeTrashed maybe.Bool `json:"include_trashed,omitzero"` // Include trashed (soft-deleted) records.
 }
 
 func NewGetParams() GetParams {

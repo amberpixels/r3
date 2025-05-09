@@ -5,7 +5,7 @@ import (
 	"testing"
 
 	"github.com/amberpixels/r3"
-	depogorm "github.com/amberpixels/r3/drivers/gorm"
+	r3gorm "github.com/amberpixels/r3/drivers/gorm"
 	. "github.com/amberpixels/r3/internal/testing" //nolint: revive // testing is OK
 	"github.com/pressly/goose"
 	"github.com/stretchr/testify/assert"
@@ -75,10 +75,10 @@ func TestGormRepository(t *testing.T) {
 	assert.Len(t, artists, 3, "expected 3 artists")
 
 	// Create repositories for each model
-	cityRepo := depogorm.NewGormCRUD[City, int64](db)
-	locRepo := depogorm.NewGormCRUD[Location, int64](db)
-	eventRepo := depogorm.NewGormCRUD[Event, int64](db)
-	artistRepo := depogorm.NewGormCRUD[Artist, int64](db)
+	cityRepo := r3gorm.NewGormCRUD[City, int64](db)
+	locRepo := r3gorm.NewGormCRUD[Location, int64](db)
+	eventRepo := r3gorm.NewGormCRUD[Event, int64](db)
+	artistRepo := r3gorm.NewGormCRUD[Artist, int64](db)
 
 	_ = artistRepo
 
@@ -118,7 +118,7 @@ func TestGormRepository(t *testing.T) {
 	t.Run("List visible locations", func(t *testing.T) {
 		result, _, err := locRepo.List(ctx, r3.ListParams{
 			Filters: r3.Filters{
-				r3.F(r3.ColumnField("visible"), true),
+				r3.F(r3.NewColumnField("visible"), true),
 			},
 		})
 		require.NoError(t, err, "failed to list locations")
@@ -139,7 +139,7 @@ func TestGormRepository(t *testing.T) {
 	t.Run("List events for a location", func(t *testing.T) {
 		result, _, err := eventRepo.List(ctx, r3.ListParams{
 			Filters: r3.Filters{
-				r3.F(r3.ColumnField("venue_id"), locations[1].ID),
+				r3.F(r3.NewColumnField("venue_id"), locations[1].ID),
 			},
 		})
 		require.NoError(t, err, "failed to list events")

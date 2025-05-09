@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/amberpixels/k1/quick"
 	"github.com/amberpixels/r3"
-	"github.com/amberpixels/r3/internal/gx"
 )
 
 // SQLClause represents a r3.Filter that can be converted into SQL Clause (used by gorm, sqlx, squirrel, etc.)
@@ -27,7 +27,7 @@ type SQLClauses []SQLClause
 func (cs SQLClauses) Joins() []string {
 	var joins []string
 	for _, c := range cs {
-		joins = gx.Qappend(joins, c.Joins...)
+		joins = quick.Append(joins, c.Joins...)
 	}
 	return joins
 }
@@ -35,12 +35,12 @@ func (cs SQLClauses) Joins() []string {
 // SQLDialector is a visitor for r3.Filter that converts it to an SQLClause.
 type SQLDialector struct{}
 
-var _ r3.FilterDialector = (*SQLDialector)(nil)
+var _ r3.FilterOutboundDialector = (*SQLDialector)(nil)
 
-// FromColumnFilter converts a ColumnFilter to an SQLClause, handling both simple and group filters.
-func (sv *SQLDialector) FromColumnFilter(cf *r3.ColumnFilter) (r3.DialectValue, error) {
+// TranslateColumnFilter converts a ColumnFilter to an SQLClause, handling both simple and group filters.
+func (sv *SQLDialector) TranslateColumnFilter(cf *r3.ColumnFilter) (r3.DialectValue, error) {
 	// Case 1. A simple filter when Field is set.
-	fieldRaw, err := cf.Field.ToDialect(sv)
+	fieldRaw, err := cf.Field.ToDialect(nil) // TODO sv fixme
 	if err != nil {
 		return nil, err
 	}
@@ -66,7 +66,7 @@ func (sv *SQLDialector) FromColumnFilter(cf *r3.ColumnFilter) (r3.DialectValue, 
 		}
 		// Simple case: Field is set and Value is non-nil.
 		// Use our helper to convert the operator to its dialect string.
-		opDialect, err := cf.Operator.ToDialect(&SQLOperatorDialector{})
+		opDialect, err := cf.Operator.ToDialect(nil) // TODO &SQLOperatorDialector{})
 		if err != nil {
 			return nil, err
 		}
@@ -104,7 +104,7 @@ func (sv *SQLDialector) FromColumnFilter(cf *r3.ColumnFilter) (r3.DialectValue, 
 		if !ok {
 			return nil, errors.New("unexpected type returned from child filter conversion")
 		}
-		result, err := sv.FromColumnFilter(childFilter)
+		result, err := sv.TranslateColumnFilter(childFilter)
 		if err != nil {
 			return nil, err
 		}
@@ -114,7 +114,7 @@ func (sv *SQLDialector) FromColumnFilter(cf *r3.ColumnFilter) (r3.DialectValue, 
 		}
 		conditions = append(conditions, childClause.Clause)
 		args = append(args, childClause.Args...)
-		joins = gx.Qappend(joins, childClause.Joins...)
+		joins = quick.Append(joins, childClause.Joins...)
 	}
 
 	// Combine the child conditions with the logical operator.

@@ -27,7 +27,7 @@ func (fields Fields) String() string {
 	return strings.Join(parts, ",")
 }
 
-func (d *JSONInboundDialector) TranslateColumnField(f DialectValue) (*r3.ColumnField, error)
+func (d *JSONInboundDialector) TranslateColumnField(dialectValue r3.DialectValue) (*r3.ColumnField, error) {
 	inboundFilter, ok := dialectValue.(Field)
 	if !ok {
 		if ptr, ok := dialectValue.(*Field); ok {
@@ -80,6 +80,6 @@ func (fields Fields) ToColumnFields() (r3.Fields, error) {
 	return columnFields, nil
 }
 
-func (f Field) ToColumnField() (r3.ColumnField, error) {
-	return r3.ColumnField(f), nil
+func (f Field) ToColumnField() (*r3.ColumnField, error) {
+	return r3.NewColumnField(f.String()), nil
 }
