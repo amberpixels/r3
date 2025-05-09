@@ -9,12 +9,10 @@ const (
 	LimitDefault = 50
 )
 
-type MaybeInt = maybe.Option[int]
-
 // Pagination represents the pagination parameters for a Repo request.
 type Pagination struct {
-	Limit  MaybeInt `json:"limit"`
-	Offset MaybeInt `json:"offset"`
+	Limit  maybe.Int `json:"limit"`
+	Offset maybe.Int `json:"offset"`
 }
 
 // NewPagination returns a new Pagination with the given limit and offset.
@@ -60,11 +58,11 @@ func (p Pagination) MergeWith(other Pagination) Pagination {
 	return result
 }
 
+// IsPaginated returns true if pagination is set.
 func (p Pagination) IsPaginated() bool {
-	// TODO Fix this
-	//if p.Limit.IsZero() {
-	//	return !p.Offset.IsZero()
-	//}
-	//
+	if p.Limit.IsZero() {
+		return !p.Offset.IsZero()
+	}
+
 	return true
 }

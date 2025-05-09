@@ -3,7 +3,7 @@ module github.com/amberpixels/r3
 go 1.24
 
 require (
-	github.com/amberpixels/k1 v0.0.3-0.20250509083220-e89d73314074
+	github.com/amberpixels/k1 v0.1.0
 	github.com/pressly/goose v2.7.0+incompatible
 	github.com/stretchr/testify v1.10.0
 	github.com/testcontainers/testcontainers-go v0.37.0
