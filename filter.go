@@ -13,7 +13,12 @@ type Filter interface {
 	fmt.Stringer
 
 	// ToDialect converts the Filter into its dialect-specific representation.
-	ToDialect(FilterDialector) (DialectValue, error)
+	// E.g. r3 => SQL (Where Clause, etc)
+	ToDialect(FilterOutboundDialector) (DialectValue, error)
+
+	// FromDialect makes up a Filter from an FieldInboundDialector and its DialectValue
+	// e.g. JSON => r3
+	FromDialect(FilterInboundDialector, DialectValue) error
 }
 
 // Filters represents a list of Filters.
@@ -21,14 +26,14 @@ type Filter interface {
 type Filters []Filter
 
 type (
-	// FilterDialector is a generic dialector (visitor) interface for conversion.
-	FilterDialector interface {
-		FromColumnFilter(cf *ColumnFilter) (DialectValue, error)
+	// FilterOutboundDialector is a generic dialector (visitor) interface for conversion.
+	FilterOutboundDialector interface {
+		TranslateColumnFilter(cf *ColumnFilter) (DialectValue, error)
 	}
 
 	// FilterInboundDialector is a generic inbound dialector (visitor) interface for conversion.
 	FilterInboundDialector interface {
-		ToFilter(f DialectValue) (Filter, error)
+		TranslateIntoColumnFilter(f DialectValue) (*ColumnFilter, error)
 	}
 )
 
@@ -50,8 +55,22 @@ type ColumnFilter struct {
 	Or Filters
 }
 
-func (f *ColumnFilter) ToDialect(dialector FilterDialector) (DialectValue, error) {
-	return dialector.FromColumnFilter(f)
+func (f *ColumnFilter) ToDialect(dialector FilterOutboundDialector) (DialectValue, error) {
+	return dialector.TranslateColumnFilter(f)
+}
+
+func (f *ColumnFilter) FromDialect(dialector FilterInboundDialector, inValue DialectValue) error {
+	if f == nil {
+		return fmt.Errorf("FromDialect must be called on a non-nil ColumnFilter")
+	}
+
+	translated, err := dialector.TranslateIntoColumnFilter(inValue)
+	if err != nil {
+		return fmt.Errorf("inbound dialector fialed: %w", err)
+	}
+
+	*f = *translated
+	return nil
 }
 
 // String returns just a string representation of the filter (ColunFilter as a json)

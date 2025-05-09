@@ -163,16 +163,81 @@ func TestQappendBehavior(t *testing.T) {
 }
 
 func SlowAppend[T comparable](a []T, b ...T) []T {
-	result := make([]T, 0, len(a))
+	// len(result)=len(a), cap=result + len(b)
+	result := make([]T, len(a), len(a)+len(b))
 	copy(result, a)
-
 	for _, e := range b {
 		if !slices.Contains(result, e) {
 			result = append(result, e)
 		}
 	}
-
 	return result
+}
+
+func TestQappendEqualsSlowAppend(t *testing.T) {
+	tests := []struct {
+		name string
+		a, b []string
+		want []string
+	}{
+		{
+			name: "both empty",
+			a:    []string{},
+			b:    []string{},
+			want: []string{},
+		},
+		{
+			name: "empty a, unique b",
+			a:    []string{},
+			b:    []string{"x", "y", "z"},
+			want: []string{"x", "y", "z"},
+		},
+		{
+			name: "non-empty a, empty b",
+			a:    []string{"a", "b"},
+			b:    []string{},
+			want: []string{"a", "b"},
+		},
+		{
+			name: "duplicates in b",
+			a:    []string{"foo", "bar"},
+			b:    []string{"bar", "baz", "bar", "qux", "baz"},
+			want: []string{"foo", "bar", "baz", "qux"},
+		},
+		{
+			name: "no overlaps",
+			a:    []string{"1", "2"},
+			b:    []string{"3", "4"},
+			want: []string{"1", "2", "3", "4"},
+		},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			gotQ := gx.Qappend(tc.a, tc.b...)
+			gotS := SlowAppend(tc.a, tc.b...)
+			fmt.Println(gotQ)
+			fmt.Println(gotS)
+
+			// Ensure Qappend matches SlowAppend
+			assert.Equal(
+				t,
+				gotS,
+				gotQ,
+				"Qappend and SlowAppend differ for A=%v, B=%v",
+				tc.a, tc.b,
+			)
+
+			// Ensure they match the expected slice
+			assert.Equal(
+				t,
+				tc.want,
+				gotQ,
+				"Result incorrect for A=%v, B=%v",
+				tc.a, tc.b,
+			)
+		})
+	}
 }
 
 func BenchmarkQappendVsSlowAppend(b *testing.B) {

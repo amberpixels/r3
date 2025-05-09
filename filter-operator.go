@@ -5,6 +5,7 @@ import (
 	"fmt"
 )
 
+// todo delete?
 var ErrUnsupportedOperator = errors.New("unsupported operator")
 
 // FilterOperator represents an operator to be used in a filter.
@@ -34,8 +35,12 @@ const (
 
 // String is implemented for debugging purposes, so the FilterOperator is a fmt.Stringer.
 // Note: Protect with the `exhausted` linter.
-func (op FilterOperator) String() string {
-	switch op {
+func (op *FilterOperator) String() string {
+	if op == nil {
+		return ""
+	}
+
+	switch *op {
 	case OperatorEq:
 		return "eq"
 	case OperatorNe:
@@ -75,67 +80,53 @@ func (op FilterOperator) String() string {
 	}
 }
 
-// FilterOperatorDialector defines a contract for converting a FilterOperator
+// FilterOperatorOutboundDialector defines a contract for converting a FilterOperator
 // to its dialect-specific representation.
-type FilterOperatorDialector interface {
-	Eq() DialectValue
-	Ne() DialectValue
-	Exists() DialectValue
-	Gt() DialectValue
-	Gte() DialectValue
-	Lt() DialectValue
-	Lte() DialectValue
-	Between() DialectValue
-	BetweenEx() DialectValue
-	BetweenExInc() DialectValue
-	BetweenIncEx() DialectValue
-	In() DialectValue
-	NotIn() DialectValue
-	Like() DialectValue
-	NotLike() DialectValue
-	ILike() DialectValue
+type FilterOperatorOutboundDialector interface {
+	TranslateFilterOperator(op *FilterOperator) (DialectValue, error)
+}
+
+type FilterOperatorInboundDialector interface {
+	TranslateIntoFilterOperator(op DialectValue) (*FilterOperator, error)
 }
 
 // ToDialect converts the FilterOperator into a dialect-specific value
-// using the provided dialector (visitor).
-// Note: Protect with the `exhausted` linter.
-func (op FilterOperator) ToDialect(dialector FilterOperatorDialector) (DialectValue, error) {
-	switch op {
-	case OperatorEq:
-		return dialector.Eq(), nil
-	case OperatorNe:
-		return dialector.Ne(), nil
-	case OperatorExists:
-		return dialector.Exists(), nil
-	case OperatorGt:
-		return dialector.Gt(), nil
-	case OperatorGte:
-		return dialector.Gte(), nil
-	case OperatorLt:
-		return dialector.Lt(), nil
-	case OperatorLte:
-		return dialector.Lte(), nil
-	case OperatorBetween:
-		return dialector.Between(), nil
-	case OperatorBetweenEx:
-		return dialector.BetweenEx(), nil
-	case OperatorBetweenExInc:
-		return dialector.BetweenExInc(), nil
-	case OperatorBetweenIncEx:
-		return dialector.BetweenIncEx(), nil
-	case OperatorIn:
-		return dialector.In(), nil
-	case OperatorNotIn:
-		return dialector.NotIn(), nil
-	case OperatorLike:
-		return dialector.Like(), nil
-	case OperatorNotLike:
-		return dialector.NotLike(), nil
-	case OperatorILike:
-		return dialector.ILike(), nil
-	case OperatorUnspecified:
-		fallthrough
-	default:
-		return "", fmt.Errorf("%w: %s", ErrUnsupportedOperator, op)
-	}
+// e.g. r3 => SQL
+func (op *FilterOperator) ToDialect(dialector FilterOperatorOutboundDialector) (DialectValue, error) {
+	return dialector.TranslateFilterOperator(op)
 }
+
+// FromDialect makes up a FilterOperator from an FieldInboundDialector and its DialectValue
+// e.g. JSON => r3
+func (op *FilterOperator) FromDialect(dialector FilterOperatorInboundDialector, inValue DialectValue) error {
+	if op == nil {
+		return fmt.Errorf("FromDialect must be called on a non-nil FilterOperator")
+	}
+
+	translated, err := dialector.TranslateIntoFilterOperator(inValue)
+	if err != nil {
+		return fmt.Errorf("inbound dialector fialed: %w", err)
+	}
+
+	*op = *translated
+	return nil
+}
+
+// Note: make it a public interface
+// As probably we'll have something more complex for operators e.g. structs
+// that will hold some more complex options for operators (e.g. case sensitivity, strictness, etc)
+// for now we declare a private interface
+type iFilterOperator interface {
+	// Stringer is needed for debugging purposes, so each filter can be printed.
+	fmt.Stringer
+
+	// ToDialect converts the FilterOperator into its dialect-specific representation.
+	// E.g. r3 => SQL (Where Clause, etc)
+	ToDialect(FilterOperatorOutboundDialector) (DialectValue, error)
+
+	// FromDialect makes up a FilterOperator from an FieldInboundDialector and its DialectValue
+	// e.g. JSON => r3
+	FromDialect(FilterOperatorInboundDialector, DialectValue) error
+}
+
+var _ iFilterOperator = (*FilterOperator)(nil)

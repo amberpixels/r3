@@ -7,6 +7,7 @@ func mergeWith[T comparable](a, b []T) []T {
 	return gx.Qappend(a, b...)
 }
 
+// dedupe removes duplicates from the things list.
 func dedupe[T comparable](things *[]T) {
 	if things == nil {
 		return

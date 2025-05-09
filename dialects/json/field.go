@@ -8,12 +8,17 @@ import (
 	"github.com/amberpixels/r3"
 )
 
+// Field is just a string value
+// e.g. `{"fields":["id", "status"]}
 type Field string
 
+// Fields as of collection of fields
 type Fields []Field
 
+// String returns string representation of the field
 func (f Field) String() string { return string(f) }
 
+// String returns string reporestation of the fields
 func (fields Fields) String() string {
 	parts := make([]string, len(fields))
 	for i, f := range fields {
@@ -22,9 +27,7 @@ func (fields Fields) String() string {
 	return strings.Join(parts, ",")
 }
 
-var _ r3.FilterInboundDialector = (*JSONInboundDialector)(nil)
-
-func (d *JSONInboundDialector) ToField(dialectValue r3.DialectValue) (r3.Field, error) {
+func (d *JSONInboundDialector) TranslateColumnField(f DialectValue) (*r3.ColumnField, error)
 	inboundFilter, ok := dialectValue.(Field)
 	if !ok {
 		if ptr, ok := dialectValue.(*Field); ok {

@@ -33,3 +33,12 @@ func NewLookup[T comparable](initialKeys ...T) Lookup[T] {
 	}
 	return l
 }
+
+// NewLookupCapped returns new ready to use lookup map with given map capacity
+func NewLookupCapped[T comparable](n int, initialKeys ...T) Lookup[T] {
+	l := make(Lookup[T], n)
+	for _, key := range initialKeys {
+		l.Add(key)
+	}
+	return l
+}
