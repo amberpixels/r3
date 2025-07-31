@@ -13,33 +13,33 @@ type Sort interface {
 	GetCriteria() string
 }
 
-// ColumnSort represents a single sort criteria.
-type ColumnSort struct {
-	Column    ColumnField
+// SortSpec represents a single sort criteria.
+type SortSpec struct {
+	Column    FieldSpec
 	Direction SortDirection // Asc | Desc | Unspecified (default)
 
 	NullsPosition SortNullsPosition // First | Last | Unspecified
 }
 
 // DialectString returns a SQL-ready string representation of ColumnSort.
-func (s *ColumnSort) DialectString() string {
+func (s *SortSpec) DialectString() string {
 	// str := s.Column.DialectString() + " " + s.Direction.DialectString()
 	// if s.NullsPosition != NullsPositionNotSpecified {
 	//	str += " " + s.NullsPosition.DialectString()
 	// }
 
-	str := "todo"
+	str := "created_at ASC" // TODO
 	return str
 }
 
-func (s *ColumnSort) String() string { return s.DialectString() }
+func (s *SortSpec) String() string { return s.DialectString() }
 
-func (s *ColumnSort) GetDirection() SortDirection { return s.Direction }
+func (s *SortSpec) GetDirection() SortDirection { return s.Direction }
 
-func (s *ColumnSort) GetCriteria() string { return s.Column.String() }
+func (s *SortSpec) GetCriteria() string { return s.Column.String() }
 
-func NewColumnSort(col ColumnField, direction SortDirection, nullsPositionArg ...SortNullsPosition) *ColumnSort {
-	s := &ColumnSort{
+func NewSortSpec(col FieldSpec, direction SortDirection, nullsPositionArg ...SortNullsPosition) *SortSpec {
+	s := &SortSpec{
 		Column:    col,
 		Direction: direction,
 	}
@@ -51,7 +51,7 @@ func NewColumnSort(col ColumnField, direction SortDirection, nullsPositionArg ..
 	return s
 }
 
-var _ Sort = (*ColumnSort)(nil)
+var _ Sort = (*SortSpec)(nil)
 
 // Sorts represents a list of ColumnSort-s.
 type Sorts []Sort
@@ -78,13 +78,13 @@ func NewSorts(sortingOrder ...string) (Sorts, error) {
 		// if having no spaces means it's just a field name
 		// use whole string as the field name then.
 		if !strings.Contains(orderRawString, " ") {
-			sorts = append(sorts, &ColumnSort{Column: ColumnField(orderRawString)})
+			sorts = append(sorts, &SortSpec{Column: FieldSpec(orderRawString)})
 			continue
 		}
 
 		orderWords := strings.Split(orderRawString, " ")
 
-		col := ColumnField(orderWords[0])
+		col := FieldSpec(orderWords[0])
 		direction := ParseSortDirection(orderWords[1])
 		nullsPosition := NullsPositionNotSpecified
 
@@ -95,7 +95,7 @@ func NewSorts(sortingOrder ...string) (Sorts, error) {
 			// TODO: find out can we do blanket default, or it will be failing for fields that are not nullable?
 		}
 
-		sorts = append(sorts, &ColumnSort{
+		sorts = append(sorts, &SortSpec{
 			Column:        col,
 			Direction:     direction,
 			NullsPosition: nullsPosition,
@@ -121,6 +121,7 @@ const (
 
 // DialectString returns a SQL-ready string representation of SortNullsPosition.
 func (s SortNullsPosition) DialectString() string {
+	// TODO: dialect to be respected
 	switch s {
 	case NullsPositionFirst:
 		return "NULLS FIRST"

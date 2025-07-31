@@ -1,7 +1,6 @@
 # Variables
 GOLANGCI_LINT := $(shell which golangci-lint)
 
-
 # Default target
 all: tidy
 

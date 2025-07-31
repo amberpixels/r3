@@ -8,10 +8,10 @@ import (
 )
 
 func TestFieldsMergeWith(t *testing.T) {
-	a := r3.NewColumnField("a")
-	b := r3.NewColumnField("b")
-	c := r3.NewColumnField("c")
-	d := r3.NewColumnField("d")
+	a := r3.NewFieldSpec("a")
+	b := r3.NewFieldSpec("b")
+	c := r3.NewFieldSpec("c")
+	d := r3.NewFieldSpec("d")
 
 	testCases := []struct {
 		name     string
@@ -81,9 +81,9 @@ func TestFieldsMergeWith(t *testing.T) {
 
 // TestFieldsDedupe uses table testing to cover various scenarios for Dedupe.
 func TestFieldsDedupe(t *testing.T) {
-	a := r3.NewColumnField("a")
-	b := r3.NewColumnField("b")
-	c := r3.NewColumnField("c")
+	a := r3.NewFieldSpec("a")
+	b := r3.NewFieldSpec("b")
+	c := r3.NewFieldSpec("c")
 
 	testCases := []struct {
 		name     string

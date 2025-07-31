@@ -7,23 +7,26 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-type Filter struct {
-	Field Field `json:"f,omitempty"`
+type JSONFilter struct {
+	Field JSONField `json:"f,omitempty"`
+
 	// The operator is provided as a string (like "eq", "ne", etc.)
-	Op    FilterOperator `json:"op,omitempty"`
-	Value any            `json:"v,omitempty"` // allow for raw value handling (or use any, string, etc.)
+	Op    JSONFilterOperator `json:"op,omitempty"`
+	Value any                `json:"v,omitempty"` // allow for raw value handling (or use any, string, etc.)
 
 	// Logical groups:
-	And Filters `json:"and,omitempty"`
-	Or  Filters `json:"or,omitempty"`
+	And JSONFilters `json:"and,omitempty"`
+	Or  JSONFilters `json:"or,omitempty"`
 }
+
+// JSONFilters is a slice of JSONFilter.
+type JSONFilters []*JSONFilter
 
 // TODO: validate filters
 
-type Filters []*Filter
-
-func (jsf Filters) String() string {
-	jj, err := json.Marshal(jsf)
+// String returns a string representation of a single filter (as a json string).
+func (jf *JSONFilter) String() string {
+	jj, err := json.Marshal(jf)
 	if err != nil {
 		return fmt.Sprintf("<corrupted filters (%s)>", err.Error())
 	}
@@ -31,72 +34,60 @@ func (jsf Filters) String() string {
 	return string(jj)
 }
 
-func (d *JSONInboundDialector) ToFilter(dialectValue r3.DialectValue) (r3.Filter, error) {
-	inboundFilter, ok := dialectValue.(*Filter)
-	if !ok {
-		return nil, fmt.Errorf("invalid filter type: %T", dialectValue)
+// String returns string representation of the JSON Filters (as a json string).
+func (jfs JSONFilters) String() string {
+	jj, err := json.Marshal(jfs)
+	if err != nil {
+		return fmt.Sprintf("<corrupted filters (%s)>", err.Error())
 	}
 
-	return inboundFilter.ToColumnFilter()
-}
-
-func (d *JSONInboundDialector) ToFilters(dialectValue r3.DialectValue) (r3.Filters, error) {
-	inboundFilters, ok := dialectValue.(Filters)
-	if !ok {
-		inboundFilter, ok := dialectValue.(*Filter)
-		if !ok {
-			return nil, fmt.Errorf("invalid filter type: %T", dialectValue)
-		}
-
-		inboundFilters = Filters{inboundFilter}
-	}
-
-	return inboundFilters.ToColumnFilters()
-}
-
-func JSONFiltersToFilters(filters Filters) (r3.Filters, error) {
-	return (&JSONInboundDialector{}).ToFilters(filters)
+	return string(jj)
 }
 
 // UnmarshalJSON is optional, depending on how you want to handle the Value.
-func (jf *Filter) UnmarshalJSON(data []byte) error {
-	type alias Filter
+func (jf *JSONFilter) UnmarshalJSON(data []byte) error {
+	type alias JSONFilter
 	return json.Unmarshal(data, (*alias)(jf))
 }
 
-func (jsf Filters) ToColumnFilters() (r3.Filters, error) {
-	columnFilters := make(r3.Filters, len(jsf))
-	for i, f := range jsf {
-		columnFilter, err := f.ToColumnFilter()
-		if err != nil {
-			return nil, err
-		}
-		columnFilters[i] = columnFilter
-	}
-	return columnFilters, nil
-}
-
-func (jf *Filter) ToColumnFilter() (*r3.ColumnFilter, error) {
-	andFilters, err := jf.And.ToColumnFilters()
+func (jf *JSONFilter) ToFilterSpec() (*r3.FilterSpec, error) {
+	andFilters, err := jf.And.toFilters()
 	if err != nil {
 		return nil, err
 	}
-	orFilters, err := jf.Or.ToColumnFilters()
+	orFilters, err := jf.Or.toFilters()
 	if err != nil {
 		return nil, err
 	}
 
-	field, err := jf.Field.ToColumnField()
+	fieldSpec, err := jf.Field.ToFieldSpec()
 	if err != nil {
 		return nil, err
 	}
 
-	return &r3.ColumnFilter{
-		Field:    field,
-		Operator: r3.FilterOperator(jf.Op),
+	opSpec, err := jf.Op.ToOperatorFilterSpec()
+	if err != nil {
+		return nil, err
+	}
+
+	return &r3.FilterSpec{
+		Field:    fieldSpec,
+		Operator: opSpec,
 		Value:    jf.Value,
 
 		And: andFilters,
 		Or:  orFilters,
 	}, nil
+}
+
+func (jfs JSONFilters) toFilters() (r3.Filters, error) {
+	r3Filters := make(r3.Filters, len(jfs))
+	for i, f := range jfs {
+		filterSpecs, err := f.ToFilterSpec()
+		if err != nil {
+			return nil, err
+		}
+		r3Filters[i] = filterSpecs
+	}
+	return r3Filters, nil
 }

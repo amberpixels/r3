@@ -2,21 +2,19 @@ package r3
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 )
 
 // Filter stands for generic Filter condition interface.
-// For now, we have 1 implementation:
-//  1. ColumnFilter - a single column from the destination.
 type Filter interface {
 	// Stringer is needed for debugging purposes, so each filter can be printed.
 	fmt.Stringer
 
-	// ToDialect converts the Filter into its dialect-specific representation.
-	// E.g. r3 => SQL (Where Clause, etc)
+	// ToDialect converts the Filter (r3=>SQL) into its dialect-specific representation.
 	ToDialect(FilterOutboundDialector) (DialectValue, error)
 
-	// FromDialect makes up a Filter from an FieldInboundDialector and its DialectValue
+	// FromDialect makes up the Filter (JSON=>r3) from an FieldInboundDialector and its DialectValue
 	// e.g. JSON => r3
 	FromDialect(FilterInboundDialector, DialectValue) error
 }
@@ -25,25 +23,25 @@ type Filter interface {
 // It is intentionally a slice of interface, so any filter can be inside.
 type Filters []Filter
 
+// MergeWith merges (combines) filters with other filters.
+func (fs Filters) MergeWith(other Filters) Filters { return mergeWith(fs, other) }
+
 type (
 	// FilterOutboundDialector is a generic dialector (visitor) interface for conversion.
 	FilterOutboundDialector interface {
-		TranslateColumnFilter(cf *ColumnFilter) (DialectValue, error)
+		TranslateFilterSpec(cf *FilterSpec) (DialectValue, error)
 	}
 
 	// FilterInboundDialector is a generic inbound dialector (visitor) interface for conversion.
 	FilterInboundDialector interface {
-		TranslateIntoColumnFilter(f DialectValue) (*ColumnFilter, error)
+		TranslateIntoFilterSpec(f DialectValue) (*FilterSpec, error)
 	}
 )
 
-// MergeWith merges (combines) filters with other filters.
-func (fs Filters) MergeWith(other Filters) Filters { return mergeWith(fs, other) }
-
-// ColumnFilter represents a filtering criteria with a field, an operator, and a value.
-type ColumnFilter struct {
-	Field    Field
-	Operator FilterOperator
+// FilterSpec represents a filtering criteria with a field, an operator, and a value.
+type FilterSpec struct {
+	Field    *FieldSpec
+	Operator FilterOperatorSpec
 	Value    any
 
 	// Children groups:
@@ -55,16 +53,16 @@ type ColumnFilter struct {
 	Or Filters
 }
 
-func (f *ColumnFilter) ToDialect(dialector FilterOutboundDialector) (DialectValue, error) {
-	return dialector.TranslateColumnFilter(f)
+func (f *FilterSpec) ToDialect(dialector FilterOutboundDialector) (DialectValue, error) {
+	return dialector.TranslateFilterSpec(f)
 }
 
-func (f *ColumnFilter) FromDialect(dialector FilterInboundDialector, inValue DialectValue) error {
+func (f *FilterSpec) FromDialect(dialector FilterInboundDialector, inValue DialectValue) error {
 	if f == nil {
-		return fmt.Errorf("FromDialect must be called on a non-nil ColumnFilter")
+		return errors.New("FromDialect must be called on a non-nil FilterSpec")
 	}
 
-	translated, err := dialector.TranslateIntoColumnFilter(inValue)
+	translated, err := dialector.TranslateIntoFilterSpec(inValue)
 	if err != nil {
 		return fmt.Errorf("inbound dialector fialed: %w", err)
 	}
@@ -75,7 +73,7 @@ func (f *ColumnFilter) FromDialect(dialector FilterInboundDialector, inValue Dia
 
 // String returns just a string representation of the filter (ColunFilter as a json)
 // As all fields are exported, we're OK with this.
-func (f *ColumnFilter) String() string {
+func (f *FilterSpec) String() string {
 	jj, err := json.Marshal(f)
 	if err != nil {
 		return fmt.Sprintf("<corrupted filted (%s)>", err.Error())
@@ -88,24 +86,31 @@ func (f *ColumnFilter) String() string {
 // Auxiliary helpers for quick filter scaffolding:
 //
 
-// NewColumnFilter is a simple constructor for the ColumnFilter (not an AND/OR group).
-func NewColumnFilter(field Field, operator FilterOperator, value any) *ColumnFilter {
-	return &ColumnFilter{Field: field, Operator: operator, Value: value}
+// NewFilterSpec constructs a FilterSpec (not an AND/OR group).
+func NewFilterSpec(field *FieldSpec, operator FilterOperatorSpec, value any) *FilterSpec {
+	return &FilterSpec{Field: field, Operator: operator, Value: value}
+}
+
+func NewFilterSpecAndGroup(filters ...Filter) *FilterSpec {
+	return &FilterSpec{And: filters}
+}
+func NewFilterSpecOrGroup(filters ...Filter) *FilterSpec {
+	return &FilterSpec{Or: filters}
 }
 
 // Fop is a shorthand for NewFilter()
 // Fop is "F" for filter and "op" for operator.
-func Fop(field Field, operator FilterOperator, value any) *ColumnFilter {
-	return NewColumnFilter(field, operator, value)
+func Fop(field *FieldSpec, operator FilterOperatorSpec, value any) *FilterSpec {
+	return NewFilterSpec(field, operator, value)
 }
 
-// F is a shorthand for NewColumnFilter(field, OperatorEq, value).
-func F(field Field, value any) *ColumnFilter      { return Fop(field, OperatorEq, value) }
-func FLike(field Field, value any) *ColumnFilter  { return Fop(field, OperatorLike, value) }
-func FILike(field Field, value any) *ColumnFilter { return Fop(field, OperatorILike, value) }
+// F is a shorthand for NewFilterSpec(field, OperatorEq, value).
+func F(field *FieldSpec, value any) *FilterSpec      { return Fop(field, OperatorEq, value) }
+func FLike(field *FieldSpec, value any) *FilterSpec  { return Fop(field, OperatorLike, value) }
+func FILike(field *FieldSpec, value any) *FilterSpec { return Fop(field, OperatorILike, value) }
 
-// And is a constructor of AND group of filters.
-func And(filters ...Filter) *ColumnFilter { return &ColumnFilter{And: filters} }
+// And is a shortcut for NewFilterSpecAndGroup.
+func And(filters ...Filter) *FilterSpec { return NewFilterSpecAndGroup(filters...) }
 
-// Or is a constructor of OR group of filters.
-func Or(filters ...Filter) *ColumnFilter { return &ColumnFilter{Or: filters} }
+// Or is a shortcut for NewFilterSpecOrGroup.
+func Or(filters ...Filter) *FilterSpec { return NewFilterSpecOrGroup(filters...) }

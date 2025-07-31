@@ -118,7 +118,7 @@ func TestGormRepository(t *testing.T) {
 	t.Run("List visible locations", func(t *testing.T) {
 		result, _, err := locRepo.List(ctx, r3.ListParams{
 			Filters: r3.Filters{
-				r3.F(r3.NewColumnField("visible"), true),
+				r3.F(r3.NewFieldSpec("visible"), true),
 			},
 		})
 		require.NoError(t, err, "failed to list locations")
@@ -139,7 +139,7 @@ func TestGormRepository(t *testing.T) {
 	t.Run("List events for a location", func(t *testing.T) {
 		result, _, err := eventRepo.List(ctx, r3.ListParams{
 			Filters: r3.Filters{
-				r3.F(r3.NewColumnField("venue_id"), locations[1].ID),
+				r3.F(r3.NewFieldSpec("venue_id"), locations[1].ID),
 			},
 		})
 		require.NoError(t, err, "failed to list events")

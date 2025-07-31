@@ -1,10 +1,11 @@
 package r3
 
 import (
+	"errors"
 	"fmt"
 )
 
-// TODO(?): Thought for future improvements:
+// TODO(?): Thought for future imporovements:
 // Field may be a more complex thing:
 // We should distinguish between object field and leaf field (e.g. card.image vs card.image.url)
 // (very optional) We should support computed field e.g. (card.image.url(thumbnail=X)))
@@ -13,12 +14,10 @@ import (
 type Field interface {
 	fmt.Stringer
 
-	// ToDialect converts the Field into its dialect-specific representation.
-	// E.g. r3 => SQL
+	// ToDialect converts the Field (r3=>SQL) into its dialect-specific representation.
 	ToDialect(FieldOutboundDialector) (DialectValue, error)
 
-	// FromDialect makes up a field from an FieldInboundDialector and its DialectValue
-	// e.g. JSON => r3
+	// FromDialect makes up the Field (JSON=>r3) from an FieldInboundDialector and its DialectValue
 	FromDialect(FieldInboundDialector, DialectValue) error
 }
 
@@ -28,12 +27,12 @@ type Fields []Field
 type (
 	// FieldOutboundDialector is a generic dialector (visitor) interface for conversion.
 	FieldOutboundDialector interface {
-		TranslateColumnField(cf *ColumnField) (DialectValue, error)
+		TranslateFieldSpec(cf *FieldSpec) (DialectValue, error)
 	}
 
 	// FieldInboundDialector is a generic inbound dialector (visitor) interface for conversion.
 	FieldInboundDialector interface {
-		TranslateIntoColumnField(f DialectValue) (*ColumnField, error)
+		TranslateIntoFieldSpec(f DialectValue) (*FieldSpec, error)
 	}
 )
 
@@ -48,36 +47,41 @@ func (fs *Fields) Dedupe() {
 	*fs = v
 }
 
-// ColumnField is the simplest possible implementation of Fieldable
-// Here, we just mean Field for a column in the database.
-type ColumnField string
+// FieldSpec is the simplest possible implementation of the Field interface.
+// FieldSpec is just a string - it can be the name of the field in database, etc.
+type FieldSpec string
 
-func NewColumnField(s string) *ColumnField {
-	var cf = new(ColumnField)
-	*cf = ColumnField(s)
+func NewFieldSpec(s string) *FieldSpec {
+	var cf = new(FieldSpec)
+	*cf = FieldSpec(s)
 	return cf
 }
 
-var _ Field = (*ColumnField)(nil)
+var _ Field = (*FieldSpec)(nil)
 
 // String simply returns its value.
-func (f *ColumnField) String() string { return string(*f) }
-
-// ToDialect converts the Field into its dialect-specific representation.
-func (f *ColumnField) ToDialect(dialector FieldOutboundDialector) (DialectValue, error) {
-	return dialector.TranslateColumnField(f)
+func (f *FieldSpec) String() string {
+	if f == nil {
+		return ""
+	}
+	return string(*f)
 }
 
-func (f *ColumnField) FromDialect(dialector FieldInboundDialector, inValue DialectValue) error {
+// ToDialect converts the Field into its dialect-specific representation.
+func (f *FieldSpec) ToDialect(dialector FieldOutboundDialector) (DialectValue, error) {
+	return dialector.TranslateFieldSpec(f)
+}
+
+func (f *FieldSpec) FromDialect(dialector FieldInboundDialector, inValue DialectValue) error {
 	if f == nil {
-		return fmt.Errorf("FromDialect must be called on a non-nil ColumnField")
+		return errors.New("FromDialect must be called on a non-nil ColumnField")
 	}
 
-	translated, err := dialector.TranslateIntoColumnField(inValue)
+	dialected, err := dialector.TranslateIntoFieldSpec(inValue)
 	if err != nil {
 		return fmt.Errorf("inbound dialector fialed: %w", err)
 	}
 
-	*f = *translated
+	*f = *dialected
 	return nil
 }

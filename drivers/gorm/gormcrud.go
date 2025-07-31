@@ -98,7 +98,7 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, paramsArg ...r3.ListParams) 
 
 	if len(clauses) > 0 {
 		for _, join := range clauses.Joins() {
-			query = query.Joins(join)
+			query = query.Joins(join.String())
 		}
 
 		for _, clause := range clauses {
@@ -199,31 +199,6 @@ func (r *GormCRUD[T, ID]) Patch(ctx context.Context, model T, fields r3.Fields) 
 
 	// TODO: fetch again
 
-	return entity, nil
-}
-
-func (r *GormCRUD[T, ID]) PatchRaw(ctx context.Context, id ID, patches ...r3.Patch) (T, error) {
-	var entity T
-
-	// Validate the updates map (should not be empty)
-	if len(patches) == 0 {
-		return entity, errors.New("no fields to update")
-	}
-
-	// Build the raw updates map with field names as keys
-	rawUpdates := map[string]any{}
-	for field, value := range patches {
-		_ = field
-		_ = value
-		// TODO FIXME
-		// rawUpdates[field.String()] = value
-	}
-
-	// Perform the update using GORM's `Updates` method
-	if err := r.db.WithContext(ctx).Model(new(T)).Where("id = ?", id).Updates(rawUpdates).Error; err != nil {
-		return entity, err
-	}
-	// TODO: re-fetch model
 	return entity, nil
 }
 

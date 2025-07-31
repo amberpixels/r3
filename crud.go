@@ -18,12 +18,6 @@ type CRUD[T any, ID comparable] interface {
 	// Update modifies an existing record in the database with optional parameters.
 	Update(context.Context, T) (T, error)
 
-	// Patch is a partial update (only given fields are being updated)
-	Patch(context.Context, T, Fields) (T, error)
-
-	// PatchRaw is a partial update that accepts list of Patches instead of the model
-	PatchRaw(context.Context, ID, ...Patch) (T, error)
-
 	// Delete removes a record by its ID.
 	// It can use soft delete (if it's turned on the repository level)
 	Delete(context.Context, ID) error

@@ -5,37 +5,50 @@ import (
 	"fmt"
 )
 
-// todo delete?
-var ErrUnsupportedOperator = errors.New("unsupported operator")
+type FilterOperator interface {
+	// Stringer is needed for debugging purposes, so each filter can be printed.
+	fmt.Stringer
 
-// FilterOperator represents an operator to be used in a filter.
+	// ToDialect converts the FilterOperatorSpec into its dialect-specific representation.
+	// E.g. r3 => SQL (Where Clause, etc)
+	ToDialect(FilterOperatorOutboundDialector) (DialectValue, error)
+
+	// FromDialect makes up a FilterOperatorSpec from an FieldInboundDialector and its DialectValue
+	// e.g. JSON => r3
+	FromDialect(FilterOperatorInboundDialector, DialectValue) error
+}
+
+var _ FilterOperator = (*FilterOperatorSpec)(nil)
+
+// FilterOperatorSpec represents an operator to be used in a filter.
 // For now, not all r3 operators are supported by every possible dialect.
 // But idea is to provide here in r3 operator the most possibly full list of operators that we need.
-type FilterOperator int8
+// TODO: might be refactor into a more complex struct
+type FilterOperatorSpec int8
 
 const (
-	OperatorUnspecified  FilterOperator = iota
-	OperatorEq                          // =
-	OperatorNe                          // !=
-	OperatorExists                      // exists
-	OperatorGt                          // >
-	OperatorGte                         // >=
-	OperatorLt                          // <
-	OperatorLte                         // <=
-	OperatorBetween                     // between_inc meaning []
-	OperatorBetweenEx                   // between_exc meaning ()
-	OperatorBetweenExInc                // between_exc_inc meaning (]
-	OperatorBetweenIncEx                // between_inc_exc meaning [)
-	OperatorIn                          // in
-	OperatorNotIn                       // not in
-	OperatorLike                        // like
-	OperatorNotLike                     // not like
-	OperatorILike                       // ilike (like + case insensitive)
+	OperatorUnspecified  FilterOperatorSpec = iota
+	OperatorEq                              // =
+	OperatorNe                              // !=
+	OperatorExists                          // exists
+	OperatorGt                              // >
+	OperatorGte                             // >=
+	OperatorLt                              // <
+	OperatorLte                             // <=
+	OperatorBetween                         // between_inc meaning []
+	OperatorBetweenEx                       // between_exc meaning ()
+	OperatorBetweenExInc                    // between_exc_inc meaning (]
+	OperatorBetweenIncEx                    // between_inc_exc meaning [)
+	OperatorIn                              // in
+	OperatorNotIn                           // not in
+	OperatorLike                            // like
+	OperatorNotLike                         // not like
+	OperatorILike                           // ilike (like + case insensitive)
 )
 
-// String is implemented for debugging purposes, so the FilterOperator is a fmt.Stringer.
+// String is implemented for debugging purposes, so the FilterOperatorSpec is a fmt.Stringer.
 // Note: Protect with the `exhausted` linter.
-func (op *FilterOperator) String() string {
+func (op *FilterOperatorSpec) String() string {
 	if op == nil {
 		return ""
 	}
@@ -80,30 +93,32 @@ func (op *FilterOperator) String() string {
 	}
 }
 
-// FilterOperatorOutboundDialector defines a contract for converting a FilterOperator
-// to its dialect-specific representation.
-type FilterOperatorOutboundDialector interface {
-	TranslateFilterOperator(op *FilterOperator) (DialectValue, error)
-}
-
-type FilterOperatorInboundDialector interface {
-	TranslateIntoFilterOperator(op DialectValue) (*FilterOperator, error)
-}
-
-// ToDialect converts the FilterOperator into a dialect-specific value
-// e.g. r3 => SQL
-func (op *FilterOperator) ToDialect(dialector FilterOperatorOutboundDialector) (DialectValue, error) {
-	return dialector.TranslateFilterOperator(op)
-}
-
-// FromDialect makes up a FilterOperator from an FieldInboundDialector and its DialectValue
-// e.g. JSON => r3
-func (op *FilterOperator) FromDialect(dialector FilterOperatorInboundDialector, inValue DialectValue) error {
-	if op == nil {
-		return fmt.Errorf("FromDialect must be called on a non-nil FilterOperator")
+type (
+	// FilterOperatorOutboundDialector defines a contract for converting a FilterOperatorSpec
+	// to its dialect-specific representation.
+	FilterOperatorOutboundDialector interface {
+		TranslateFilterOperatorSpec(op *FilterOperatorSpec) (DialectValue, error)
 	}
 
-	translated, err := dialector.TranslateIntoFilterOperator(inValue)
+	FilterOperatorInboundDialector interface {
+		TranslateIntoFilterOperatorSpec(op DialectValue) (*FilterOperatorSpec, error)
+	}
+)
+
+// ToDialect converts the FilterOperatorSpec into a dialect-specific value
+// e.g. r3 => SQL.
+func (op *FilterOperatorSpec) ToDialect(dialector FilterOperatorOutboundDialector) (DialectValue, error) {
+	return dialector.TranslateFilterOperatorSpec(op)
+}
+
+// FromDialect makes up a FilterOperatorSpec from an FieldInboundDialector and its DialectValue
+// e.g. JSON => r3.
+func (op *FilterOperatorSpec) FromDialect(dialector FilterOperatorInboundDialector, inValue DialectValue) error {
+	if op == nil {
+		return errors.New("FromDialect must be called on a non-nil FilterOperatorSpec")
+	}
+
+	translated, err := dialector.TranslateIntoFilterOperatorSpec(inValue)
 	if err != nil {
 		return fmt.Errorf("inbound dialector fialed: %w", err)
 	}
@@ -111,22 +126,3 @@ func (op *FilterOperator) FromDialect(dialector FilterOperatorInboundDialector, 
 	*op = *translated
 	return nil
 }
-
-// Note: make it a public interface
-// As probably we'll have something more complex for operators e.g. structs
-// that will hold some more complex options for operators (e.g. case sensitivity, strictness, etc)
-// for now we declare a private interface
-type iFilterOperator interface {
-	// Stringer is needed for debugging purposes, so each filter can be printed.
-	fmt.Stringer
-
-	// ToDialect converts the FilterOperator into its dialect-specific representation.
-	// E.g. r3 => SQL (Where Clause, etc)
-	ToDialect(FilterOperatorOutboundDialector) (DialectValue, error)
-
-	// FromDialect makes up a FilterOperator from an FieldInboundDialector and its DialectValue
-	// e.g. JSON => r3
-	FromDialect(FilterOperatorInboundDialector, DialectValue) error
-}
-
-var _ iFilterOperator = (*FilterOperator)(nil)

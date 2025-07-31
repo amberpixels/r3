@@ -1,12 +1,9 @@
 package r3sql
 
 import (
-	"errors"
-	"fmt"
 	"strings"
 
 	"github.com/amberpixels/k1/quick"
-	"github.com/amberpixels/r3"
 )
 
 // SQLClause represents a r3.Filter that can be converted into SQL Clause (used by gorm, sqlx, squirrel, etc.)
@@ -19,149 +16,30 @@ type SQLClause struct {
 	Args []any
 
 	// Joins is a slice of joins that are required for the clause.
-	Joins []string
+	Joins []SQLColumn
 }
 
+// SQLClauses is a slice of SQLClause.
 type SQLClauses []SQLClause
 
-func (cs SQLClauses) Joins() []string {
-	var joins []string
+// Joins is a combined getter for each SQLClause.Joins
+// It will return duplicates-free list.
+func (cs SQLClauses) Joins() []SQLColumn {
+	var joins []SQLColumn
 	for _, c := range cs {
 		joins = quick.Append(joins, c.Joins...)
 	}
 	return joins
 }
 
-// SQLDialector is a visitor for r3.Filter that converts it to an SQLClause.
-type SQLDialector struct{}
-
-var _ r3.FilterOutboundDialector = (*SQLDialector)(nil)
-
-// TranslateColumnFilter converts a ColumnFilter to an SQLClause, handling both simple and group filters.
-func (sv *SQLDialector) TranslateColumnFilter(cf *r3.ColumnFilter) (r3.DialectValue, error) {
-	// Case 1. A simple filter when Field is set.
-	fieldRaw, err := cf.Field.ToDialect(nil) // TODO sv fixme
-	if err != nil {
-		return nil, err
-	}
-	field, ok := fieldRaw.(ColumnField)
-	if !ok {
-		return nil, fmt.Errorf("unexpected field type: %T", fieldRaw)
-	}
-
-	if field != "" {
-		// Extract join information from the field.
-		joins := extractJoinFromField(field)
-		// Nil value means we need to generate an "IS NULL" or "IS NOT NULL" clause.
-		if cf.Value == nil {
-			if cf.Operator == r3.OperatorEq { //nolint: staticcheck // we care only about these 2 values here
-				clause := fmt.Sprintf("%s IS NULL", cf.Field)
-				return SQLClause{Clause: clause, Args: nil, Joins: joins}, nil
-			} else if cf.Operator == r3.OperatorNe {
-				clause := fmt.Sprintf("%s IS NOT NULL", cf.Field)
-				return SQLClause{Clause: clause, Args: nil, Joins: joins}, nil
-			}
-
-			return nil, fmt.Errorf("unsupported operator %q for nil value", cf.Operator)
-		}
-		// Simple case: Field is set and Value is non-nil.
-		// Use our helper to convert the operator to its dialect string.
-		opDialect, err := cf.Operator.ToDialect(nil) // TODO &SQLOperatorDialector{})
-		if err != nil {
-			return nil, err
-		}
-		sqlClauseOperator, ok := opDialect.(SQLClauseOperator)
-		if !ok {
-			return nil, errors.New("unexpected type returned from SQLClauseOperator conversion")
-		}
-
-		clause := fmt.Sprintf("%s %s ?", cf.Field, sqlClauseOperator)
-		return SQLClause{
-			Clause: clause,
-			Args:   []any{cf.Value},
-			Joins:  joins,
-		}, nil
-	}
-
-	// Case 2. A compound filter (logical group).
-	// We assume that when Field is empty, either And or Or is non-empty.
-	var children r3.Filters
-	logicalOp := "AND"
-	if len(cf.Or) > 0 {
-		children = cf.Or
-		logicalOp = "OR"
-	} else {
-		children = cf.And
-	}
-
-	var conditions []string
-	var args []any
-	var joins []string
-
-	// Process each child filter recursively.
-	for _, child := range children {
-		childFilter, ok := child.(*r3.ColumnFilter)
-		if !ok {
-			return nil, errors.New("unexpected type returned from child filter conversion")
-		}
-		result, err := sv.TranslateColumnFilter(childFilter)
-		if err != nil {
-			return nil, err
-		}
-		childClause, ok := result.(SQLClause)
-		if !ok {
-			return nil, errors.New("unexpected type returned from child filter conversion")
-		}
-		conditions = append(conditions, childClause.Clause)
-		args = append(args, childClause.Args...)
-		joins = quick.Append(joins, childClause.Joins...)
-	}
-
-	// Combine the child conditions with the logical operator.
-	combined := "(" + strings.Join(conditions, " "+logicalOp+" ") + ")"
-	return SQLClause{
-		Clause: combined,
-		Args:   args,
-		Joins:  joins,
-	}, nil
-}
-
-func (sv *SQLDialector) FromFilters(filters r3.Filters) (SQLClauses, error) {
-	if len(filters) == 0 {
-		return nil, nil
-	}
-
-	result := make(SQLClauses, len(filters))
-	for i, f := range filters {
-		clauseRaw, err := f.ToDialect(sv)
-		if err != nil {
-			return nil, fmt.Errorf("sql dialector failed: %w", err)
-		}
-
-		clause, ok := clauseRaw.(SQLClause)
-		if !ok {
-			return nil, errors.New("sql dialector returned unexpected result type")
-		}
-
-		result[i] = clause
-	}
-
-	return result, nil
-}
-
-func FiltersToSQLClauses(filters r3.Filters) (SQLClauses, error) {
-	sv := &SQLDialector{}
-	return sv.FromFilters(filters)
-}
-
 // extractJoinFromField inspects the field name and returns a slice with join information if necessary.
 // For demonstration, assume join information is determined by a prefix separated by a dot.
 // E.g., "user.name" could signal a join to the "user" table.
-func extractJoinFromField(field ColumnField) []string {
+func extractJoinFromField(field SQLColumn) []SQLColumn {
 	// If there is a dot, we assume the portion before the dot indicates a join.
 	parts := strings.Split(string(field), ".")
 	if len(parts) > 1 && parts[0] != "" {
-		return []string{parts[0]}
+		return []SQLColumn{SQLColumn(parts[0])}
 	}
 	return nil
 }

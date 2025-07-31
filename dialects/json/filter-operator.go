@@ -4,14 +4,16 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+
+	"github.com/amberpixels/r3"
 )
 
 var ErrInvalidFilterOperator = errors.New("invalid filter operator")
 
-type FilterOperator int8
+type JSONFilterOperator int8
 
 const (
-	OperatorUnspecified FilterOperator = iota
+	OperatorUnspecified JSONFilterOperator = iota
 	OperatorEq
 	OperatorNe
 	OperatorExists
@@ -32,7 +34,7 @@ const (
 
 // Enum value maps for Operator.
 var (
-	FilterOperatorNames = map[FilterOperator]string{
+	FilterOperatorNames = map[JSONFilterOperator]string{
 		OperatorUnspecified:  "",
 		OperatorEq:           "eq",
 		OperatorNe:           "ne",
@@ -51,7 +53,7 @@ var (
 		OperatorNotLike:      "notlike",
 		OperatorILike:        "ilike",
 	}
-	FilterOperatorValues = map[string]FilterOperator{
+	FilterOperatorValues = map[string]JSONFilterOperator{
 		"":                OperatorUnspecified,
 		"eq":              OperatorEq,
 		"==":              OperatorEq,
@@ -82,12 +84,12 @@ var (
 	}
 )
 
-// String is implemented for debugging purposes, so the FilterOperator is a fmt.Stringer.
-func (op FilterOperator) String() string { return FilterOperatorNames[op] }
+// String is implemented for debugging purposes, so the JSONFilterOperator is a fmt.Stringer.
+func (op JSONFilterOperator) String() string { return FilterOperatorNames[op] }
 
 // UnmarshalJSON implements the json.Unmarshaler interface.
 // It expects the JSON value to be a string representing the operator.
-func (op *FilterOperator) UnmarshalJSON(data []byte) error {
+func (op *JSONFilterOperator) UnmarshalJSON(data []byte) error {
 	str := string(data)
 	str = strings.Trim(str, `"`)
 
@@ -100,11 +102,11 @@ func (op *FilterOperator) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (op FilterOperator) MarshalJSON() ([]byte, error) { return []byte(op.String()), nil }
+func (op JSONFilterOperator) MarshalJSON() ([]byte, error) { return []byte(op.String()), nil }
 
 // UnmarshalText implements the encoding.TextUnmarshaler interface.
 // This is used to decode operator from plain text.
-func (op *FilterOperator) UnmarshalText(text []byte) error {
+func (op *JSONFilterOperator) UnmarshalText(text []byte) error {
 	parsed := FilterOperatorValues[string(text)]
 	if parsed == OperatorUnspecified {
 		return fmt.Errorf("%w: %s", ErrInvalidFilterOperator, string(text))
@@ -116,6 +118,11 @@ func (op *FilterOperator) UnmarshalText(text []byte) error {
 
 // MarshalText implements the encoding.TextMarshaler interface.
 // This is used to encode operator as plain text.
-func (op FilterOperator) MarshalText() ([]byte, error) {
+func (op JSONFilterOperator) MarshalText() ([]byte, error) {
 	return []byte(op.String()), nil
+}
+
+func (op JSONFilterOperator) ToOperatorFilterSpec() (r3.FilterOperatorSpec, error) {
+	// TODO: declare a DICT how fields should be mapped
+	return r3.OperatorEq, nil
 }
