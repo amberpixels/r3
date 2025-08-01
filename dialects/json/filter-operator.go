@@ -122,7 +122,43 @@ func (op JSONFilterOperator) MarshalText() ([]byte, error) {
 	return []byte(op.String()), nil
 }
 
-func (op JSONFilterOperator) ToOperatorFilterSpec() (r3.FilterOperatorSpec, error) {
-	// TODO: declare a DICT how fields should be mapped
-	return r3.OperatorEq, nil
+func (op JSONFilterOperator) ToFilterOperatorSpec() (r3.FilterOperatorSpec, error) {
+	switch op {
+	case OperatorEq:
+		return r3.OperatorEq, nil
+	case OperatorNe:
+		return r3.OperatorNe, nil
+	case OperatorExists:
+		return r3.OperatorExists, nil
+	case OperatorGt:
+		return r3.OperatorGt, nil
+	case OperatorGte:
+		return r3.OperatorGte, nil
+	case OperatorLt:
+		return r3.OperatorLt, nil
+	case OperatorLte:
+		return r3.OperatorLte, nil
+	case OperatorBetween:
+		return r3.OperatorBetween, nil
+	case OperatorBetweenEx:
+		return r3.OperatorBetweenEx, nil
+	case OperatorBetweenExInc:
+		return r3.OperatorBetweenExInc, nil
+	case OperatorBetweenIncEx:
+		return r3.OperatorBetweenIncEx, nil
+	case OperatorIn:
+		return r3.OperatorIn, nil
+	case OperatorNotIn:
+		return r3.OperatorNotIn, nil
+	case OperatorLike:
+		return r3.OperatorLike, nil
+	case OperatorNotLike:
+		return r3.OperatorNotLike, nil
+	case OperatorILike:
+		return r3.OperatorILike, nil
+	case OperatorUnspecified:
+		fallthrough
+	default:
+		return r3.OperatorUnspecified, fmt.Errorf("unsupported JSON filter operator: %s", op)
+	}
 }

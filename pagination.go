@@ -52,8 +52,12 @@ func (p Pagination) Clone() Pagination { return Pagination{Limit: p.Limit, Offse
 func (p Pagination) MergeWith(other Pagination) Pagination {
 	result := p.Clone()
 
-	p.Limit = other.Limit
-	p.Offset = other.Offset
+	if other.Limit.Some() {
+		result.Limit = other.Limit
+	}
+	if other.Offset.Some() {
+		result.Offset = other.Offset
+	}
 
 	return result
 }

@@ -120,7 +120,7 @@ func (op *FilterOperatorSpec) FromDialect(dialector FilterOperatorInboundDialect
 
 	translated, err := dialector.TranslateIntoFilterOperatorSpec(inValue)
 	if err != nil {
-		return fmt.Errorf("inbound dialector fialed: %w", err)
+		return fmt.Errorf("inbound dialector failed: %w", err)
 	}
 
 	*op = *translated

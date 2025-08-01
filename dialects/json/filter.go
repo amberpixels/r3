@@ -65,7 +65,7 @@ func (jf *JSONFilter) ToFilterSpec() (*r3.FilterSpec, error) {
 		return nil, err
 	}
 
-	opSpec, err := jf.Op.ToOperatorFilterSpec()
+	opSpec, err := jf.Op.ToFilterOperatorSpec()
 	if err != nil {
 		return nil, err
 	}

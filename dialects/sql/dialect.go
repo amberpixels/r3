@@ -57,7 +57,7 @@ func (sv *SQLDialector) TranslateFilterSpec(cf *r3.FilterSpec) (r3.DialectValue,
 		}
 		sqlClauseOperator, ok := opDialect.(SQLClauseOperator)
 		if !ok {
-			return nil, errors.New("unexpected type returned from SQLClauseOperator conversion")
+			return nil, fmt.Errorf("unexpected operator dialect type: %T, expected SQLClauseOperator", opDialect)
 		}
 
 		clause := fmt.Sprintf("%s %s ?", cf.Field, sqlClauseOperator)
@@ -87,15 +87,18 @@ func (sv *SQLDialector) TranslateFilterSpec(cf *r3.FilterSpec) (r3.DialectValue,
 	for _, child := range children {
 		childFilter, ok := child.(*r3.FilterSpec)
 		if !ok {
-			return nil, errors.New("unexpected type returned from child filter conversion")
+			return nil, fmt.Errorf("unexpected child filter type: %T, expected *r3.FilterSpec", child)
 		}
 		result, err := sv.TranslateFilterSpec(childFilter)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("failed to translate child filter: %w", err)
 		}
 		childClause, ok := result.(SQLClause)
 		if !ok {
-			return nil, errors.New("unexpected type returned from child filter conversion")
+			return nil, fmt.Errorf(
+				"unexpected result type from child filter translation: %T, expected SQLClause",
+				result,
+			)
 		}
 		conditions = append(conditions, childClause.Clause)
 		args = append(args, childClause.Args...)

@@ -79,7 +79,7 @@ func (f *FieldSpec) FromDialect(dialector FieldInboundDialector, inValue Dialect
 
 	dialected, err := dialector.TranslateIntoFieldSpec(inValue)
 	if err != nil {
-		return fmt.Errorf("inbound dialector fialed: %w", err)
+		return fmt.Errorf("inbound dialector failed: %w", err)
 	}
 
 	*f = *dialected

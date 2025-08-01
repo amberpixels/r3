@@ -4,7 +4,6 @@ import (
 	"fmt"
 
 	"github.com/amberpixels/r3"
-	"github.com/amberpixels/r3/internal/notimplemented"
 )
 
 type JSONInboundDialector struct{}
@@ -39,9 +38,26 @@ func (d *JSONInboundDialector) TranslateIntoFilterSpec(dialectValue r3.DialectVa
 	return inboundFilter.ToFilterSpec()
 }
 
-// TranslateIntoFilterOperatorSpec converts a JSON-dialect filter operator into a JSONFilterOperator.
+// TranslateIntoFilterOperatorSpec converts a JSON-dialect filter operator into a FilterOperatorSpec.
 func (d *JSONInboundDialector) TranslateIntoFilterOperatorSpec(op r3.DialectValue) (*r3.FilterOperatorSpec, error) {
-	// TODO: implement me!
-	_ = op
-	return nil, notimplemented.Err
+	jsonOp, ok := op.(JSONFilterOperator)
+	if !ok {
+		if ptr, ok := op.(*JSONFilterOperator); ok {
+			jsonOp = *ptr
+		} else if str, ok := op.(string); ok {
+			// Handle string input by parsing it
+			if err := jsonOp.UnmarshalText([]byte(str)); err != nil {
+				return nil, newError(fmt.Errorf("invalid filter operator string: %s", str))
+			}
+		} else {
+			return nil, newError(fmt.Errorf("invalid filter operator type: %T", op))
+		}
+	}
+
+	r3Op, err := jsonOp.ToFilterOperatorSpec()
+	if err != nil {
+		return nil, newError(fmt.Errorf("failed to convert JSON operator to r3 operator: %w", err))
+	}
+
+	return &r3Op, nil
 }

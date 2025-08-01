@@ -64,7 +64,7 @@ func (f *FilterSpec) FromDialect(dialector FilterInboundDialector, inValue Diale
 
 	translated, err := dialector.TranslateIntoFilterSpec(inValue)
 	if err != nil {
-		return fmt.Errorf("inbound dialector fialed: %w", err)
+		return fmt.Errorf("inbound dialector failed: %w", err)
 	}
 
 	*f = *translated
