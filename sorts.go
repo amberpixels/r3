@@ -5,6 +5,7 @@ import (
 	"strings"
 )
 
+// Sort defines the sort criteria and direction.
 type Sort interface {
 	fmt.Stringer
 

@@ -94,7 +94,7 @@ func TestGormRepository(t *testing.T) {
 		result, total, err := cityRepo.List(ctx, r3.ListParams{
 			GetParams: r3.GetParams{
 				Preloads: r3.Preloads{
-					r3.NewEntityPreload("Translations"),
+					r3.NewPreloadSpec("Translations"),
 				},
 			},
 		})

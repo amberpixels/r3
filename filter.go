@@ -15,7 +15,6 @@ type Filter interface {
 	ToDialect(FilterOutboundDialector) (DialectValue, error)
 
 	// FromDialect makes up the Filter (JSON=>r3) from an FieldInboundDialector and its DialectValue
-	// e.g. JSON => r3
 	FromDialect(FilterInboundDialector, DialectValue) error
 }
 

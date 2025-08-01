@@ -18,20 +18,21 @@ func (preloads Preloads) MergeWith(other Preloads) Preloads { return mergeWith(p
 // Note: it's not super-performant because of types and go-generics. Refactor if needed.
 func (preloads *Preloads) Dedupe() {
 	v := []Preload(*preloads)
-	dedupe[Preload](&v)
+	dedupe(&v)
 	*preloads = v
 }
 
-// EntityPreload means a simple Table/Collection preload.
-type EntityPreload struct {
+// PreloadSpec means a simple possible preload (name of a table/collection)
+type PreloadSpec struct {
 	Name string
 }
 
-func (t *EntityPreload) GetName() string { return t.Name }
+func (t *PreloadSpec) GetName() string { return t.Name }
 
-func (t *EntityPreload) GetNestedPreloads() Preloads {
+func (t *PreloadSpec) GetNestedPreloads() Preloads {
 	notimplemented.Panic("GetNestedPreloads will be implemented in future versions")
-	return nil // unreachable but required by compiler
+	return nil
 }
 
-func NewEntityPreload(name string) *EntityPreload { return &EntityPreload{Name: name} }
+// NewPreloadSpec creates a PreloadSpec.
+func NewPreloadSpec(name string) *PreloadSpec { return &PreloadSpec{Name: name} }

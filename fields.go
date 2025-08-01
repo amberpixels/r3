@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-// TODO(?): Thought for future imporovements:
+// TODO(future): Thought for future imporovements:
 // Field may be a more complex thing:
 // We should distinguish between object field and leaf field (e.g. card.image vs card.image.url)
 // (very optional) We should support computed field e.g. (card.image.url(thumbnail=X)))

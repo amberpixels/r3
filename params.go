@@ -9,6 +9,8 @@ type ListParams struct {
 	Filters    Filters    `json:"filters"`
 	Sorts      Sorts      `json:"sorts"`
 	Pagination Pagination `json:"pagination"`
+
+	// TODO(future): omit counting if specified (optimization)
 }
 
 func NewListParams() ListParams {
@@ -27,8 +29,7 @@ func DefaultListParams() ListParams {
 // Clone returns a copy of the ListParams.
 // It performs deep copying of slices where possible to avoid shared references.
 func (lp ListParams) Clone() ListParams {
-	// TODO(p2): real deep clone
-	clone := lp
+	clone := lp // TODO(issue#11): real deep clone
 	return clone
 }
 
@@ -53,13 +54,11 @@ type GetParams struct {
 	IncludeTrashed maybe.Bool `json:"include_trashed,omitzero"` // Include trashed (soft-deleted) records.
 }
 
-func NewGetParams() GetParams {
-	return GetParams{}
-}
+// NewGetParams returns empty GetParams
+func NewGetParams() GetParams { return GetParams{} }
 
-func DefaultGetParams() GetParams {
-	return NewGetParams() // same as new
-}
+// DefaultGetParams returns detault set of GetParams. (Same as New for now)
+func DefaultGetParams() GetParams { return NewGetParams() }
 
 // MergeWith merges given GetParams with some other GetParams.
 func (gp GetParams) MergeWith(other GetParams) GetParams {
@@ -77,7 +76,6 @@ func (gp GetParams) MergeWith(other GetParams) GetParams {
 
 // Clone clones GetParams.
 func (gp GetParams) Clone() GetParams {
-	// TODO(p2): real deep clone
-	var clone = gp
+	var clone = gp // TODO(issue#11): real deep clone
 	return clone
 }
