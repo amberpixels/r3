@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/amberpixels/r3"
+	r3sql "github.com/amberpixels/r3/dialects/sql"
 )
 
 func TestSortSpec_DialectString(t *testing.T) {
@@ -56,11 +57,25 @@ func TestSortSpec_DialectString(t *testing.T) {
 		},
 	}
 
+	sqlDialector := &r3sql.SQLDialector{}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := tt.sort.DialectString()
+			dialectValue, err := tt.sort.ToDialect(sqlDialector)
+			if err != nil {
+				t.Errorf("ToDialect() error = %v", err)
+				return
+			}
+
+			sqlSort, ok := dialectValue.(r3sql.SQLSort)
+			if !ok {
+				t.Errorf("ToDialect() returned %T, expected r3sql.SQLSort", dialectValue)
+				return
+			}
+
+			result := sqlSort.String()
 			if result != tt.expected {
-				t.Errorf("DialectString() = %v, want %v", result, tt.expected)
+				t.Errorf("ToDialect().String() = %v, want %v", result, tt.expected)
 			}
 		})
 	}
@@ -99,6 +114,8 @@ func TestNewSorts(t *testing.T) {
 		},
 	}
 
+	sqlDialector := &r3sql.SQLDialector{}
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sorts, err := r3.NewSorts(tt.input...)
@@ -113,9 +130,21 @@ func TestNewSorts(t *testing.T) {
 			}
 
 			for i, sort := range sorts {
-				result := sort.DialectString()
+				dialectValue, err := sort.ToDialect(sqlDialector)
+				if err != nil {
+					t.Errorf("sorts[%d].ToDialect() error = %v", i, err)
+					return
+				}
+
+				sqlSort, ok := dialectValue.(r3sql.SQLSort)
+				if !ok {
+					t.Errorf("sorts[%d].ToDialect() returned %T, expected r3sql.SQLSort", i, dialectValue)
+					return
+				}
+
+				result := sqlSort.String()
 				if result != tt.expected[i] {
-					t.Errorf("sorts[%d].DialectString() = %v, want %v", i, result, tt.expected[i])
+					t.Errorf("sorts[%d].ToDialect().String() = %v, want %v", i, result, tt.expected[i])
 				}
 			}
 		})

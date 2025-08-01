@@ -54,10 +54,10 @@ type GetParams struct {
 	IncludeTrashed maybe.Bool `json:"include_trashed,omitzero"` // Include trashed (soft-deleted) records.
 }
 
-// NewGetParams returns empty GetParams
+// NewGetParams returns empty GetParams.
 func NewGetParams() GetParams { return GetParams{} }
 
-// DefaultGetParams returns detault set of GetParams. (Same as New for now)
+// DefaultGetParams returns detault set of GetParams. (Same as New for now).
 func DefaultGetParams() GetParams { return NewGetParams() }
 
 // MergeWith merges given GetParams with some other GetParams.

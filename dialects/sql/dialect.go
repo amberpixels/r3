@@ -19,10 +19,12 @@ var (
 	_ r3.FieldOutboundDialector          = (*SQLDialector)(nil)
 	_ r3.FilterOutboundDialector         = (*SQLDialector)(nil)
 	_ r3.FilterOperatorOutboundDialector = (*SQLDialector)(nil)
+	_ r3.SortOutboundDialector           = (*SQLDialector)(nil)
 
 	_ r3.FieldInboundDialector          = (*SQLInboundDialector)(nil)
 	_ r3.FilterInboundDialector         = (*SQLInboundDialector)(nil)
 	_ r3.FilterOperatorInboundDialector = (*SQLInboundDialector)(nil)
+	_ r3.SortInboundDialector           = (*SQLInboundDialector)(nil)
 )
 
 // ToSQLColumn converts a FieldSpec to an SQLColumn.
@@ -258,4 +260,67 @@ func sqlToR3Operator(op SQLClauseOperator) (r3.FilterOperatorSpec, error) {
 	default:
 		return r3.OperatorUnspecified, fmt.Errorf("unsupported SQL operator: %s", op)
 	}
+}
+
+// TranslateSortSpec converts a SortSpec to an SQLSort.
+func (sv *SQLDialector) TranslateSortSpec(s *r3.SortSpec) (r3.DialectValue, error) {
+	if s == nil {
+		return nil, errors.New("sort spec cannot be nil")
+	}
+
+	// Convert field to SQL column
+	fieldValue, err := s.Column.ToDialect(sv)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert field to SQL: %w", err)
+	}
+
+	sqlCol, ok := fieldValue.(SQLColumn)
+	if !ok {
+		return nil, fmt.Errorf("expected SQLColumn from field conversion, got %T", fieldValue)
+	}
+
+	// Build SQL sort string
+	sortStr := sqlCol.String() + " " + s.Direction.DialectString()
+
+	if s.NullsPosition != r3.NullsPositionNotSpecified {
+		sortStr += " " + s.NullsPosition.DialectString()
+	}
+
+	return SQLSort(sortStr), nil
+}
+
+// TranslateIntoSortSpec converts an SQL sort to a SortSpec.
+func (sv *SQLInboundDialector) TranslateIntoSortSpec(sqlValue r3.DialectValue) (*r3.SortSpec, error) {
+	sqlSort, ok := sqlValue.(SQLSort)
+	if !ok {
+		if ptr, ok := sqlValue.(*SQLSort); ok {
+			sqlSort = *ptr
+		} else if str, ok := sqlValue.(string); ok {
+			sqlSort = SQLSort(str)
+		} else {
+			return nil, fmt.Errorf("invalid SQL sort type: %T, expected SQLSort or string", sqlValue)
+		}
+	}
+
+	// Parse the SQL sort string (this is a simplified implementation)
+	// For a complete implementation, we'd need proper SQL parsing
+	sortStr := string(sqlSort)
+
+	// Use the existing NewSorts parsing logic by wrapping in a slice
+	sorts, err := r3.NewSorts(sortStr)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse SQL sort: %w", err)
+	}
+
+	if len(sorts) == 0 {
+		return nil, fmt.Errorf("no sorts parsed from SQL sort string: %s", sortStr)
+	}
+
+	// Return the first sort (assuming single sort)
+	sortSpec, ok := sorts[0].(*r3.SortSpec)
+	if !ok {
+		return nil, fmt.Errorf("expected SortSpec from parsing, got %T", sorts[0])
+	}
+
+	return sortSpec, nil
 }

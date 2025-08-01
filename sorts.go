@@ -1,6 +1,7 @@
 package r3
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 )
@@ -9,10 +10,27 @@ import (
 type Sort interface {
 	fmt.Stringer
 
-	DialectString() string
+	// ToDialect converts the Sort (r3=>SQL) into its dialect-specific representation.
+	ToDialect(SortOutboundDialector) (DialectValue, error)
+
+	// FromDialect makes up the Sort (JSON=>r3) from a SortInboundDialector and its DialectValue
+	FromDialect(SortInboundDialector, DialectValue) error
+
 	GetDirection() SortDirection
 	GetCriteria() string
 }
+
+type (
+	// SortOutboundDialector is a generic dialector (visitor) interface for conversion.
+	SortOutboundDialector interface {
+		TranslateSortSpec(s *SortSpec) (DialectValue, error)
+	}
+
+	// SortInboundDialector is a generic inbound dialector (visitor) interface for conversion.
+	SortInboundDialector interface {
+		TranslateIntoSortSpec(s DialectValue) (*SortSpec, error)
+	}
+)
 
 // SortSpec represents a single sort criteria.
 type SortSpec struct {
@@ -22,18 +40,33 @@ type SortSpec struct {
 	NullsPosition SortNullsPosition // First | Last | Unspecified
 }
 
-// DialectString returns a SQL-ready string representation of ColumnSort.
-func (s *SortSpec) DialectString() string {
-	str := s.Column.String() + " " + s.Direction.DialectString()
-
-	if s.NullsPosition != NullsPositionNotSpecified {
-		str += " " + s.NullsPosition.DialectString()
-	}
-
-	return str
+// ToDialect converts the Sort into its dialect-specific representation.
+func (s *SortSpec) ToDialect(dialector SortOutboundDialector) (DialectValue, error) {
+	return dialector.TranslateSortSpec(s)
 }
 
-func (s *SortSpec) String() string { return s.DialectString() }
+func (s *SortSpec) FromDialect(dialector SortInboundDialector, inValue DialectValue) error {
+	if s == nil {
+		return errors.New("FromDialect must be called on a non-nil SortSpec")
+	}
+
+	translated, err := dialector.TranslateIntoSortSpec(inValue)
+	if err != nil {
+		return fmt.Errorf("inbound dialector failed: %w", err)
+	}
+
+	*s = *translated
+	return nil
+}
+
+func (s *SortSpec) String() string {
+	// For debugging - use a simple format
+	str := s.Column.String() + " " + s.Direction.String()
+	if s.NullsPosition != NullsPositionNotSpecified {
+		str += " " + s.NullsPosition.String()
+	}
+	return str
+}
 
 func (s *SortSpec) GetDirection() SortDirection { return s.Direction }
 

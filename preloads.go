@@ -22,7 +22,7 @@ func (preloads *Preloads) Dedupe() {
 	*preloads = v
 }
 
-// PreloadSpec means a simple possible preload (name of a table/collection)
+// PreloadSpec means a simple possible preload (name of a table/collection).
 type PreloadSpec struct {
 	Name string
 }
