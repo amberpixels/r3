@@ -23,12 +23,12 @@ type SortSpec struct {
 
 // DialectString returns a SQL-ready string representation of ColumnSort.
 func (s *SortSpec) DialectString() string {
-	// str := s.Column.DialectString() + " " + s.Direction.DialectString()
-	// if s.NullsPosition != NullsPositionNotSpecified {
-	//	str += " " + s.NullsPosition.DialectString()
-	// }
+	str := s.Column.String() + " " + s.Direction.DialectString()
 
-	str := "created_at ASC" // TODO
+	if s.NullsPosition != NullsPositionNotSpecified {
+		str += " " + s.NullsPosition.DialectString()
+	}
+
 	return str
 }
 
@@ -75,6 +75,8 @@ func NewSorts(sortingOrder ...string) (Sorts, error) {
 	sorts := make(Sorts, 0, len(sortingOrder))
 
 	for _, orderRawString := range sortingOrder {
+		orderRawString = strings.TrimSpace(orderRawString)
+
 		// if having no spaces means it's just a field name
 		// use whole string as the field name then.
 		if !strings.Contains(orderRawString, " ") {
