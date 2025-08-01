@@ -2,8 +2,8 @@ package r3
 
 // Preload defines a single preload rule.
 type Preload interface {
-	GetName() string            // The name of the related entity, e.g., "Author".
-	GetNestedPreloads() Preload // Nested preloads, e.g., "Author.Books".
+	GetName() string             // The name of the related entity, e.g., "Author".
+	GetNestedPreloads() Preloads // Nested preloads, e.g., "Author.Books".
 }
 
 // Preloads is a slice of Preload-s.
@@ -27,6 +27,6 @@ type EntityPreload struct {
 
 func (t *EntityPreload) GetName() string { return t.Name }
 
-func (t *EntityPreload) GetNestedPreloads() Preload { return nil }
+func (t *EntityPreload) GetNestedPreloads() Preloads { return nil /* TODO(future) */ }
 
 func NewEntityPreload(name string) *EntityPreload { return &EntityPreload{Name: name} }
