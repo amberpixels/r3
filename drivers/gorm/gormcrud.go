@@ -2,7 +2,6 @@ package r3gorm
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 
@@ -178,27 +177,6 @@ func (r *GormCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	if err := r.db.WithContext(ctx).Save(&entity).Error; err != nil {
 		return entity, err
 	}
-	return entity, nil
-}
-
-func (r *GormCRUD[T, ID]) Patch(ctx context.Context, model T, fields r3.Fields) (T, error) {
-	var entity T
-
-	// Validate the fields list (should not be empty)
-	if len(fields) == 0 {
-		return entity, errors.New("no fields specified for update")
-	}
-
-	// Perform partial update using GORM's `Select` to specify fields
-	if err := r.db.WithContext(ctx).
-		Model(&model).
-		// Select(fields.Strings()). TODO(!)
-		Updates(&model).Error; err != nil {
-		return entity, err
-	}
-
-	// TODO: fetch again
-
 	return entity, nil
 }
 

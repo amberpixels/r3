@@ -21,4 +21,7 @@ type CRUD[T any, ID comparable] interface {
 	// Delete removes a record by its ID.
 	// It can use soft delete (if it's turned on the repository level)
 	Delete(context.Context, ID) error
+
+	// TODO(future): Add Patch method for partial updates
+	// Patch(context.Context, T, Fields) (T, error)
 }
