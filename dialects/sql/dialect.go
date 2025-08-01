@@ -12,10 +12,17 @@ import (
 // SQLDialector is an outbound r3 dialector for SQL.
 type SQLDialector struct{}
 
+// SQLInboundDialector is an inbound dialector for SQL to r3 conversion.
+type SQLInboundDialector struct{}
+
 var (
 	_ r3.FieldOutboundDialector          = (*SQLDialector)(nil)
 	_ r3.FilterOutboundDialector         = (*SQLDialector)(nil)
 	_ r3.FilterOperatorOutboundDialector = (*SQLDialector)(nil)
+
+	_ r3.FieldInboundDialector          = (*SQLInboundDialector)(nil)
+	_ r3.FilterInboundDialector         = (*SQLInboundDialector)(nil)
+	_ r3.FilterOperatorInboundDialector = (*SQLInboundDialector)(nil)
 )
 
 // ToSQLColumn converts a FieldSpec to an SQLColumn.
@@ -155,5 +162,100 @@ func (sv *SQLDialector) TranslateFilterOperatorSpec(op *r3.FilterOperatorSpec) (
 		fallthrough
 	default:
 		return nil, fmt.Errorf("unsupported filter operator: %s", op)
+	}
+}
+
+// SQLInboundDialector methods - convert SQL dialect values to r3 types
+
+// TranslateIntoFieldSpec converts an SQL column to a FieldSpec.
+func (sv *SQLInboundDialector) TranslateIntoFieldSpec(sqlValue r3.DialectValue) (*r3.FieldSpec, error) {
+	sqlCol, ok := sqlValue.(SQLColumn)
+	if !ok {
+		if ptr, ok := sqlValue.(*SQLColumn); ok {
+			sqlCol = *ptr
+		} else if str, ok := sqlValue.(string); ok {
+			sqlCol = SQLColumn(str)
+		} else {
+			return nil, fmt.Errorf("invalid SQL field type: %T, expected SQLColumn or string", sqlValue)
+		}
+	}
+
+	fieldSpec := r3.NewFieldSpec(sqlCol.String())
+	return fieldSpec, nil
+}
+
+// TranslateIntoFilterSpec converts an SQL clause to a FilterSpec.
+func (sv *SQLInboundDialector) TranslateIntoFilterSpec(sqlValue r3.DialectValue) (*r3.FilterSpec, error) {
+	_, ok := sqlValue.(SQLClause)
+	if !ok {
+		if _, ok := sqlValue.(*SQLClause); !ok {
+			return nil, fmt.Errorf("invalid SQL filter type: %T, expected SQLClause", sqlValue)
+		}
+	}
+
+	// Note: Converting from SQL clause back to FilterSpec is complex because
+	// SQL clauses can be arbitrary strings. This is a simplified implementation
+	// that handles basic cases. For full reverse conversion, a SQL parser would be needed.
+
+	// For now, create a basic filter that represents the SQL clause
+	// This is primarily useful for debugging/logging purposes
+	filterSpec := &r3.FilterSpec{
+		// We can't easily extract field/operator/value from arbitrary SQL
+		// This would require a SQL parser for full implementation
+	}
+
+	return filterSpec, errors.New("SQL to FilterSpec conversion not fully implemented - requires SQL parsing")
+}
+
+// TranslateIntoFilterOperatorSpec converts an SQL operator to a FilterOperatorSpec.
+func (sv *SQLInboundDialector) TranslateIntoFilterOperatorSpec(
+	sqlValue r3.DialectValue,
+) (*r3.FilterOperatorSpec, error) {
+	sqlOp, ok := sqlValue.(SQLClauseOperator)
+	if !ok {
+		if ptr, ok := sqlValue.(*SQLClauseOperator); ok {
+			sqlOp = *ptr
+		} else if str, ok := sqlValue.(string); ok {
+			sqlOp = SQLClauseOperator(str)
+		} else {
+			return nil, fmt.Errorf("invalid SQL operator type: %T, expected SQLClauseOperator or string", sqlValue)
+		}
+	}
+
+	r3Op, err := sqlToR3Operator(sqlOp)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert SQL operator to r3 operator: %w", err)
+	}
+
+	return &r3Op, nil
+}
+
+// Helper function to convert SQL operators to r3 operators.
+func sqlToR3Operator(op SQLClauseOperator) (r3.FilterOperatorSpec, error) {
+	switch op {
+	case SQLClauseOperatorEq:
+		return r3.OperatorEq, nil
+	case SQLClauseOperatorNe:
+		return r3.OperatorNe, nil
+	case SQLClauseOperatorGt:
+		return r3.OperatorGt, nil
+	case SQLClauseOperatorGte:
+		return r3.OperatorGte, nil
+	case SQLClauseOperatorLt:
+		return r3.OperatorLt, nil
+	case SQLClauseOperatorLte:
+		return r3.OperatorLte, nil
+	case SQLClauseOperatorLike:
+		return r3.OperatorLike, nil
+	case SQLClauseOperatorNotLike:
+		return r3.OperatorNotLike, nil
+	case SQLClauseOperatorILike:
+		return r3.OperatorILike, nil
+	case SQLClauseOperatorIn:
+		return r3.OperatorIn, nil
+	case SQLClauseOperatorNotIn:
+		return r3.OperatorNotIn, nil
+	default:
+		return r3.OperatorUnspecified, fmt.Errorf("unsupported SQL operator: %s", op)
 	}
 }
