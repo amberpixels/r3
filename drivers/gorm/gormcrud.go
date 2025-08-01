@@ -158,7 +158,9 @@ func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, paramsArg ...r3.GetPar
 	// Apply preloads
 	query := r.db.WithContext(ctx)
 	for _, preload := range params.Preloads {
-		query = query.Preload(preload.GetName(), preload.GetNestedPreloads())
+		// For now, only use simple preloads - nested preloads are not implemented yet
+		query = query.Preload(preload.GetName())
+		// TODO(future): Handle nested preloads when GetNestedPreloads() is implemented
 	}
 
 	// Fetch the record

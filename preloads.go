@@ -1,5 +1,7 @@
 package r3
 
+import "github.com/amberpixels/r3/internal/notimplemented"
+
 // Preload defines a single preload rule.
 type Preload interface {
 	GetName() string             // The name of the related entity, e.g., "Author".
@@ -27,6 +29,9 @@ type EntityPreload struct {
 
 func (t *EntityPreload) GetName() string { return t.Name }
 
-func (t *EntityPreload) GetNestedPreloads() Preloads { return nil /* TODO(future) */ }
+func (t *EntityPreload) GetNestedPreloads() Preloads {
+	notimplemented.Panic("GetNestedPreloads will be implemented in future versions")
+	return nil // unreachable but required by compiler
+}
 
 func NewEntityPreload(name string) *EntityPreload { return &EntityPreload{Name: name} }
