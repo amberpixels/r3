@@ -102,7 +102,9 @@ func (op *JSONFilterOperator) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-func (op JSONFilterOperator) MarshalJSON() ([]byte, error) { return []byte(op.String()), nil }
+func (op JSONFilterOperator) MarshalJSON() ([]byte, error) {
+	return []byte(`"` + op.String() + `"`), nil
+}
 
 // UnmarshalText implements the encoding.TextUnmarshaler interface.
 // This is used to decode operator from plain text.

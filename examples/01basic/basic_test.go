@@ -38,5 +38,15 @@ func ExampleJSONFilters() {
 		fmt.Println("   -", clause.Joins)
 	}
 
-	//Output: [{"JSONField":"country_name","Operator":1,"Value":"United States","And":[],"Or":[]} {"JSONField":"popularity","Operator":4,"Value":50,"And":[],"Or":[]}]
+	// Output: [{"f":"\"Country\".name","op":"eq","v":"United States"},{"f":"popularity","op":"gt","v":50}]
+	// [{"Field":"\"Country\".name","Operator":1,"Value":"United States","And":[],"Or":[]} {"Field":"popularity","Operator":4,"Value":50,"And":[],"Or":[]}]
+	// <nil>
+	// CLAUSE ...  0
+	//    - "Country".name = ?
+	//    - [United States]
+	//    - ["Country"]
+	// CLAUSE ...  1
+	//    - popularity > ?
+	//    - [50]
+	//    - []
 }

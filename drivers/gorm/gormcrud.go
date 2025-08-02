@@ -56,13 +56,13 @@ func (r *GormCRUD[T, ID]) SetDefaultGetParams(getParams r3.GetParams) {
 
 func (r *GormCRUD[T, ID]) getDefaultListParams() r3.ListParams {
 	r.defaultsMu.RLock()
-	defer r.defaultsMu.Unlock()
+	defer r.defaultsMu.RUnlock()
 	return r.defaults.ListParams
 }
 
 func (r *GormCRUD[T, ID]) getDefaultGetParams() r3.GetParams {
 	r.defaultsMu.RLock()
-	defer r.defaultsMu.Unlock()
+	defer r.defaultsMu.RUnlock()
 	return r.defaults.GetParams
 }
 

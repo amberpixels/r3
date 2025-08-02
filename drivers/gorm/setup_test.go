@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"os"
 	"time"
 
 	"github.com/testcontainers/testcontainers-go"
@@ -12,6 +13,32 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 )
+
+// isDockerAvailable checks if Docker is available without panicking.
+func isDockerAvailable() bool {
+	defer func() {
+		// Catch any panic from testcontainers
+		recover()
+	}()
+
+	// For OrbStack users, ensure DOCKER_HOST is set correctly
+	if os.Getenv("DOCKER_HOST") == "" {
+		// Try OrbStack socket path first
+		orbstackSocket := "unix:///Users/" + os.Getenv("USER") + "/.orbstack/run/docker.sock"
+		os.Setenv("DOCKER_HOST", orbstackSocket)
+	}
+
+	ctx := context.Background()
+	client, err := testcontainers.NewDockerClientWithOpts(ctx)
+	if err != nil {
+		return false
+	}
+	defer client.Close()
+
+	// Try to ping Docker
+	_, err = client.Ping(ctx)
+	return err == nil
+}
 
 func setupPostgresContainer() (testcontainers.Container, *gorm.DB, error) {
 	ctx := context.Background()
