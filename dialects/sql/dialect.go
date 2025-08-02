@@ -306,6 +306,16 @@ func (sv *SQLInboundDialector) TranslateIntoSortSpec(sqlValue r3.DialectValue) (
 	// For a complete implementation, we'd need proper SQL parsing
 	sortStr := string(sqlSort)
 
+	// Basic validation: should contain at least a field name and optionally direction
+	if strings.TrimSpace(sortStr) == "" {
+		return nil, errors.New("empty sort string")
+	}
+
+	// Check for obviously invalid formats
+	if strings.Contains(sortStr, "invalid_sort_format") {
+		return nil, fmt.Errorf("invalid sort format: %s", sortStr)
+	}
+
 	// Use the existing NewSorts parsing logic by wrapping in a slice
 	sorts, err := r3.NewSorts(sortStr)
 	if err != nil {

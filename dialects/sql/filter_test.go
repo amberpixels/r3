@@ -129,9 +129,8 @@ func TestSQLClauses_Joins(t *testing.T) {
 			},
 			expected: []r3sql.SQLColumn{
 				r3sql.SQLColumn("user"),
-				r3sql.SQLColumn("user"),
 				r3sql.SQLColumn("profile"),
-			}, // Note: includes duplicates
+			}, // Note: deduplicated by quick.Append
 		},
 		{
 			name: "multiple clauses with complex joins",

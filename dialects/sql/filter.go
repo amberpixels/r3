@@ -29,6 +29,9 @@ func (cs SQLClauses) Joins() []SQLColumn {
 	for _, c := range cs {
 		joins = quick.Append(joins, c.Joins...)
 	}
+	if joins == nil {
+		return []SQLColumn{}
+	}
 	return joins
 }
 

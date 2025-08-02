@@ -1,6 +1,7 @@
 package r3json_test
 
 import (
+	"fmt"
 	"testing"
 
 	r3json "github.com/amberpixels/r3/dialects/json"
@@ -263,7 +264,8 @@ func TestJSONFiltersToFilters(t *testing.T) {
 				for i, expectedOp := range expectedOperators {
 					spec := result[i].(*r3.FilterSpec)
 					assert.Equal(t, expectedOp, spec.Operator, "Operator mismatch at index %d", i)
-					assert.Equal(t, "f"+string(rune('1'+i)), spec.Field.String(), "Field mismatch at index %d", i)
+					expectedField := fmt.Sprintf("f%d", i+1)
+					assert.Equal(t, expectedField, spec.Field.String(), "Field mismatch at index %d", i)
 				}
 			},
 		},

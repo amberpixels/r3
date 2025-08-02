@@ -524,9 +524,8 @@ func TestFiltersToSQLClauses_CombinedJoins(t *testing.T) {
 			expectedLen: 3,
 			validate: func(t *testing.T, result r3sql.SQLClauses) {
 				allJoins := result.Joins()
-				// Should include duplicates from the implementation
+				// Should be deduplicated by quick.Append
 				expectedJoins := []r3sql.SQLColumn{
-					r3sql.SQLColumn("user"),
 					r3sql.SQLColumn("user"),
 					r3sql.SQLColumn("profile"),
 				}

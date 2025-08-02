@@ -44,6 +44,33 @@ func (jfs JSONFilters) String() string {
 	return string(jj)
 }
 
+// MarshalJSON implements custom JSON marshaling to handle nil values correctly.
+func (jf *JSONFilter) MarshalJSON() ([]byte, error) {
+	type alias JSONFilter
+
+	// If this is an AND/OR group filter, use default marshaling
+	if len(jf.And) > 0 || len(jf.Or) > 0 {
+		return json.Marshal((*alias)(jf))
+	}
+
+	// For simple filters, create a map to handle nil values explicitly
+	result := make(map[string]any)
+
+	if jf.Field != "" {
+		result["f"] = jf.Field
+	}
+	if jf.Op != OperatorUnspecified {
+		result["op"] = jf.Op
+	}
+
+	// Always include "v" field for simple filters, even if nil
+	if jf.Field != "" && jf.Op != OperatorUnspecified {
+		result["v"] = jf.Value
+	}
+
+	return json.Marshal(result)
+}
+
 // UnmarshalJSON is optional, depending on how you want to handle the Value.
 func (jf *JSONFilter) UnmarshalJSON(data []byte) error {
 	type alias JSONFilter
@@ -60,6 +87,15 @@ func (jf *JSONFilter) ToFilterSpec() (*r3.FilterSpec, error) {
 		return nil, err
 	}
 
+	// For AND/OR group filters, we don't need field-level validation
+	if len(andFilters) > 0 || len(orFilters) > 0 {
+		return &r3.FilterSpec{
+			And: andFilters,
+			Or:  orFilters,
+		}, nil
+	}
+
+	// For simple filters, validate field and operator
 	fieldSpec, err := jf.Field.ToFieldSpec()
 	if err != nil {
 		return nil, err

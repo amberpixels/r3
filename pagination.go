@@ -17,8 +17,8 @@ const (
 
 // Pagination represents the pagination parameters for a Repo request.
 type Pagination struct {
-	Limit  maybe.Int `json:"limit"`
-	Offset maybe.Int `json:"offset"`
+	Limit  maybe.Int
+	Offset maybe.Int
 }
 
 // NewPagination returns a new Pagination with the given limit and offset.

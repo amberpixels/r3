@@ -46,9 +46,9 @@ type ListParams struct {
 	// GetParams are supported for List as well
 	GetParams
 
-	Filters    Filters    `json:"filters"`
-	Sorts      Sorts      `json:"sorts"`
-	Pagination Pagination `json:"pagination"`
+	Filters    Filters
+	Sorts      Sorts
+	Pagination Pagination
 
 	// TODO(future): omit counting if specified (optimization)
 }

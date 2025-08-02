@@ -9,7 +9,7 @@ import (
 // FiltersToSQLClauses translates list of r3.Filters into SQLClauses.
 func FiltersToSQLClauses(filters r3.Filters) (SQLClauses, error) {
 	if len(filters) == 0 {
-		return nil, nil
+		return SQLClauses{}, nil
 	}
 
 	d := &SQLDialector{}
