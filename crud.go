@@ -10,10 +10,10 @@ type CRUD[T any, ID comparable] interface {
 	Create(context.Context, T) (T, error)
 
 	// Get retrieves a record by its ID with optional parameters.
-	Get(context.Context, ID, ...GetParams) (T, error)
+	Get(context.Context, ID, ...Query) (T, error)
 
 	// List retrieves records based on the provided ListParams.
-	List(context.Context, ...ListParams) ([]T, int64, error)
+	List(context.Context, ...Query) ([]T, int64, error)
 
 	// Update modifies an existing record in the database with optional parameters.
 	Update(context.Context, T) (T, error)

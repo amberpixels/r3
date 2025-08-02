@@ -10,10 +10,10 @@ import (
 	"gorm.io/gorm"
 )
 
-// defaults stores the default values for repo params.
+// defaults stores the default values for repo q.
 type defaults struct {
-	ListParams r3.ListParams
-	GetParams  r3.GetParams
+	ListQuery r3.Query
+	GetQuery  r3.Query
 }
 
 // GormCRUD is a richfull CRUD repository based on gorm.DB.
@@ -33,37 +33,37 @@ func NewGormCRUD[T any, ID comparable](db *gorm.DB) *GormCRUD[T, ID] {
 	return &GormCRUD[T, ID]{
 		db: db,
 		defaults: defaults{
-			ListParams: r3.DefaultListParams(),
-			GetParams:  r3.DefaultGetParams(),
+			ListQuery: r3.DefaultQuery(),
+			GetQuery:  r3.DefaultQuery(),
 		},
 		raw: NewGormRaw[T, ID](db),
 	}
 }
 
-// SetDefaultListParams sets default ListParams.
-func (r *GormCRUD[T, ID]) SetDefaultListParams(listParams r3.ListParams) {
+// SetDefaultListQuery sets default ListQuery.
+func (r *GormCRUD[T, ID]) SetDefaultListQuery(q r3.Query) {
 	r.defaultsMu.Lock()
-	r.defaults.ListParams = listParams
+	r.defaults.ListQuery = q
 	r.defaultsMu.Unlock()
 }
 
-// SetDefaultGetParams sets default GetParams.
-func (r *GormCRUD[T, ID]) SetDefaultGetParams(getParams r3.GetParams) {
+// SetDefaultGetQuery sets default GetQuery.
+func (r *GormCRUD[T, ID]) SetDefaultGetQuery(q r3.Query) {
 	r.defaultsMu.Lock()
-	r.defaults.GetParams = getParams
+	r.defaults.GetQuery = q
 	r.defaultsMu.Unlock()
 }
 
-func (r *GormCRUD[T, ID]) getDefaultListParams() r3.ListParams {
+func (r *GormCRUD[T, ID]) getDefaultListQuery() r3.Query {
 	r.defaultsMu.RLock()
 	defer r.defaultsMu.RUnlock()
-	return r.defaults.ListParams
+	return r.defaults.ListQuery
 }
 
-func (r *GormCRUD[T, ID]) getDefaultGetParams() r3.GetParams {
+func (r *GormCRUD[T, ID]) getDefaultGetQuery() r3.Query {
 	r.defaultsMu.RLock()
 	defer r.defaultsMu.RUnlock()
-	return r.defaults.GetParams
+	return r.defaults.GetQuery
 }
 
 func (r *GormCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
@@ -73,14 +73,14 @@ func (r *GormCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 	return entity, nil
 }
 
-func (r *GormCRUD[T, ID]) List(ctx context.Context, paramsArg ...r3.ListParams) ([]T, int64, error) {
+func (r *GormCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, error) {
 	var entities []T
 	var totalCount int64
 
-	// Merge params with defaults
-	params := r.getDefaultListParams()
-	for _, other := range paramsArg {
-		params = params.MergeWith(other)
+	// Merge query with defaults
+	q := r.getDefaultListQuery()
+	for _, other := range qarg {
+		q = q.MergeWith(other)
 	}
 
 	var entity T
@@ -90,7 +90,7 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, paramsArg ...r3.ListParams) 
 	// FIELDS
 
 	// Handle custom filters:
-	clauses, err := r3sql.FiltersToSQLClauses(params.Filters)
+	clauses, err := r3sql.FiltersToSQLClauses(q.Filters)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to convert filters to SQL: %w", err)
 	}
@@ -106,18 +106,18 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, paramsArg ...r3.ListParams) 
 	}
 
 	// Sorting.
-	// sorts, err := r3sql.NewSorts(params.Sorts)
+	// sorts, err := r3sql.NewSorts(q.Sorts)
 	// if err != nil {
-	//	return nil, 0, fmt.Errorf("failed to convert sorts to SQL: %w", err)
+	// 	return nil, 0, fmt.Errorf("failed to convert sorts to SQL: %w", err)
 	// }
-	//
+
 	// for _, sort := range sorts {
-	//	query = query.Order(sort.ToSQL()) // TODO: to Gorm objects instead of plain SQL
+	// 	query = query.Order(sort.ToSQL()) // TODO: to Gorm objects instead of plain SQL
 	// }
 
 	// If Pagination is given, then we need to first Count all results without pagination:
 	var isPaginated bool
-	if paginationSpec, ok := params.Pagination.(*r3.PaginationSpec); ok && paginationSpec.IsPaginated() {
+	if paginationSpec, ok := q.Pagination.(*r3.PaginationSpec); ok && paginationSpec.IsPaginated() {
 		// We have to count first:
 		if err := query.Count(&totalCount).Error; err != nil {
 			return nil, 0, err
@@ -146,25 +146,25 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, paramsArg ...r3.ListParams) 
 	return entities, totalCount, nil
 }
 
-func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, paramsArg ...r3.GetParams) (T, error) {
+func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, error) {
 	var entity T
 
-	// Merge params with defaults
-	params := r.getDefaultGetParams()
-	for _, other := range paramsArg {
-		params = params.MergeWith(other)
+	// Merge query with defaults
+	q := r.getDefaultGetQuery()
+	for _, other := range qarg {
+		q = q.MergeWith(other)
 	}
 
 	// Apply preloads
 	query := r.db.WithContext(ctx)
-	for _, preload := range params.Preloads {
+	for _, preload := range q.Preloads {
 		// For now, only use simple preloads - nested preloads are not implemented yet
 		query = query.Preload(preload.GetName())
 		// TODO(future): Handle nested preloads when GetNestedPreloads() is implemented
 	}
 
 	// Fetch the record
-	if params.IncludeTrashed.Some() {
+	if q.IncludeTrashed.Some() {
 		// TODO: it can be negative!
 		query = query.Unscoped() // Include soft-deleted records
 	}

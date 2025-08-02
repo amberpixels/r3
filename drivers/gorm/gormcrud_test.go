@@ -96,7 +96,7 @@ func TestGormRepository(t *testing.T) {
 	_ = artistRepo
 
 	t.Run("List cities", func(t *testing.T) {
-		result, total, err := cityRepo.List(ctx, r3.ListParams{})
+		result, total, err := cityRepo.List(ctx, r3.Query{})
 		require.NoError(t, err, "failed to list cities")
 		assert.Len(t, result, 2, "expected 2 cities")
 		assert.Equal(t, int64(2), total, "expected 2 total cities")
@@ -108,11 +108,9 @@ func TestGormRepository(t *testing.T) {
 		t.Skip("Skipping preloads test - TODO: investigate why r3.Preloads are not working with GORM")
 
 		// List cities using the repository with the preload parameter set.
-		result, total, err := cityRepo.List(ctx, r3.ListParams{
-			GetParams: r3.GetParams{
-				Preloads: r3.Preloads{
-					r3.NewPreloadSpec("Translations"),
-				},
+		result, total, err := cityRepo.List(ctx, r3.Query{
+			Preloads: r3.Preloads{
+				r3.NewPreloadSpec("Translations"),
 			},
 		})
 		require.NoError(t, err, "failed to list cities with translations")
@@ -127,13 +125,13 @@ func TestGormRepository(t *testing.T) {
 	})
 
 	t.Run("Get city by ID", func(t *testing.T) {
-		city, err := cityRepo.Get(ctx, cities[0].ID, r3.GetParams{})
+		city, err := cityRepo.Get(ctx, cities[0].ID, r3.Query{})
 		require.NoError(t, err, "failed to get city")
 		assert.Equal(t, "City One", city.Name, "unexpected city name")
 	})
 
 	t.Run("List visible locations", func(t *testing.T) {
-		result, _, err := locRepo.List(ctx, r3.ListParams{
+		result, _, err := locRepo.List(ctx, r3.Query{
 			Filters: r3.Filters{
 				r3.F(r3.NewFieldSpec("visible"), true),
 			},
@@ -154,7 +152,7 @@ func TestGormRepository(t *testing.T) {
 	})
 
 	t.Run("List events for a location", func(t *testing.T) {
-		result, _, err := eventRepo.List(ctx, r3.ListParams{
+		result, _, err := eventRepo.List(ctx, r3.Query{
 			Filters: r3.Filters{
 				r3.F(r3.NewFieldSpec("venue_id"), locations[1].ID),
 			},
@@ -203,7 +201,7 @@ func TestGormRepository(t *testing.T) {
 		require.NoError(t, err, "failed to delete event")
 
 		// Try to retrieve the deleted event
-		_, err = eventRepo.Get(ctx, events[0].ID, r3.GetParams{})
+		_, err = eventRepo.Get(ctx, events[0].ID, r3.Query{})
 		require.Error(t, err, "expected error when getting a deleted event")
 	})
 }
