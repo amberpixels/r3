@@ -456,7 +456,7 @@ func TestSQLDialector_TranslateSortSpec(t *testing.T) {
 		{
 			name: "ascending sort",
 			input: &r3.SortSpec{
-				Column:    *r3.NewFieldSpec("name"),
+				Column:    r3.NewFieldSpec("name"),
 				Direction: r3.SortDirectionAsc,
 			},
 			expected: "name ASC",
@@ -464,7 +464,7 @@ func TestSQLDialector_TranslateSortSpec(t *testing.T) {
 		{
 			name: "descending sort",
 			input: &r3.SortSpec{
-				Column:    *r3.NewFieldSpec("created_at"),
+				Column:    r3.NewFieldSpec("created_at"),
 				Direction: r3.SortDirectionDesc,
 			},
 			expected: "created_at DESC",
@@ -472,7 +472,7 @@ func TestSQLDialector_TranslateSortSpec(t *testing.T) {
 		{
 			name: "sort with nulls first",
 			input: &r3.SortSpec{
-				Column:        *r3.NewFieldSpec("priority"),
+				Column:        r3.NewFieldSpec("priority"),
 				Direction:     r3.SortDirectionDesc,
 				NullsPosition: r3.NullsPositionFirst,
 			},
@@ -481,7 +481,7 @@ func TestSQLDialector_TranslateSortSpec(t *testing.T) {
 		{
 			name: "sort with nulls last",
 			input: &r3.SortSpec{
-				Column:        *r3.NewFieldSpec("score"),
+				Column:        r3.NewFieldSpec("score"),
 				Direction:     r3.SortDirectionAsc,
 				NullsPosition: r3.NullsPositionLast,
 			},
@@ -490,7 +490,7 @@ func TestSQLDialector_TranslateSortSpec(t *testing.T) {
 		{
 			name: "complex field sort",
 			input: &r3.SortSpec{
-				Column:    *r3.NewFieldSpec("user.profile.last_login"),
+				Column:    r3.NewFieldSpec("user.profile.last_login"),
 				Direction: r3.SortDirectionDesc,
 			},
 			expected: "user.profile.last_login DESC",

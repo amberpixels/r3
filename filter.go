@@ -11,6 +11,9 @@ type Filter interface {
 	// Stringer is needed for debugging purposes, so each filter can be printed.
 	fmt.Stringer
 
+	// Cloner is needed so the filters are safe and immutable.
+	Cloner[Filter]
+
 	// ToDialect converts the Filter (r3=>SQL) into its dialect-specific representation.
 	ToDialect(FilterOutboundDialector) (DialectValue, error)
 
@@ -24,6 +27,16 @@ type Filters []Filter
 
 // MergeWith merges (combines) filters with other filters.
 func (fs Filters) MergeWith(other Filters) Filters { return mergeWith(fs, other) }
+
+// Clone returns a safe full-clone of the filters list.
+func (fs Filters) Clone() Filters {
+	cloned := make(Filters, len(fs))
+	for i, f := range fs {
+		cloned[i] = f.Clone()
+	}
+
+	return cloned
+}
 
 type (
 	// FilterOutboundDialector is a generic dialector (visitor) interface for conversion.
@@ -79,6 +92,15 @@ func (f *FilterSpec) String() string {
 	}
 
 	return string(jj)
+}
+
+// Clone returns a clone of the filter.
+func (f *FilterSpec) Clone() Filter {
+	clone := *f
+	clone.Field, _ = f.Field.Clone().(*FieldSpec)
+	clone.And = f.And.Clone()
+	clone.Or = f.Or.Clone()
+	return &clone
 }
 
 //

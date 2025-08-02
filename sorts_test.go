@@ -14,45 +14,28 @@ func TestSortSpec_DialectString(t *testing.T) {
 		expected string
 	}{
 		{
-			name: "simple ascending sort",
-			sort: &r3.SortSpec{
-				Column:    r3.FieldSpec("name"),
-				Direction: r3.SortDirectionAsc,
-			},
+			name:     "simple ascending sort",
+			sort:     r3.NewSortAscSpec(r3.NewFieldSpec("name")),
 			expected: "name ASC",
 		},
 		{
-			name: "descending sort",
-			sort: &r3.SortSpec{
-				Column:    r3.FieldSpec("created_at"),
-				Direction: r3.SortDirectionDesc,
-			},
+			name:     "descending sort",
+			sort:     r3.NewSortDescSpec(r3.NewFieldSpec("created_at")),
 			expected: "created_at DESC",
 		},
 		{
-			name: "sort with nulls first",
-			sort: &r3.SortSpec{
-				Column:        r3.FieldSpec("updated_at"),
-				Direction:     r3.SortDirectionAsc,
-				NullsPosition: r3.NullsPositionFirst,
-			},
+			name:     "sort with nulls first",
+			sort:     r3.NewSortSpec(r3.NewFieldSpec("updated_at"), r3.SortDirectionAsc, r3.NullsPositionFirst),
 			expected: "updated_at ASC NULLS FIRST",
 		},
 		{
-			name: "sort with nulls last",
-			sort: &r3.SortSpec{
-				Column:        r3.FieldSpec("status"),
-				Direction:     r3.SortDirectionDesc,
-				NullsPosition: r3.NullsPositionLast,
-			},
+			name:     "sort with nulls last",
+			sort:     r3.NewSortSpec(r3.NewFieldSpec("status"), r3.SortDirectionDesc, r3.NullsPositionLast),
 			expected: "status DESC NULLS LAST",
 		},
 		{
-			name: "unspecified direction defaults to DESC",
-			sort: &r3.SortSpec{
-				Column:    r3.FieldSpec("id"),
-				Direction: r3.SortDirectionUnspecified,
-			},
+			name:     "unspecified direction defaults to DESC",
+			sort:     r3.NewSortSpec(r3.NewFieldSpec("id"), r3.SortDirectionUnspecified),
 			expected: "id DESC",
 		},
 	}

@@ -8,7 +8,11 @@ import (
 
 // Sort defines the sort criteria and direction.
 type Sort interface {
+	// Stringer is needed for debugging purposes, so each sort can be printed.
 	fmt.Stringer
+
+	// Cloner is needed so we sorts are safe and immutable
+	Cloner[Sort]
 
 	// ToDialect converts the Sort (r3=>SQL) into its dialect-specific representation.
 	ToDialect(SortOutboundDialector) (DialectValue, error)
@@ -16,8 +20,11 @@ type Sort interface {
 	// FromDialect makes up the Sort (JSON=>r3) from a SortInboundDialector and its DialectValue
 	FromDialect(SortInboundDialector, DialectValue) error
 
+	// GetDirection returns the direction of the sort
 	GetDirection() SortDirection
-	GetCriteria() string
+
+	// GetCriteria returns the criteria (e.g. Field, on which we do sort)
+	GetCriteria() Field
 }
 
 type (
@@ -34,7 +41,7 @@ type (
 
 // SortSpec represents a single sort criteria.
 type SortSpec struct {
-	Column    FieldSpec
+	Column    *FieldSpec
 	Direction SortDirection // Asc | Desc | Unspecified (default)
 
 	NullsPosition SortNullsPosition // First | Last | Unspecified
@@ -45,6 +52,7 @@ func (s *SortSpec) ToDialect(dialector SortOutboundDialector) (DialectValue, err
 	return dialector.TranslateSortSpec(s)
 }
 
+// FromDialect converts a dialect-specific sort representation into r3 Sort.
 func (s *SortSpec) FromDialect(dialector SortInboundDialector, inValue DialectValue) error {
 	if s == nil {
 		return errors.New("FromDialect must be called on a non-nil SortSpec")
@@ -59,6 +67,7 @@ func (s *SortSpec) FromDialect(dialector SortInboundDialector, inValue DialectVa
 	return nil
 }
 
+// String returns string representation of the sort spec.
 func (s *SortSpec) String() string {
 	// For debugging - use a simple format
 	str := s.Column.String() + " " + s.Direction.String()
@@ -68,11 +77,24 @@ func (s *SortSpec) String() string {
 	return str
 }
 
+// GetDirection returns the sort direction.
 func (s *SortSpec) GetDirection() SortDirection { return s.Direction }
 
-func (s *SortSpec) GetCriteria() string { return s.Column.String() }
+// GetCriteria returns the sort criteria.
+func (s *SortSpec) GetCriteria() Field { return s.Column }
 
-func NewSortSpec(col FieldSpec, direction SortDirection, nullsPositionArg ...SortNullsPosition) *SortSpec {
+// Clone returns a new pointer to the sort spec (safe and deep clone).
+func (s *SortSpec) Clone() Sort {
+	var clone SortSpec
+	clone.Column, _ = s.Column.Clone().(*FieldSpec)
+	clone.Direction = s.Direction
+	clone.NullsPosition = s.NullsPosition
+
+	return &clone
+}
+
+// NewSortSpec is the main SortSpec constructor.
+func NewSortSpec(col *FieldSpec, direction SortDirection, nullsPositionArg ...SortNullsPosition) *SortSpec {
 	s := &SortSpec{
 		Column:    col,
 		Direction: direction,
@@ -85,12 +107,34 @@ func NewSortSpec(col FieldSpec, direction SortDirection, nullsPositionArg ...Sor
 	return s
 }
 
+// NewSortAscSpec returns sort by a given field ordered ASC.
+func NewSortAscSpec(col *FieldSpec) *SortSpec {
+	return NewSortSpec(col, SortDirectionAsc)
+}
+
+// NewSortDescSpec returns sort by a given field ordered DESC.
+func NewSortDescSpec(col *FieldSpec) *SortSpec {
+	return NewSortSpec(col, SortDirectionDesc)
+}
+
 var _ Sort = (*SortSpec)(nil)
 
 // Sorts represents a list of ColumnSort-s.
 type Sorts []Sort
 
+// MergeWith merges other sorts into ours.
+// TODO: here and in other places, MergeWith must be safe? immutable, right?? think and plan
 func (sorts Sorts) MergeWith(other Sorts) Sorts { return mergeWith(sorts, other) }
+
+// Clone returns a cloned list of given sorts.
+func (sorts Sorts) Clone() Sorts {
+	clone := make(Sorts, len(sorts))
+	for i, s := range sorts {
+		clone[i] = s.Clone()
+	}
+
+	return clone
+}
 
 // NewSorts parses the given raw sorting string and returns a list of Sorts.
 // Currently, we do support curator's API handler's `field ASC NULLS FIRST` syntax.
@@ -114,13 +158,14 @@ func NewSorts(sortingOrder ...string) (Sorts, error) {
 		// if having no spaces means it's just a field name
 		// use whole string as the field name then.
 		if !strings.Contains(orderRawString, " ") {
-			sorts = append(sorts, &SortSpec{Column: FieldSpec(orderRawString)})
+			var col = FieldSpec(orderRawString)
+			sorts = append(sorts, &SortSpec{Column: &col})
 			continue
 		}
 
 		orderWords := strings.Split(orderRawString, " ")
 
-		col := FieldSpec(orderWords[0])
+		var col = FieldSpec(orderWords[0])
 		direction := ParseSortDirection(orderWords[1])
 		nullsPosition := NullsPositionNotSpecified
 
@@ -132,7 +177,7 @@ func NewSorts(sortingOrder ...string) (Sorts, error) {
 		}
 
 		sorts = append(sorts, &SortSpec{
-			Column:        col,
+			Column:        &col,
 			Direction:     direction,
 			NullsPosition: nullsPosition,
 		})
@@ -156,6 +201,7 @@ const (
 )
 
 // DialectString returns a SQL-ready string representation of SortNullsPosition.
+// TODO: no need to have DialectString. Dialect needs to be done only in dialect sub-packages: r3json, r3sql, etc
 func (s SortNullsPosition) DialectString() string {
 	// TODO: dialect to be respected
 	switch s {

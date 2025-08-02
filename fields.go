@@ -12,7 +12,11 @@ import (
 
 // Field defines a single field selection rule.
 type Field interface {
+	// Stringer is needed for debugging purposes, so each field can be printed.
 	fmt.Stringer
+
+	// Cloner is needed so we fields are safe and immutable
+	Cloner[Field]
 
 	// ToDialect converts the Field (r3=>SQL) into its dialect-specific representation.
 	ToDialect(FieldOutboundDialector) (DialectValue, error)
@@ -47,6 +51,16 @@ func (fs *Fields) Dedupe() {
 	*fs = v
 }
 
+// Clone returns a safe full-clone of the fields list.
+func (fs Fields) Clone() Fields {
+	cloned := make(Fields, len(fs))
+	for i, f := range fs {
+		cloned[i] = f.Clone()
+	}
+
+	return cloned
+}
+
 // FieldSpec is the simplest possible implementation of the Field interface.
 // FieldSpec is just a string - it can be the name of the field in database, etc.
 type FieldSpec string
@@ -65,6 +79,12 @@ func (f *FieldSpec) String() string {
 		return ""
 	}
 	return string(*f)
+}
+
+// Clone returns a clone of the field.
+func (f *FieldSpec) Clone() Field {
+	clone := *f
+	return &clone
 }
 
 // ToDialect converts the Field into its dialect-specific representation.
