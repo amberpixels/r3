@@ -52,14 +52,7 @@ func (fs *Fields) Dedupe() {
 }
 
 // Clone returns a safe full-clone of the fields list.
-func (fs Fields) Clone() Fields {
-	cloned := make(Fields, len(fs))
-	for i, f := range fs {
-		cloned[i] = f.Clone()
-	}
-
-	return cloned
-}
+func (fs Fields) Clone() Fields { return cloneAll(fs) }
 
 // FieldSpec is the simplest possible implementation of the Field interface.
 // FieldSpec is just a string - it can be the name of the field in database, etc.

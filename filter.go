@@ -29,14 +29,7 @@ type Filters []Filter
 func (fs Filters) MergeWith(other Filters) Filters { return mergeWith(fs, other) }
 
 // Clone returns a safe full-clone of the filters list.
-func (fs Filters) Clone() Filters {
-	cloned := make(Filters, len(fs))
-	for i, f := range fs {
-		cloned[i] = f.Clone()
-	}
-
-	return cloned
-}
+func (fs Filters) Clone() Filters { return cloneAll(fs) }
 
 type (
 	// FilterOutboundDialector is a generic dialector (visitor) interface for conversion.

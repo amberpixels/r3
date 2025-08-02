@@ -24,16 +24,6 @@ type Preloads []Preload
 // MergeWith merges (combines) preloads with other preloads.
 func (preloads Preloads) MergeWith(other Preloads) Preloads { return mergeWith(preloads, other) }
 
-// Clone returns a cloned list of given preloads.
-func (preloads Preloads) Clone() Preloads {
-	clone := make(Preloads, len(preloads))
-	for i, p := range preloads {
-		clone[i] = p.Clone()
-	}
-
-	return clone
-}
-
 // Dedupe removes duplicates from the preloads list.
 // Note: it's not super-performant because of types and go-generics. Refactor if needed.
 func (preloads *Preloads) Dedupe() {
@@ -41,6 +31,9 @@ func (preloads *Preloads) Dedupe() {
 	dedupe(&v)
 	*preloads = v
 }
+
+// Clone returns a cloned list of given preloads.
+func (preloads Preloads) Clone() Preloads { return cloneAll(preloads) }
 
 // PreloadSpec means a simple possible preload (name of a table/collection).
 type PreloadSpec struct {

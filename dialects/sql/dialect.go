@@ -25,6 +25,9 @@ var (
 	_ r3.FilterInboundDialector         = (*SQLInboundDialector)(nil)
 	_ r3.FilterOperatorInboundDialector = (*SQLInboundDialector)(nil)
 	_ r3.SortInboundDialector           = (*SQLInboundDialector)(nil)
+
+	_ r3.PaginationDialector = (*SQLDialector)(nil)
+	_ r3.PaginationDialector = (*SQLInboundDialector)(nil)
 )
 
 // ToSQLColumn converts a FieldSpec to an SQLColumn.
@@ -413,4 +416,68 @@ func sqlNullsPositionString(position r3.SortNullsPosition) string {
 	default:
 		return ""
 	}
+}
+
+// TranslatePaginationSpec converts a PaginationSpec to SQLPagination.
+func (sv *SQLDialector) TranslatePaginationSpec(p *r3.PaginationSpec) (r3.DialectValue, error) {
+	if p == nil {
+		return nil, errors.New("pagination spec cannot be nil")
+	}
+
+	limit, offset := p.ToLimitOffset()
+	return NewSQLPagination(limit, offset), nil
+}
+
+// TranslateIntoPaginationSpec converts SQLPagination to PaginationSpec.
+func (sv *SQLDialector) TranslateIntoPaginationSpec(sqlValue r3.DialectValue) (*r3.PaginationSpec, error) {
+	sqlPagination, ok := sqlValue.(*SQLPagination)
+	if !ok {
+		if val, ok := sqlValue.(SQLPagination); ok {
+			sqlPagination = &val
+		} else {
+			return nil, fmt.Errorf("invalid SQL pagination type: %T, expected *SQLPagination", sqlValue)
+		}
+	}
+
+	// Convert limit/offset back to page number/page size
+	// Offset = (PageNum - 1) * PageSize, so PageNum = (Offset / PageSize) + 1
+	pageSize := sqlPagination.Limit
+	pageNum := 1 // Default to page 1
+	if pageSize > 0 && sqlPagination.Offset > 0 {
+		pageNum = (sqlPagination.Offset / pageSize) + 1
+	}
+
+	return r3.NewPaginationSpec(pageNum, pageSize), nil
+}
+
+// TranslatePaginationSpec converts a PaginationSpec to SQLPagination.
+func (sv *SQLInboundDialector) TranslatePaginationSpec(p *r3.PaginationSpec) (r3.DialectValue, error) {
+	if p == nil {
+		return nil, errors.New("pagination spec cannot be nil")
+	}
+
+	limit, offset := p.ToLimitOffset()
+	return NewSQLPagination(limit, offset), nil
+}
+
+// TranslateIntoPaginationSpec converts SQLPagination to PaginationSpec.
+func (sv *SQLInboundDialector) TranslateIntoPaginationSpec(sqlValue r3.DialectValue) (*r3.PaginationSpec, error) {
+	sqlPagination, ok := sqlValue.(*SQLPagination)
+	if !ok {
+		if val, ok := sqlValue.(SQLPagination); ok {
+			sqlPagination = &val
+		} else {
+			return nil, fmt.Errorf("invalid SQL pagination type: %T, expected *SQLPagination", sqlValue)
+		}
+	}
+
+	// Convert limit/offset back to page number/page size
+	// Offset = (PageNum - 1) * PageSize, so PageNum = (Offset / PageSize) + 1
+	pageSize := sqlPagination.Limit
+	pageNum := 1 // Default to page 1
+	if pageSize > 0 && sqlPagination.Offset > 0 {
+		pageNum = (sqlPagination.Offset / pageSize) + 1
+	}
+
+	return r3.NewPaginationSpec(pageNum, pageSize), nil
 }

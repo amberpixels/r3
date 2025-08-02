@@ -117,7 +117,7 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, paramsArg ...r3.ListParams) 
 
 	// If Pagination is given, then we need to first Count all results without pagination:
 	var isPaginated bool
-	if params.Pagination.IsPaginated() {
+	if paginationSpec, ok := params.Pagination.(*r3.PaginationSpec); ok && paginationSpec.IsPaginated() {
 		// We have to count first:
 		if err := query.Count(&totalCount).Error; err != nil {
 			return nil, 0, err
@@ -128,7 +128,7 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, paramsArg ...r3.ListParams) 
 		}
 
 		// Then to add limit & offset for main Find() query
-		limit, offset := params.Pagination.GetDialectLimitOffset()
+		limit, offset := paginationSpec.ToLimitOffset()
 		query = query.Limit(limit)
 		query = query.Offset(offset)
 		isPaginated = true

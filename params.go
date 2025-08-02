@@ -55,7 +55,7 @@ type ListParams struct {
 
 // NewListParams returns an empty (but ready-to-be-used) List Params.
 func NewListParams() ListParams {
-	return ListParams{GetParams: NewGetParams(), Pagination: NoLimitPagination()}
+	return ListParams{GetParams: NewGetParams(), Pagination: NoPagination()}
 }
 
 func DefaultListParams() ListParams {
@@ -85,7 +85,15 @@ func (lp ListParams) MergeWith(other ListParams) ListParams {
 
 	result.Filters = result.Filters.MergeWith(other.Filters)
 	result.Sorts = result.Sorts.MergeWith(other.Sorts)
-	result.Pagination = result.Pagination.MergeWith(other.Pagination)
+
+	// For pagination merging, we need to convert to concrete types
+	if otherPagination, ok := other.Pagination.(*PaginationSpec); ok && otherPagination != nil {
+		if resultPagination, ok := result.Pagination.(*PaginationSpec); ok && resultPagination != nil {
+			result.Pagination = resultPagination.MergeWith(otherPagination)
+		} else {
+			result.Pagination = otherPagination.Clone()
+		}
+	}
 
 	return result
 }

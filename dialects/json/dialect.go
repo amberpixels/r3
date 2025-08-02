@@ -23,6 +23,9 @@ var (
 	_ r3.FilterOutboundDialector         = (*JSONOutboundDialector)(nil)
 	_ r3.FilterOperatorOutboundDialector = (*JSONOutboundDialector)(nil)
 	_ r3.SortOutboundDialector           = (*JSONOutboundDialector)(nil)
+
+	_ r3.PaginationDialector = (*JSONInboundDialector)(nil)
+	_ r3.PaginationDialector = (*JSONOutboundDialector)(nil)
 )
 
 // TranslateIntoFieldSpec converts a JSON-dialect field into a FieldSpec.
@@ -85,6 +88,30 @@ func (d *JSONInboundDialector) TranslateIntoSortSpec(dialectValue r3.DialectValu
 	}
 
 	return jsonSort.ToSortSpec()
+}
+
+// TranslateIntoPaginationSpec converts a JSON-dialect pagination into a PaginationSpec.
+func (d *JSONInboundDialector) TranslateIntoPaginationSpec(dialectValue r3.DialectValue) (*r3.PaginationSpec, error) {
+	jsonPagination, ok := dialectValue.(*JSONPagination)
+	if !ok {
+		if paginationPtr, ok := dialectValue.(*JSONPagination); ok {
+			jsonPagination = paginationPtr
+		} else {
+			return nil, newError(fmt.Errorf("invalid pagination type: %T", dialectValue))
+		}
+	}
+
+	return jsonPagination.ToPaginationSpec()
+}
+
+// TranslatePaginationSpec converts a PaginationSpec to a JSON pagination.
+func (d *JSONInboundDialector) TranslatePaginationSpec(pagination *r3.PaginationSpec) (r3.DialectValue, error) {
+	if pagination == nil {
+		return nil, newError(errors.New("nil pagination spec"))
+	}
+
+	jsonPagination := jsonPaginationFromR3(pagination)
+	return jsonPagination, nil
 }
 
 // JSONOutboundDialector methods - convert r3 types to JSON dialect values
@@ -157,6 +184,30 @@ func (d *JSONOutboundDialector) TranslateSortSpec(sort *r3.SortSpec) (r3.Dialect
 	}
 
 	return jsonSort, nil
+}
+
+// TranslatePaginationSpec converts a PaginationSpec to a JSON pagination.
+func (d *JSONOutboundDialector) TranslatePaginationSpec(pagination *r3.PaginationSpec) (r3.DialectValue, error) {
+	if pagination == nil {
+		return nil, newError(errors.New("nil pagination spec"))
+	}
+
+	jsonPagination := jsonPaginationFromR3(pagination)
+	return jsonPagination, nil
+}
+
+// TranslateIntoPaginationSpec converts a JSON-dialect pagination into a PaginationSpec.
+func (d *JSONOutboundDialector) TranslateIntoPaginationSpec(dialectValue r3.DialectValue) (*r3.PaginationSpec, error) {
+	jsonPagination, ok := dialectValue.(*JSONPagination)
+	if !ok {
+		if paginationPtr, ok := dialectValue.(*JSONPagination); ok {
+			jsonPagination = paginationPtr
+		} else {
+			return nil, newError(fmt.Errorf("invalid pagination type: %T", dialectValue))
+		}
+	}
+
+	return jsonPagination.ToPaginationSpec()
 }
 
 // Helper function to convert r3 operators to JSON operators.

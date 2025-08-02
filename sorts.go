@@ -126,14 +126,7 @@ type Sorts []Sort
 func (sorts Sorts) MergeWith(other Sorts) Sorts { return mergeWith(sorts, other) }
 
 // Clone returns a cloned list of given sorts.
-func (sorts Sorts) Clone() Sorts {
-	clone := make(Sorts, len(sorts))
-	for i, s := range sorts {
-		clone[i] = s.Clone()
-	}
-
-	return clone
-}
+func (sorts Sorts) Clone() Sorts { return cloneAll(sorts) }
 
 // SortNullsPosition represents a position of nulls in sort (first or last).
 type SortNullsPosition int8
