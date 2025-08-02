@@ -17,10 +17,12 @@ var (
 	_ r3.FieldInboundDialector          = (*JSONInboundDialector)(nil)
 	_ r3.FilterInboundDialector         = (*JSONInboundDialector)(nil)
 	_ r3.FilterOperatorInboundDialector = (*JSONInboundDialector)(nil)
+	_ r3.SortInboundDialector           = (*JSONInboundDialector)(nil)
 
 	_ r3.FieldOutboundDialector          = (*JSONOutboundDialector)(nil)
 	_ r3.FilterOutboundDialector         = (*JSONOutboundDialector)(nil)
 	_ r3.FilterOperatorOutboundDialector = (*JSONOutboundDialector)(nil)
+	_ r3.SortOutboundDialector           = (*JSONOutboundDialector)(nil)
 )
 
 // TranslateIntoFieldSpec converts a JSON-dialect field into a FieldSpec.
@@ -69,6 +71,20 @@ func (d *JSONInboundDialector) TranslateIntoFilterOperatorSpec(op r3.DialectValu
 	}
 
 	return &r3Op, nil
+}
+
+// TranslateIntoSortSpec converts a JSON-dialect sort into a SortSpec.
+func (d *JSONInboundDialector) TranslateIntoSortSpec(dialectValue r3.DialectValue) (*r3.SortSpec, error) {
+	jsonSort, ok := dialectValue.(*JSONSort)
+	if !ok {
+		if sortPtr, ok := dialectValue.(*JSONSort); ok {
+			jsonSort = sortPtr
+		} else {
+			return nil, newError(fmt.Errorf("invalid sort type: %T", dialectValue))
+		}
+	}
+
+	return jsonSort.ToSortSpec()
 }
 
 // JSONOutboundDialector methods - convert r3 types to JSON dialect values
@@ -126,6 +142,21 @@ func (d *JSONOutboundDialector) TranslateFilterOperatorSpec(op *r3.FilterOperato
 	}
 
 	return jsonOp, nil
+}
+
+// TranslateSortSpec converts a SortSpec to a JSON sort.
+func (d *JSONOutboundDialector) TranslateSortSpec(sort *r3.SortSpec) (r3.DialectValue, error) {
+	if sort == nil {
+		return nil, newError(errors.New("nil sort spec"))
+	}
+
+	jsonSort := &JSONSort{
+		Field:         JSONField(sort.Column.String()),
+		Direction:     jsonSortDirectionFromR3(sort.Direction),
+		NullsPosition: jsonNullsPositionFromR3(sort.NullsPosition),
+	}
+
+	return jsonSort, nil
 }
 
 // Helper function to convert r3 operators to JSON operators.

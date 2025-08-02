@@ -3,7 +3,6 @@ package r3
 import (
 	"errors"
 	"fmt"
-	"strings"
 )
 
 // Sort defines the sort criteria and direction.
@@ -136,56 +135,6 @@ func (sorts Sorts) Clone() Sorts {
 	return clone
 }
 
-// NewSorts parses the given raw sorting string and returns a list of Sorts.
-// Currently, we do support curator's API handler's `field ASC NULLS FIRST` syntax.
-// Later, we should reconsider the string syntax and it may be changed.
-func NewSorts(sortingOrder ...string) (Sorts, error) {
-	if len(sortingOrder) == 0 {
-		return Sorts{}, nil
-	}
-
-	// edge case: when a single sortingOrder is given
-	// it might be a "field1 ASC, field2 DESC" string, so let's split it
-	if len(sortingOrder) == 1 {
-		sortingOrder = strings.Split(sortingOrder[0], ",")
-	}
-
-	sorts := make(Sorts, 0, len(sortingOrder))
-
-	for _, orderRawString := range sortingOrder {
-		orderRawString = strings.TrimSpace(orderRawString)
-
-		// if having no spaces means it's just a field name
-		// use whole string as the field name then.
-		if !strings.Contains(orderRawString, " ") {
-			var col = FieldSpec(orderRawString)
-			sorts = append(sorts, &SortSpec{Column: &col})
-			continue
-		}
-
-		orderWords := strings.Split(orderRawString, " ")
-
-		var col = FieldSpec(orderWords[0])
-		direction := ParseSortDirection(orderWords[1])
-		nullsPosition := NullsPositionNotSpecified
-
-		if len(orderWords) > 2 {
-			restWords := strings.Join(orderWords[2:], " ") // it's should be NULLS FIRST | NULLS LAST
-			nullsPosition = ParseSortNullsPosition(restWords)
-
-			// TODO: find out can we do blanket default, or it will be failing for fields that are not nullable?
-		}
-
-		sorts = append(sorts, &SortSpec{
-			Column:        &col,
-			Direction:     direction,
-			NullsPosition: nullsPosition,
-		})
-	}
-
-	return sorts, nil
-}
-
 // SortNullsPosition represents a position of nulls in sort (first or last).
 type SortNullsPosition int8
 
@@ -200,34 +149,17 @@ const (
 	NullsPositionLast
 )
 
-// DialectString returns a SQL-ready string representation of SortNullsPosition.
-// TODO: no need to have DialectString. Dialect needs to be done only in dialect sub-packages: r3json, r3sql, etc
-func (s SortNullsPosition) DialectString() string {
-	// TODO: dialect to be respected
+// String is implemented for debugging purposes, so the SortNullsPosition is a fmt.Stringer.
+func (s SortNullsPosition) String() string {
 	switch s {
 	case NullsPositionFirst:
-		return "NULLS FIRST"
+		return "nulls first"
 	case NullsPositionLast:
-		return "NULLS LAST"
+		return "nulls last"
 	case NullsPositionNotSpecified:
 		fallthrough
 	default:
 		return ""
-	}
-}
-
-// String is implemented for debugging purposes, so the SortNullsPosition is a fmt.Stringer.
-func (s SortNullsPosition) String() string { return s.DialectString() }
-
-// ParseSortNullsPosition parses the given string and returns a SortNullsPosition.
-func ParseSortNullsPosition(s string) SortNullsPosition {
-	switch strings.ToUpper(s) {
-	case NullsPositionFirst.String():
-		return NullsPositionFirst
-	case NullsPositionLast.String():
-		return NullsPositionLast
-	default:
-		return NullsPositionNotSpecified
 	}
 }
 
@@ -243,31 +175,16 @@ const (
 	SortDirectionDesc
 )
 
-// DialectString returns a Dialect (safe SQL-ready) string representation of SortDirection.
-func (s SortDirection) DialectString() string {
+// String is implemented for debugging purposes, so the SortDirection is a fmt.Stringer.
+func (s SortDirection) String() string {
 	switch s {
 	case SortDirectionAsc:
-		return "ASC"
+		return "asc"
 	case SortDirectionDesc:
-		return "DESC"
+		return "desc"
 	case SortDirectionUnspecified:
 		fallthrough
 	default:
-		return "DESC" // as default
-	}
-}
-
-// String is implemented for debugging purposes, so the SortDirection is a fmt.Stringer.
-func (s SortDirection) String() string { return s.DialectString() }
-
-// ParseSortDirection parses the given string and returns a SortDirection.
-func ParseSortDirection(s string) SortDirection {
-	switch strings.ToUpper(s) {
-	case SortDirectionAsc.String():
-		return SortDirectionAsc
-	case SortDirectionDesc.String():
-		return SortDirectionDesc
-	default:
-		return SortDirectionUnspecified
+		return "unspecified"
 	}
 }

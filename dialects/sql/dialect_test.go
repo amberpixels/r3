@@ -1010,3 +1010,86 @@ func BenchmarkSQLDialector_TranslateFilterSpec(b *testing.B) {
 		}
 	}
 }
+
+func TestParseSQLSortString(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       string
+		expected    *r3.SortSpec
+		expectError bool
+	}{
+		{
+			name:  "simple ascending sort",
+			input: "name ASC",
+			expected: &r3.SortSpec{
+				Column:        func() *r3.FieldSpec { f := r3.FieldSpec("name"); return &f }(),
+				Direction:     r3.SortDirectionAsc,
+				NullsPosition: r3.NullsPositionNotSpecified,
+			},
+		},
+		{
+			name:  "descending sort",
+			input: "created_at DESC",
+			expected: &r3.SortSpec{
+				Column:        func() *r3.FieldSpec { f := r3.FieldSpec("created_at"); return &f }(),
+				Direction:     r3.SortDirectionDesc,
+				NullsPosition: r3.NullsPositionNotSpecified,
+			},
+		},
+		{
+			name:  "field only (defaults to unspecified)",
+			input: "id",
+			expected: &r3.SortSpec{
+				Column:        func() *r3.FieldSpec { f := r3.FieldSpec("id"); return &f }(),
+				Direction:     r3.SortDirectionUnspecified,
+				NullsPosition: r3.NullsPositionNotSpecified,
+			},
+		},
+		{
+			name:  "sort with nulls first",
+			input: "status DESC NULLS FIRST",
+			expected: &r3.SortSpec{
+				Column:        func() *r3.FieldSpec { f := r3.FieldSpec("status"); return &f }(),
+				Direction:     r3.SortDirectionDesc,
+				NullsPosition: r3.NullsPositionFirst,
+			},
+		},
+		{
+			name:  "sort with nulls last",
+			input: "updated_at ASC NULLS LAST",
+			expected: &r3.SortSpec{
+				Column:        func() *r3.FieldSpec { f := r3.FieldSpec("updated_at"); return &f }(),
+				Direction:     r3.SortDirectionAsc,
+				NullsPosition: r3.NullsPositionLast,
+			},
+		},
+		{
+			name:        "empty string",
+			input:       "",
+			expectError: true,
+		},
+		{
+			name:        "whitespace only",
+			input:       "   ",
+			expectError: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dialector := &r3sql.SQLInboundDialector{}
+			result, err := dialector.TranslateIntoSortSpec(r3sql.SQLSort(tt.input))
+
+			if tt.expectError {
+				require.Error(t, err)
+				assert.Nil(t, result)
+			} else {
+				require.NoError(t, err)
+				require.NotNil(t, result)
+				assert.Equal(t, tt.expected.Column.String(), result.Column.String())
+				assert.Equal(t, tt.expected.Direction, result.Direction)
+				assert.Equal(t, tt.expected.NullsPosition, result.NullsPosition)
+			}
+		})
+	}
+}

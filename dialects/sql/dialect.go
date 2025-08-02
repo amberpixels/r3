@@ -49,10 +49,10 @@ func (sv *SQLDialector) TranslateFilterSpec(cf *r3.FilterSpec) (r3.DialectValue,
 		// Nil value means we need to generate an "IS NULL" or "IS NOT NULL" clause.
 		if cf.Value == nil {
 			if cf.Operator == r3.OperatorEq { //nolint: staticcheck // we care only about these 2 values here
-				clause := fmt.Sprintf("%s IS NULL", cf.Field)
+				clause := fmt.Sprintf("%s %s", cf.Field, sqlIsNull)
 				return SQLClause{Clause: clause, Args: nil, Joins: joins}, nil
 			} else if cf.Operator == r3.OperatorNe {
-				clause := fmt.Sprintf("%s IS NOT NULL", cf.Field)
+				clause := fmt.Sprintf("%s %s", cf.Field, sqlIsNotNull)
 				return SQLClause{Clause: clause, Args: nil, Joins: joins}, nil
 			}
 
@@ -80,10 +80,10 @@ func (sv *SQLDialector) TranslateFilterSpec(cf *r3.FilterSpec) (r3.DialectValue,
 	// Case 2. A compound filter (logical group).
 	// We assume that when Field is empty, either And or Or is non-empty.
 	var children r3.Filters
-	logicalOp := "AND"
+	logicalOp := sqlAnd
 	if len(cf.Or) > 0 {
 		children = cf.Or
-		logicalOp = "OR"
+		logicalOp = sqlOr
 	} else {
 		children = cf.And
 	}
@@ -280,10 +280,10 @@ func (sv *SQLDialector) TranslateSortSpec(s *r3.SortSpec) (r3.DialectValue, erro
 	}
 
 	// Build SQL sort string
-	sortStr := sqlCol.String() + " " + s.Direction.DialectString()
+	sortStr := sqlCol.String() + " " + sqlSortDirectionString(s.Direction)
 
 	if s.NullsPosition != r3.NullsPositionNotSpecified {
-		sortStr += " " + s.NullsPosition.DialectString()
+		sortStr += " " + sqlNullsPositionString(s.NullsPosition)
 	}
 
 	return SQLSort(sortStr), nil
@@ -316,21 +316,101 @@ func (sv *SQLInboundDialector) TranslateIntoSortSpec(sqlValue r3.DialectValue) (
 		return nil, fmt.Errorf("invalid sort format: %s", sortStr)
 	}
 
-	// Use the existing NewSorts parsing logic by wrapping in a slice
-	sorts, err := r3.NewSorts(sortStr)
+	// Parse SQL sort string directly
+	sortSpec, err := parseSQLSortString(sortStr)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse SQL sort: %w", err)
 	}
 
-	if len(sorts) == 0 {
-		return nil, fmt.Errorf("no sorts parsed from SQL sort string: %s", sortStr)
-	}
-
-	// Return the first sort (assuming single sort)
-	sortSpec, ok := sorts[0].(*r3.SortSpec)
-	if !ok {
-		return nil, fmt.Errorf("expected SortSpec from parsing, got %T", sorts[0])
-	}
-
 	return sortSpec, nil
+}
+
+// parseSQLSortString parses a SQL sort string into a SortSpec.
+func parseSQLSortString(sortStr string) (*r3.SortSpec, error) {
+	sortStr = strings.TrimSpace(sortStr)
+	if sortStr == "" {
+		return nil, errors.New("empty sort string")
+	}
+
+	// If no spaces, it's just a field name (default direction)
+	if !strings.Contains(sortStr, " ") {
+		col := r3.FieldSpec(sortStr)
+		return &r3.SortSpec{Column: &col}, nil
+	}
+
+	parts := strings.Split(sortStr, " ")
+	if len(parts) < 2 {
+		return nil, fmt.Errorf("invalid sort format: %s", sortStr)
+	}
+
+	// Parse field
+	col := r3.FieldSpec(parts[0])
+
+	// Parse direction
+	direction := parseSQLSortDirection(parts[1])
+
+	// Parse nulls position if present
+	nullsPosition := r3.NullsPositionNotSpecified
+	if len(parts) > 2 {
+		restWords := strings.Join(parts[2:], " ")
+		nullsPosition = parseSQLNullsPosition(restWords)
+	}
+
+	return &r3.SortSpec{
+		Column:        &col,
+		Direction:     direction,
+		NullsPosition: nullsPosition,
+	}, nil
+}
+
+// parseSQLSortDirection parses SQL direction strings.
+func parseSQLSortDirection(s string) r3.SortDirection {
+	switch strings.ToUpper(strings.TrimSpace(s)) {
+	case sqlAsc:
+		return r3.SortDirectionAsc
+	case sqlDesc:
+		return r3.SortDirectionDesc
+	default:
+		return r3.SortDirectionUnspecified
+	}
+}
+
+// parseSQLNullsPosition parses SQL nulls position strings.
+func parseSQLNullsPosition(s string) r3.SortNullsPosition {
+	switch strings.ToUpper(strings.TrimSpace(s)) {
+	case sqlNullsFirst:
+		return r3.NullsPositionFirst
+	case sqlNullsLast:
+		return r3.NullsPositionLast
+	default:
+		return r3.NullsPositionNotSpecified
+	}
+}
+
+// sqlSortDirectionString converts r3.SortDirection to SQL dialect string.
+func sqlSortDirectionString(direction r3.SortDirection) string {
+	switch direction {
+	case r3.SortDirectionAsc:
+		return sqlAsc
+	case r3.SortDirectionDesc:
+		return sqlDesc
+	case r3.SortDirectionUnspecified:
+		fallthrough
+	default:
+		return sqlDesc // default to descending
+	}
+}
+
+// sqlNullsPositionString converts r3.SortNullsPosition to SQL dialect string.
+func sqlNullsPositionString(position r3.SortNullsPosition) string {
+	switch position {
+	case r3.NullsPositionFirst:
+		return sqlNullsFirst
+	case r3.NullsPositionLast:
+		return sqlNullsLast
+	case r3.NullsPositionNotSpecified:
+		fallthrough
+	default:
+		return ""
+	}
 }
