@@ -1,5 +1,33 @@
 package r3sql
 
+// TODO: Dialect Flavors
+//
+// Dialects can have flavors to handle database-specific SQL variations.
+// When a driver selects a dialect, it should also be able to select the
+// proper flavor of that dialect. For example:
+//
+//   - PostgreSQL flavor: supports ILIKE, uses $1/$2 placeholders, supports RETURNING
+//   - SQLite flavor: maps ILIKE -> LIKE (SQLite LIKE is case-insensitive for ASCII),
+//     uses ? placeholders, RETURNING requires SQLite 3.35+
+//   - MySQL flavor: maps ILIKE -> LIKE (with collation-dependent behavior),
+//     uses ? placeholders, no NULLS FIRST/LAST (needs CASE WHEN workaround)
+//
+// Proposed API:
+//
+//   type Flavor int
+//   const (
+//       FlavorPostgreSQL Flavor = iota
+//       FlavorSQLite
+//       FlavorMySQL
+//   )
+//
+//   // Option funcs for dialect conversion:
+//   FiltersToSQL(filters, WithFlavor(FlavorSQLite))
+//   SortsToSQL(sorts, WithFlavor(FlavorSQLite))
+//
+// This keeps the dialect package as the single SQL translation layer,
+// with drivers only needing to specify which flavor they require.
+
 import (
 	"errors"
 	"fmt"
@@ -43,6 +71,10 @@ func OperatorToSQL(op r3.FilterOperatorSpec) (SQLClauseOperator, error) {
 	case r3.OperatorNotLike:
 		return SQLClauseOperatorNotLike, nil
 	case r3.OperatorILike:
+		// TODO: With dialect flavors, this should respect the selected flavor:
+		//   PostgreSQL -> ILIKE (native)
+		//   SQLite     -> LIKE  (SQLite LIKE is case-insensitive for ASCII)
+		//   MySQL      -> LIKE  (case sensitivity depends on column collation)
 		return SQLClauseOperatorILike, nil
 
 	case r3.OperatorBetween,
