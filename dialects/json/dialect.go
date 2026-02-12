@@ -7,210 +7,121 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// JSONInboundDialector converts JSON dialect values to r3 types.
-type JSONInboundDialector struct{}
-
-// JSONOutboundDialector converts r3 types to JSON dialect values.
-type JSONOutboundDialector struct{}
-
-var (
-	_ r3.FieldInboundDialector          = (*JSONInboundDialector)(nil)
-	_ r3.FilterInboundDialector         = (*JSONInboundDialector)(nil)
-	_ r3.FilterOperatorInboundDialector = (*JSONInboundDialector)(nil)
-	_ r3.SortInboundDialector           = (*JSONInboundDialector)(nil)
-
-	_ r3.FieldOutboundDialector          = (*JSONOutboundDialector)(nil)
-	_ r3.FilterOutboundDialector         = (*JSONOutboundDialector)(nil)
-	_ r3.FilterOperatorOutboundDialector = (*JSONOutboundDialector)(nil)
-	_ r3.SortOutboundDialector           = (*JSONOutboundDialector)(nil)
-
-	_ r3.PaginationDialector = (*JSONInboundDialector)(nil)
-	_ r3.PaginationDialector = (*JSONOutboundDialector)(nil)
-)
-
-// TranslateIntoFieldSpec converts a JSON-dialect field into a FieldSpec.
-func (d *JSONInboundDialector) TranslateIntoFieldSpec(jsonField r3.DialectValue) (*r3.FieldSpec, error) {
-	inboundFilter, ok := jsonField.(JSONField)
-	if !ok {
-		if ptr, ok := jsonField.(*JSONField); ok {
-			inboundFilter = *ptr
-		} else {
-			return nil, newError(fmt.Errorf("invalid filter type: %T", jsonField))
-		}
+// FieldToJSON converts a FieldSpec to a JSONField.
+func FieldToJSON(f *r3.FieldSpec) JSONField {
+	if f == nil {
+		return ""
 	}
-
-	return inboundFilter.ToFieldSpec()
+	return JSONField(f.String())
 }
 
-// TranslateIntoFilterSpec converts a JSON-dialect filter into a FilterSpec.
-func (d *JSONInboundDialector) TranslateIntoFilterSpec(dialectValue r3.DialectValue) (*r3.FilterSpec, error) {
-	inboundFilter, ok := dialectValue.(*JSONFilter)
-	if !ok {
-		return nil, newError(fmt.Errorf("invalid filter type: %T", dialectValue))
-	}
-
-	return inboundFilter.ToFilterSpec()
+// JSONToField converts a JSONField to a FieldSpec.
+func JSONToField(jf JSONField) *r3.FieldSpec {
+	return r3.NewFieldSpec(jf.String())
 }
 
-// TranslateIntoFilterOperatorSpec converts a JSON-dialect filter operator into a FilterOperatorSpec.
-func (d *JSONInboundDialector) TranslateIntoFilterOperatorSpec(op r3.DialectValue) (*r3.FilterOperatorSpec, error) {
-	jsonOp, ok := op.(JSONFilterOperator)
-	if !ok {
-		if ptr, ok := op.(*JSONFilterOperator); ok {
-			jsonOp = *ptr
-		} else if str, ok := op.(string); ok {
-			// Handle string input by parsing it
-			if err := jsonOp.UnmarshalText([]byte(str)); err != nil {
-				return nil, newError(fmt.Errorf("invalid filter operator string: %s", str))
-			}
-		} else {
-			return nil, newError(fmt.Errorf("invalid filter operator type: %T", op))
-		}
-	}
-
-	r3Op, err := jsonOp.ToFilterOperatorSpec()
-	if err != nil {
-		return nil, newError(fmt.Errorf("failed to convert JSON operator to r3 operator: %w", err))
-	}
-
-	return &r3Op, nil
+// OperatorToJSON converts a FilterOperatorSpec to a JSONFilterOperator.
+func OperatorToJSON(op r3.FilterOperatorSpec) (JSONFilterOperator, error) {
+	return r3ToJSONOperator(op)
 }
 
-// TranslateIntoSortSpec converts a JSON-dialect sort into a SortSpec.
-func (d *JSONInboundDialector) TranslateIntoSortSpec(dialectValue r3.DialectValue) (*r3.SortSpec, error) {
-	jsonSort, ok := dialectValue.(*JSONSort)
-	if !ok {
-		if sortPtr, ok := dialectValue.(*JSONSort); ok {
-			jsonSort = sortPtr
-		} else {
-			return nil, newError(fmt.Errorf("invalid sort type: %T", dialectValue))
-		}
-	}
-
-	return jsonSort.ToSortSpec()
+// JSONToOperator converts a JSONFilterOperator to a FilterOperatorSpec.
+func JSONToOperator(jop JSONFilterOperator) (r3.FilterOperatorSpec, error) {
+	return jop.ToFilterOperatorSpec()
 }
 
-// TranslateIntoPaginationSpec converts a JSON-dialect pagination into a PaginationSpec.
-func (d *JSONInboundDialector) TranslateIntoPaginationSpec(dialectValue r3.DialectValue) (*r3.PaginationSpec, error) {
-	jsonPagination, ok := dialectValue.(*JSONPagination)
-	if !ok {
-		if paginationPtr, ok := dialectValue.(*JSONPagination); ok {
-			jsonPagination = paginationPtr
-		} else {
-			return nil, newError(fmt.Errorf("invalid pagination type: %T", dialectValue))
-		}
-	}
-
-	return jsonPagination.ToPaginationSpec()
-}
-
-// TranslatePaginationSpec converts a PaginationSpec to a JSON pagination.
-func (d *JSONInboundDialector) TranslatePaginationSpec(pagination *r3.PaginationSpec) (r3.DialectValue, error) {
-	if pagination == nil {
-		return nil, newError(errors.New("nil pagination spec"))
-	}
-
-	jsonPagination := jsonPaginationFromR3(pagination)
-	return jsonPagination, nil
-}
-
-// JSONOutboundDialector methods - convert r3 types to JSON dialect values
-
-// TranslateFieldSpec converts a FieldSpec to a JSON field.
-func (d *JSONOutboundDialector) TranslateFieldSpec(field *r3.FieldSpec) (r3.DialectValue, error) {
-	if field == nil {
-		return nil, newError(errors.New("nil field spec"))
-	}
-
-	jsonField := JSONField(field.String())
-
-	return jsonField, nil
-}
-
-// TranslateFilterSpec converts a FilterSpec to a JSON filter.
-func (d *JSONOutboundDialector) TranslateFilterSpec(filter *r3.FilterSpec) (r3.DialectValue, error) {
-	if filter == nil {
+// FilterToJSON converts a FilterSpec to a JSONFilter.
+func FilterToJSON(f *r3.FilterSpec) (*JSONFilter, error) {
+	if f == nil {
 		return nil, newError(errors.New("nil filter spec"))
 	}
 
 	jsonFilter := &JSONFilter{}
 
 	// Handle simple field-operator-value filters
-	if filter.Field != nil {
-		jsonFilter.Field = JSONField(filter.Field.String())
-		jsonFilter.Value = filter.Value
+	if f.Field != nil {
+		jsonFilter.Field = JSONField(f.Field.String())
+		jsonFilter.Value = f.Value
 
-		// Convert operator
-		jsonOp, err := r3ToJSONOperator(filter.Operator)
+		jsonOp, err := r3ToJSONOperator(f.Operator)
 		if err != nil {
 			return nil, newError(fmt.Errorf("failed to convert operator: %w", err))
 		}
 		jsonFilter.Op = jsonOp
 	}
 
-	// Note: AND/OR group handling would require extending the JSON schema
-	// For now, we only handle simple field-operator-value filters
-	if len(filter.And) > 0 || len(filter.Or) > 0 {
-		return nil, newError(errors.New("AND/OR group conversion not yet implemented"))
+	// Handle AND/OR groups recursively
+	if len(f.And) > 0 {
+		jsonFilter.And = make(JSONFilters, len(f.And))
+		for i, child := range f.And {
+			jf, err := FilterToJSON(child)
+			if err != nil {
+				return nil, err
+			}
+			jsonFilter.And[i] = jf
+		}
+	}
+
+	if len(f.Or) > 0 {
+		jsonFilter.Or = make(JSONFilters, len(f.Or))
+		for i, child := range f.Or {
+			jf, err := FilterToJSON(child)
+			if err != nil {
+				return nil, err
+			}
+			jsonFilter.Or[i] = jf
+		}
 	}
 
 	return jsonFilter, nil
 }
 
-// TranslateFilterOperatorSpec converts a FilterOperatorSpec to a JSON operator.
-func (d *JSONOutboundDialector) TranslateFilterOperatorSpec(op *r3.FilterOperatorSpec) (r3.DialectValue, error) {
-	if op == nil {
-		return nil, newError(errors.New("nil filter operator spec"))
-	}
-
-	jsonOp, err := r3ToJSONOperator(*op)
-	if err != nil {
-		return nil, newError(fmt.Errorf("failed to convert r3 operator to JSON: %w", err))
-	}
-
-	return jsonOp, nil
+// JSONToFilter converts a JSONFilter to a FilterSpec.
+func JSONToFilter(jf *JSONFilter) (*r3.FilterSpec, error) {
+	return jf.ToFilterSpec()
 }
 
-// TranslateSortSpec converts a SortSpec to a JSON sort.
-func (d *JSONOutboundDialector) TranslateSortSpec(sort *r3.SortSpec) (r3.DialectValue, error) {
-	if sort == nil {
-		return nil, newError(errors.New("nil sort spec"))
-	}
-
-	jsonSort := &JSONSort{
-		Field:         JSONField(sort.Column.String()),
-		Direction:     jsonSortDirectionFromR3(sort.Direction),
-		NullsPosition: jsonNullsPositionFromR3(sort.NullsPosition),
-	}
-
-	return jsonSort, nil
+// JSONToFilters converts a slice of JSONFilters to r3.Filters.
+func JSONToFilters(jfs JSONFilters) (r3.Filters, error) {
+	return jfs.toFilters()
 }
 
-// TranslatePaginationSpec converts a PaginationSpec to a JSON pagination.
-func (d *JSONOutboundDialector) TranslatePaginationSpec(pagination *r3.PaginationSpec) (r3.DialectValue, error) {
-	if pagination == nil {
-		return nil, newError(errors.New("nil pagination spec"))
-	}
-
-	jsonPagination := jsonPaginationFromR3(pagination)
-	return jsonPagination, nil
+// JSONFiltersToFilters is an alias for JSONToFilters for backward compatibility.
+// Deprecated: Use JSONToFilters instead.
+func JSONFiltersToFilters(inboundFilters JSONFilters) (r3.Filters, error) {
+	return JSONToFilters(inboundFilters)
 }
 
-// TranslateIntoPaginationSpec converts a JSON-dialect pagination into a PaginationSpec.
-func (d *JSONOutboundDialector) TranslateIntoPaginationSpec(dialectValue r3.DialectValue) (*r3.PaginationSpec, error) {
-	jsonPagination, ok := dialectValue.(*JSONPagination)
-	if !ok {
-		if paginationPtr, ok := dialectValue.(*JSONPagination); ok {
-			jsonPagination = paginationPtr
-		} else {
-			return nil, newError(fmt.Errorf("invalid pagination type: %T", dialectValue))
-		}
+// SortToJSON converts a SortSpec to a JSONSort.
+func SortToJSON(s *r3.SortSpec) *JSONSort {
+	if s == nil {
+		return nil
 	}
-
-	return jsonPagination.ToPaginationSpec()
+	return &JSONSort{
+		Field:         JSONField(s.Column.String()),
+		Direction:     jsonSortDirectionFromR3(s.Direction),
+		NullsPosition: jsonNullsPositionFromR3(s.NullsPosition),
+	}
 }
 
-// Helper function to convert r3 operators to JSON operators.
+// JSONToSort converts a JSONSort to a SortSpec.
+func JSONToSort(js *JSONSort) (*r3.SortSpec, error) {
+	return js.ToSortSpec()
+}
+
+// PaginationToJSON converts a PaginationSpec to a JSONPagination.
+func PaginationToJSON(p *r3.PaginationSpec) *JSONPagination {
+	return jsonPaginationFromR3(p)
+}
+
+// JSONToPagination converts a JSONPagination to a PaginationSpec.
+func JSONToPagination(jp *JSONPagination) (*r3.PaginationSpec, error) {
+	return jp.ToPaginationSpec()
+}
+
+// --- Internal helpers ---
+
+// r3ToJSONOperator converts r3 operators to JSON operators.
 func r3ToJSONOperator(op r3.FilterOperatorSpec) (JSONFilterOperator, error) {
 	switch op {
 	case r3.OperatorEq:

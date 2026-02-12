@@ -45,7 +45,7 @@ func setupPostgresContainer() (testcontainers.Container, *gorm.DB, error) {
 
 	// Create PostgreSQL container request
 	req := testcontainers.ContainerRequest{
-		Image:        "postgres:16-alpine",
+		Image:        "postgres:18-alpine",
 		ExposedPorts: []string{"5432/tcp"},
 		Env: map[string]string{
 			"POSTGRES_USER":     "test",

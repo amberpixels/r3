@@ -1,39 +1,26 @@
 package r3
 
-import (
-	"fmt"
-
-	"github.com/amberpixels/r3/internal/notimplemented"
-)
-
-// Preload defines a single preload rule.
-type Preload interface {
-	// Stringer is needed for debugging purposes, so each d can be printed.
-	fmt.Stringer
-
-	// Cloner is needed so the preloads are safe and immutable.
-	Cloner[Preload]
-
-	GetName() string             // The name of the related entity, e.g., "Author".
-	GetNestedPreloads() Preloads // Nested preloads, e.g., "Author.Books".
-}
-
-// Preloads is a slice of Preload-s.
-type Preloads []Preload
+// Preloads is a slice of *PreloadSpec.
+type Preloads []*PreloadSpec
 
 // MergeWith merges (combines) preloads with other preloads.
 func (preloads Preloads) MergeWith(other Preloads) Preloads { return mergeWith(preloads, other) }
 
 // Dedupe removes duplicates from the preloads list.
-// Note: it's not super-performant because of types and go-generics. Refactor if needed.
 func (preloads *Preloads) Dedupe() {
-	v := []Preload(*preloads)
+	v := []*PreloadSpec(*preloads)
 	dedupe(&v)
 	*preloads = v
 }
 
 // Clone returns a cloned list of given preloads.
-func (preloads Preloads) Clone() Preloads { return cloneAll(preloads) }
+func (preloads Preloads) Clone() Preloads {
+	cloned := make(Preloads, len(preloads))
+	for i, p := range preloads {
+		cloned[i] = p.Clone()
+	}
+	return cloned
+}
 
 // PreloadSpec means a simple possible preload (name of a table/collection).
 type PreloadSpec struct {
@@ -43,14 +30,8 @@ type PreloadSpec struct {
 // GetName returns the name of the current preload.
 func (t *PreloadSpec) GetName() string { return t.Name }
 
-// GetNestedPreloads returns list of nested prelaods from this preload.
-func (t *PreloadSpec) GetNestedPreloads() Preloads {
-	notimplemented.Panic("GetNestedPreloads will be implemented in future versions")
-	return nil
-}
-
 // Clone returns a newly created struct of PreloadSpec.
-func (t *PreloadSpec) Clone() Preload {
+func (t *PreloadSpec) Clone() *PreloadSpec {
 	return &PreloadSpec{Name: t.Name}
 }
 

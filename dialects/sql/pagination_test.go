@@ -95,14 +95,12 @@ func TestSQLPagination_ToLimitOffset(t *testing.T) {
 	assert.Equal(t, 100, offset)
 }
 
-func TestSQLDialector_TranslatePaginationSpec(t *testing.T) {
-	dialector := &r3sql.SQLDialector{}
-
+func TestPaginationToSQL_Spec(t *testing.T) {
 	tests := []struct {
 		name        string
 		input       *r3.PaginationSpec
 		expectedSQL *r3sql.SQLPagination
-		expectError bool
+		isNil       bool
 	}{
 		{
 			name:        "valid pagination spec",
@@ -120,40 +118,33 @@ func TestSQLDialector_TranslatePaginationSpec(t *testing.T) {
 			expectedSQL: r3sql.NewSQLPagination(r3.PageSizeDefault, 0), // page 1 with default size
 		},
 		{
-			name:        "nil pagination spec",
-			input:       nil,
-			expectError: true,
+			name:  "nil pagination spec",
+			input: nil,
+			isNil: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := dialector.TranslatePaginationSpec(tt.input)
+			result := r3sql.PaginationToSQL(tt.input)
 
-			if tt.expectError {
-				require.Error(t, err)
+			if tt.isNil {
 				assert.Nil(t, result)
 			} else {
-				require.NoError(t, err)
 				require.NotNil(t, result)
-
-				sqlPagination, ok := result.(*r3sql.SQLPagination)
-				require.True(t, ok, "Result should be a SQLPagination")
-				assert.Equal(t, tt.expectedSQL.Limit, sqlPagination.Limit)
-				assert.Equal(t, tt.expectedSQL.Offset, sqlPagination.Offset)
+				assert.Equal(t, tt.expectedSQL.Limit, result.Limit)
+				assert.Equal(t, tt.expectedSQL.Offset, result.Offset)
 			}
 		})
 	}
 }
 
-func TestSQLDialector_TranslateIntoPaginationSpec(t *testing.T) {
-	dialector := &r3sql.SQLDialector{}
-
+func TestSQLToPagination_Spec(t *testing.T) {
 	tests := []struct {
 		name         string
-		input        r3.DialectValue
+		input        *r3sql.SQLPagination
 		expectedSpec *r3.PaginationSpec
-		expectError  bool
+		isNil        bool
 	}{
 		{
 			name:         "valid SQL pagination",
@@ -166,105 +157,19 @@ func TestSQLDialector_TranslateIntoPaginationSpec(t *testing.T) {
 			expectedSpec: r3.NewPaginationSpec(1, 10), // offset 0 = page 1
 		},
 		{
-			name:         "SQL pagination value type",
-			input:        *r3sql.NewSQLPagination(30, 60),
-			expectedSpec: r3.NewPaginationSpec(3, 30), // offset 60 / limit 30 + 1 = page 3
-		},
-		{
-			name:        "invalid input type",
-			input:       "invalid",
-			expectError: true,
+			name:  "nil input",
+			input: nil,
+			isNil: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := dialector.TranslateIntoPaginationSpec(tt.input)
+			result := r3sql.SQLToPagination(tt.input)
 
-			if tt.expectError {
-				require.Error(t, err)
+			if tt.isNil {
 				assert.Nil(t, result)
 			} else {
-				require.NoError(t, err)
-				require.NotNil(t, result)
-				assert.Equal(t, tt.expectedSpec.GetPageNum(), result.GetPageNum())
-				assert.Equal(t, tt.expectedSpec.GetPageSize(), result.GetPageSize())
-			}
-		})
-	}
-}
-
-func TestSQLInboundDialector_TranslatePaginationSpec(t *testing.T) {
-	dialector := &r3sql.SQLInboundDialector{}
-
-	tests := []struct {
-		name        string
-		input       *r3.PaginationSpec
-		expectedSQL *r3sql.SQLPagination
-		expectError bool
-	}{
-		{
-			name:        "valid pagination spec",
-			input:       r3.NewPaginationSpec(4, 20),
-			expectedSQL: r3sql.NewSQLPagination(20, 60), // (4-1)*20 = 60 offset
-		},
-		{
-			name:        "nil pagination spec",
-			input:       nil,
-			expectError: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := dialector.TranslatePaginationSpec(tt.input)
-
-			if tt.expectError {
-				require.Error(t, err)
-				assert.Nil(t, result)
-			} else {
-				require.NoError(t, err)
-				require.NotNil(t, result)
-
-				sqlPagination, ok := result.(*r3sql.SQLPagination)
-				require.True(t, ok, "Result should be a SQLPagination")
-				assert.Equal(t, tt.expectedSQL.Limit, sqlPagination.Limit)
-				assert.Equal(t, tt.expectedSQL.Offset, sqlPagination.Offset)
-			}
-		})
-	}
-}
-
-func TestSQLInboundDialector_TranslateIntoPaginationSpec(t *testing.T) {
-	dialector := &r3sql.SQLInboundDialector{}
-
-	tests := []struct {
-		name         string
-		input        r3.DialectValue
-		expectedSpec *r3.PaginationSpec
-		expectError  bool
-	}{
-		{
-			name:         "valid SQL pagination",
-			input:        r3sql.NewSQLPagination(15, 30),
-			expectedSpec: r3.NewPaginationSpec(3, 15), // offset 30 / limit 15 + 1 = page 3
-		},
-		{
-			name:        "invalid input type",
-			input:       123,
-			expectError: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := dialector.TranslateIntoPaginationSpec(tt.input)
-
-			if tt.expectError {
-				require.Error(t, err)
-				assert.Nil(t, result)
-			} else {
-				require.NoError(t, err)
 				require.NotNil(t, result)
 				assert.Equal(t, tt.expectedSpec.GetPageNum(), result.GetPageNum())
 				assert.Equal(t, tt.expectedSpec.GetPageSize(), result.GetPageSize())
@@ -274,9 +179,6 @@ func TestSQLInboundDialector_TranslateIntoPaginationSpec(t *testing.T) {
 }
 
 func TestSQLPagination_RoundTrip(t *testing.T) {
-	dialector := &r3sql.SQLDialector{}
-	inboundDialector := &r3sql.SQLInboundDialector{}
-
 	tests := []struct {
 		name     string
 		original *r3.PaginationSpec
@@ -298,12 +200,12 @@ func TestSQLPagination_RoundTrip(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Convert to SQL
-			sqlValue, err := dialector.TranslatePaginationSpec(tt.original)
-			require.NoError(t, err)
+			sqlPagination := r3sql.PaginationToSQL(tt.original)
+			require.NotNil(t, sqlPagination)
 
 			// Convert back to PaginationSpec
-			result, err := inboundDialector.TranslateIntoPaginationSpec(sqlValue)
-			require.NoError(t, err)
+			result := r3sql.SQLToPagination(sqlPagination)
+			require.NotNil(t, result)
 
 			// Verify round-trip consistency
 			assert.Equal(t, tt.original.GetPageNum(), result.GetPageNum())

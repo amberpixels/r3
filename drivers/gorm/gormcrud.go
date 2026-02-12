@@ -90,7 +90,7 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 	// FIELDS
 
 	// Handle custom filters:
-	clauses, err := r3sql.FiltersToSQLClauses(q.Filters)
+	clauses, err := r3sql.FiltersToSQL(q.Filters)
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to convert filters to SQL: %w", err)
 	}
@@ -105,19 +105,21 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		}
 	}
 
-	// Sorting.
-	// sorts, err := r3sql.NewSorts(q.Sorts)
-	// if err != nil {
-	// 	return nil, 0, fmt.Errorf("failed to convert sorts to SQL: %w", err)
-	// }
+	// Sorting
+	if len(q.Sorts) > 0 {
+		sorts, err := r3sql.SortsToSQL(q.Sorts)
+		if err != nil {
+			return nil, 0, fmt.Errorf("failed to convert sorts to SQL: %w", err)
+		}
 
-	// for _, sort := range sorts {
-	// 	query = query.Order(sort.ToSQL()) // TODO: to Gorm objects instead of plain SQL
-	// }
+		for _, sort := range sorts {
+			query = query.Order(sort.String())
+		}
+	}
 
 	// If Pagination is given, then we need to first Count all results without pagination:
 	var isPaginated bool
-	if paginationSpec, ok := q.Pagination.(*r3.PaginationSpec); ok && paginationSpec.IsPaginated() {
+	if q.Pagination != nil && q.Pagination.IsPaginated() {
 		// We have to count first:
 		if err := query.Count(&totalCount).Error; err != nil {
 			return nil, 0, err
@@ -128,7 +130,7 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		}
 
 		// Then to add limit & offset for main Find() query
-		limit, offset := paginationSpec.ToLimitOffset()
+		limit, offset := q.Pagination.ToLimitOffset()
 		query = query.Limit(limit)
 		query = query.Offset(offset)
 		isPaginated = true
@@ -158,9 +160,7 @@ func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 	// Apply preloads
 	query := r.db.WithContext(ctx)
 	for _, preload := range q.Preloads {
-		// For now, only use simple preloads - nested preloads are not implemented yet
 		query = query.Preload(preload.GetName())
-		// TODO(future): Handle nested preloads when GetNestedPreloads() is implemented
 	}
 
 	// Fetch the record

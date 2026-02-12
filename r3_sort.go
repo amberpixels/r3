@@ -1,69 +1,11 @@
 package r3
 
-import (
-	"errors"
-	"fmt"
-)
-
-// Sort defines the sort criteria and direction.
-type Sort interface {
-	// Stringer is needed for debugging purposes, so each sort can be printed.
-	fmt.Stringer
-
-	// Cloner is needed so we sorts are safe and immutable
-	Cloner[Sort]
-
-	// ToDialect converts the Sort (r3=>SQL) into its dialect-specific representation.
-	ToDialect(SortOutboundDialector) (DialectValue, error)
-
-	// FromDialect makes up the Sort (JSON=>r3) from a SortInboundDialector and its DialectValue
-	FromDialect(SortInboundDialector, DialectValue) error
-
-	// GetDirection returns the direction of the sort
-	GetDirection() SortDirection
-
-	// GetCriteria returns the criteria (e.g. Field, on which we do sort)
-	GetCriteria() Field
-}
-
-type (
-	// SortOutboundDialector is a generic dialector (visitor) interface for conversion.
-	SortOutboundDialector interface {
-		TranslateSortSpec(s *SortSpec) (DialectValue, error)
-	}
-
-	// SortInboundDialector is a generic inbound dialector (visitor) interface for conversion.
-	SortInboundDialector interface {
-		TranslateIntoSortSpec(s DialectValue) (*SortSpec, error)
-	}
-)
-
 // SortSpec represents a single sort criteria.
 type SortSpec struct {
 	Column    *FieldSpec
 	Direction SortDirection // Asc | Desc | Unspecified (default)
 
 	NullsPosition SortNullsPosition // First | Last | Unspecified
-}
-
-// ToDialect converts the Sort into its dialect-specific representation.
-func (s *SortSpec) ToDialect(dialector SortOutboundDialector) (DialectValue, error) {
-	return dialector.TranslateSortSpec(s)
-}
-
-// FromDialect converts a dialect-specific sort representation into r3 Sort.
-func (s *SortSpec) FromDialect(dialector SortInboundDialector, inValue DialectValue) error {
-	if s == nil {
-		return errors.New("FromDialect must be called on a non-nil SortSpec")
-	}
-
-	translated, err := dialector.TranslateIntoSortSpec(inValue)
-	if err != nil {
-		return fmt.Errorf("inbound dialector failed: %w", err)
-	}
-
-	*s = *translated
-	return nil
 }
 
 // String returns string representation of the sort spec.
@@ -80,12 +22,12 @@ func (s *SortSpec) String() string {
 func (s *SortSpec) GetDirection() SortDirection { return s.Direction }
 
 // GetCriteria returns the sort criteria.
-func (s *SortSpec) GetCriteria() Field { return s.Column }
+func (s *SortSpec) GetCriteria() *FieldSpec { return s.Column }
 
 // Clone returns a new pointer to the sort spec (safe and deep clone).
-func (s *SortSpec) Clone() Sort {
+func (s *SortSpec) Clone() *SortSpec {
 	var clone SortSpec
-	clone.Column, _ = s.Column.Clone().(*FieldSpec)
+	clone.Column = s.Column.Clone()
 	clone.Direction = s.Direction
 	clone.NullsPosition = s.NullsPosition
 
@@ -116,17 +58,20 @@ func NewSortDescSpec(col *FieldSpec) *SortSpec {
 	return NewSortSpec(col, SortDirectionDesc)
 }
 
-var _ Sort = (*SortSpec)(nil)
-
-// Sorts represents a list of ColumnSort-s.
-type Sorts []Sort
+// Sorts represents a list of *SortSpec.
+type Sorts []*SortSpec
 
 // MergeWith merges other sorts into ours.
-// TODO: here and in other places, MergeWith must be safe? immutable, right?? think and plan
 func (sorts Sorts) MergeWith(other Sorts) Sorts { return mergeWith(sorts, other) }
 
 // Clone returns a cloned list of given sorts.
-func (sorts Sorts) Clone() Sorts { return cloneAll(sorts) }
+func (sorts Sorts) Clone() Sorts {
+	cloned := make(Sorts, len(sorts))
+	for i, s := range sorts {
+		cloned[i] = s.Clone()
+	}
+	return cloned
+}
 
 // SortNullsPosition represents a position of nulls in sort (first or last).
 type SortNullsPosition int8

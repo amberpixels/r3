@@ -40,25 +40,17 @@ func TestSortSpec_DialectString(t *testing.T) {
 		},
 	}
 
-	sqlDialector := &r3sql.SQLDialector{}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dialectValue, err := tt.sort.ToDialect(sqlDialector)
+			sqlSort, err := r3sql.SortToSQL(tt.sort)
 			if err != nil {
-				t.Errorf("ToDialect() error = %v", err)
-				return
-			}
-
-			sqlSort, ok := dialectValue.(r3sql.SQLSort)
-			if !ok {
-				t.Errorf("ToDialect() returned %T, expected r3sql.SQLSort", dialectValue)
+				t.Errorf("SortToSQL() error = %v", err)
 				return
 			}
 
 			result := sqlSort.String()
 			if result != tt.expected {
-				t.Errorf("ToDialect().String() = %v, want %v", result, tt.expected)
+				t.Errorf("SortToSQL().String() = %v, want %v", result, tt.expected)
 			}
 		})
 	}

@@ -25,5 +25,15 @@ lint: lint-install
 test:
 	go test ./...
 
+# Run the pet store example (starts PostgreSQL in Docker + the Go server)
+example:
+	@docker start petstore-pg 2>/dev/null || \
+		docker run -d --name petstore-pg -p 5432:5432 \
+			-e POSTGRES_USER=petstore -e POSTGRES_PASSWORD=petstore -e POSTGRES_DB=petstore \
+			postgres:18-alpine
+	@echo "Waiting for PostgreSQL..."
+	@until docker exec petstore-pg pg_isready -U petstore -q 2>/dev/null; do sleep 0.2; done
+	@go run ./examples/02petstore/cmd
+
 # Phony targets
-.PHONY: all tidy lint-install lint test
+.PHONY: all tidy lint-install lint test example

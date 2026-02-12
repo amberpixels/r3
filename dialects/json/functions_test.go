@@ -29,7 +29,7 @@ func TestJSONFiltersToFilters(t *testing.T) {
 			},
 			validate: func(t *testing.T, result r3.Filters) {
 				require.Len(t, result, 1)
-				spec := result[0].(*r3.FilterSpec)
+				spec := result[0]
 				assert.Equal(t, "id", spec.Field.String())
 				assert.Equal(t, r3.OperatorEq, spec.Operator)
 				assert.Equal(t, 123, spec.Value)
@@ -58,19 +58,19 @@ func TestJSONFiltersToFilters(t *testing.T) {
 				require.Len(t, result, 3)
 
 				// First filter - name LIKE 'john%'
-				spec1 := result[0].(*r3.FilterSpec)
+				spec1 := result[0]
 				assert.Equal(t, "name", spec1.Field.String())
 				assert.Equal(t, r3.OperatorLike, spec1.Operator)
 				assert.Equal(t, "john%", spec1.Value)
 
 				// Second filter - age >= 18
-				spec2 := result[1].(*r3.FilterSpec)
+				spec2 := result[1]
 				assert.Equal(t, "age", spec2.Field.String())
 				assert.Equal(t, r3.OperatorGte, spec2.Operator)
 				assert.Equal(t, 18, spec2.Value)
 
 				// Third filter - status IN ('active', 'pending')
-				spec3 := result[2].(*r3.FilterSpec)
+				spec3 := result[2]
 				assert.Equal(t, "status", spec3.Field.String())
 				assert.Equal(t, r3.OperatorIn, spec3.Operator)
 				assert.Equal(t, []string{"active", "pending"}, spec3.Value)
@@ -105,29 +105,29 @@ func TestJSONFiltersToFilters(t *testing.T) {
 			},
 			validate: func(t *testing.T, result r3.Filters) {
 				require.Len(t, result, 1)
-				spec := result[0].(*r3.FilterSpec)
+				spec := result[0]
 
 				// Should have AND conditions
 				require.Len(t, spec.And, 2)
 
 				// First AND condition: category = 'electronics'
-				firstAnd := spec.And[0].(*r3.FilterSpec)
+				firstAnd := spec.And[0]
 				assert.Equal(t, "category", firstAnd.Field.String())
 				assert.Equal(t, r3.OperatorEq, firstAnd.Operator)
 				assert.Equal(t, "electronics", firstAnd.Value)
 
 				// Second AND condition: (price < 100 OR on_sale = true)
-				secondAnd := spec.And[1].(*r3.FilterSpec)
+				secondAnd := spec.And[1]
 				require.Len(t, secondAnd.Or, 2)
 
 				// First OR condition: price < 100
-				firstOr := secondAnd.Or[0].(*r3.FilterSpec)
+				firstOr := secondAnd.Or[0]
 				assert.Equal(t, "price", firstOr.Field.String())
 				assert.Equal(t, r3.OperatorLt, firstOr.Operator)
 				assert.Equal(t, 100, firstOr.Value)
 
 				// Second OR condition: on_sale = true
-				secondOr := secondAnd.Or[1].(*r3.FilterSpec)
+				secondOr := secondAnd.Or[1]
 				assert.Equal(t, "on_sale", secondOr.Field.String())
 				assert.Equal(t, r3.OperatorEq, secondOr.Operator)
 				assert.Equal(t, true, secondOr.Value)
@@ -158,13 +158,13 @@ func TestJSONFiltersToFilters(t *testing.T) {
 				require.Len(t, result, 2)
 
 				// First filter: deleted_at IS NULL
-				spec1 := result[0].(*r3.FilterSpec)
+				spec1 := result[0]
 				assert.Equal(t, "deleted_at", spec1.Field.String())
 				assert.Equal(t, r3.OperatorEq, spec1.Operator)
 				assert.Nil(t, spec1.Value)
 
 				// Second filter: archived_at IS NOT NULL
-				spec2 := result[1].(*r3.FilterSpec)
+				spec2 := result[1]
 				assert.Equal(t, "archived_at", spec2.Field.String())
 				assert.Equal(t, r3.OperatorNe, spec2.Operator)
 				assert.Nil(t, spec2.Value)
@@ -198,25 +198,25 @@ func TestJSONFiltersToFilters(t *testing.T) {
 				require.Len(t, result, 4)
 
 				// Integer value
-				spec1 := result[0].(*r3.FilterSpec)
+				spec1 := result[0]
 				assert.Equal(t, "id", spec1.Field.String())
 				assert.Equal(t, r3.OperatorEq, spec1.Operator)
 				assert.Equal(t, 42, spec1.Value)
 
 				// Float value
-				spec2 := result[1].(*r3.FilterSpec)
+				spec2 := result[1]
 				assert.Equal(t, "score", spec2.Field.String())
 				assert.Equal(t, r3.OperatorGte, spec2.Operator)
 				assert.InDelta(t, 85.5, spec2.Value, 0)
 
 				// Boolean value
-				spec3 := result[2].(*r3.FilterSpec)
+				spec3 := result[2]
 				assert.Equal(t, "active", spec3.Field.String())
 				assert.Equal(t, r3.OperatorEq, spec3.Operator)
 				assert.Equal(t, true, spec3.Value)
 
 				// Array value
-				spec4 := result[3].(*r3.FilterSpec)
+				spec4 := result[3]
 				assert.Equal(t, "tags", spec4.Field.String())
 				assert.Equal(t, r3.OperatorIn, spec4.Operator)
 				assert.Equal(t, []any{"golang", "testing", "r3"}, spec4.Value)
@@ -262,7 +262,7 @@ func TestJSONFiltersToFilters(t *testing.T) {
 				}
 
 				for i, expectedOp := range expectedOperators {
-					spec := result[i].(*r3.FilterSpec)
+					spec := result[i]
 					assert.Equal(t, expectedOp, spec.Operator, "Operator mismatch at index %d", i)
 					expectedField := fmt.Sprintf("f%d", i+1)
 					assert.Equal(t, expectedField, spec.Field.String(), "Field mismatch at index %d", i)
@@ -322,20 +322,20 @@ func TestJSONFiltersToFilters_Integration(t *testing.T) {
 			},
 			validate: func(t *testing.T, result r3.Filters) {
 				require.Len(t, result, 1)
-				spec := result[0].(*r3.FilterSpec)
+				spec := result[0]
 				require.Len(t, spec.And, 3)
 
-				statusFilter := spec.And[0].(*r3.FilterSpec)
+				statusFilter := spec.And[0]
 				assert.Equal(t, "status", statusFilter.Field.String())
 				assert.Equal(t, r3.OperatorEq, statusFilter.Operator)
 				assert.Equal(t, "active", statusFilter.Value)
 
-				nameFilter := spec.And[1].(*r3.FilterSpec)
+				nameFilter := spec.And[1]
 				assert.Equal(t, "name", nameFilter.Field.String())
 				assert.Equal(t, r3.OperatorLike, nameFilter.Operator)
 				assert.Equal(t, "John%", nameFilter.Value)
 
-				ageFilter := spec.And[2].(*r3.FilterSpec)
+				ageFilter := spec.And[2]
 				assert.Equal(t, "age", ageFilter.Field.String())
 				assert.Equal(t, r3.OperatorGte, ageFilter.Operator)
 				assert.Equal(t, 25, ageFilter.Value)
@@ -380,22 +380,22 @@ func TestJSONFiltersToFilters_Integration(t *testing.T) {
 			},
 			validate: func(t *testing.T, result r3.Filters) {
 				require.Len(t, result, 1)
-				spec := result[0].(*r3.FilterSpec)
+				spec := result[0]
 				require.Len(t, spec.And, 2)
 
 				// First AND: category in (electronics, books)
-				categoryGroup := spec.And[0].(*r3.FilterSpec)
+				categoryGroup := spec.And[0]
 				require.Len(t, categoryGroup.Or, 2)
 
 				// Second AND: (price BETWEEN 10-100 OR on_sale = true)
-				priceOrSaleGroup := spec.And[1].(*r3.FilterSpec)
+				priceOrSaleGroup := spec.And[1]
 				require.Len(t, priceOrSaleGroup.Or, 2)
 
-				priceFilter := priceOrSaleGroup.Or[0].(*r3.FilterSpec)
+				priceFilter := priceOrSaleGroup.Or[0]
 				assert.Equal(t, "price", priceFilter.Field.String())
 				assert.Equal(t, r3.OperatorBetween, priceFilter.Operator)
 
-				saleFilter := priceOrSaleGroup.Or[1].(*r3.FilterSpec)
+				saleFilter := priceOrSaleGroup.Or[1]
 				assert.Equal(t, "on_sale", saleFilter.Field.String())
 				assert.Equal(t, r3.OperatorEq, saleFilter.Operator)
 				assert.Equal(t, true, saleFilter.Value)
@@ -432,27 +432,27 @@ func TestJSONFiltersToFilters_Integration(t *testing.T) {
 			},
 			validate: func(t *testing.T, result r3.Filters) {
 				require.Len(t, result, 1)
-				spec := result[0].(*r3.FilterSpec)
+				spec := result[0]
 				require.Len(t, spec.And, 4)
 
 				// created_at >= start
-				startFilter := spec.And[0].(*r3.FilterSpec)
+				startFilter := spec.And[0]
 				assert.Equal(t, "created_at", startFilter.Field.String())
 				assert.Equal(t, r3.OperatorGte, startFilter.Operator)
 
 				// created_at <= end
-				endFilter := spec.And[1].(*r3.FilterSpec)
+				endFilter := spec.And[1]
 				assert.Equal(t, "created_at", endFilter.Field.String())
 				assert.Equal(t, r3.OperatorLte, endFilter.Operator)
 
 				// user_id NOT IN (0, -1)
-				userFilter := spec.And[2].(*r3.FilterSpec)
+				userFilter := spec.And[2]
 				assert.Equal(t, "user_id", userFilter.Field.String())
 				assert.Equal(t, r3.OperatorNotIn, userFilter.Operator)
 				assert.Equal(t, []int{0, -1}, userFilter.Value)
 
 				// deleted_at IS NULL
-				deletedFilter := spec.And[3].(*r3.FilterSpec)
+				deletedFilter := spec.And[3]
 				assert.Equal(t, "deleted_at", deletedFilter.Field.String())
 				assert.Equal(t, r3.OperatorEq, deletedFilter.Operator)
 				assert.Nil(t, deletedFilter.Value)

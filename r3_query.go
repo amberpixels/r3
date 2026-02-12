@@ -6,12 +6,12 @@ import (
 
 // Query wraps everything from r3: Pagination, Fields, Filters, Sorts, Preloads.
 type Query struct {
-	Pagination Pagination
+	Pagination *PaginationSpec
 
-	Fields   Fields // Specific fields to retrieve.
-	Filters  Filters
-	Sorts    Sorts
-	Preloads Preloads // List of related entities to preload.
+	Fields   Fields   // Specific fields to retrieve.
+	Filters  Filters  // []*FilterSpec
+	Sorts    Sorts    // []*SortSpec
+	Preloads Preloads // []*PreloadSpec
 
 	// IncludeTrashed when true will still return trashed (soft-deleted) records.
 	IncludeTrashed maybe.Bool
@@ -34,12 +34,12 @@ func (q Query) MergeWith(other Query) Query {
 	result.Sorts = result.Sorts.MergeWith(other.Sorts)
 	result.Preloads = result.Preloads.MergeWith(other.Preloads)
 
-	// For pagination merging, we need to convert to concrete types
-	if otherPagination, ok := other.Pagination.(*PaginationSpec); ok && otherPagination != nil {
-		if resultPagination, ok := result.Pagination.(*PaginationSpec); ok && resultPagination != nil {
-			result.Pagination = resultPagination.MergeWith(otherPagination)
+	// For pagination merging
+	if other.Pagination != nil {
+		if result.Pagination != nil {
+			result.Pagination = result.Pagination.MergeWith(other.Pagination)
 		} else {
-			result.Pagination = otherPagination.Clone()
+			result.Pagination = other.Pagination.Clone()
 		}
 	}
 

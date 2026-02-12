@@ -29,18 +29,3 @@ func dedupe[T comparable](things *[]T) {
 	// truncate the rest
 	*things = (*things)[:idx]
 }
-
-// Cloner is a wrapper for Clone() function that clones anything (identified via its interface T).
-type Cloner[T any] interface {
-	Clone() T
-}
-
-func cloneAll[T interface{ Cloner[T] }](things []T) []T {
-	cloned := make([]T, len(things))
-
-	for i, c := range things {
-		cloned[i] = c.Clone()
-	}
-
-	return cloned
-}

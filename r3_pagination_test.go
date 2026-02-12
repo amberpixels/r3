@@ -121,15 +121,13 @@ func TestPaginationSpec_Clone(t *testing.T) {
 	}
 
 	cloned := original.Clone()
-	clonedSpec, ok := cloned.(*r3.PaginationSpec)
-	assert.True(t, ok)
 
 	// Verify values are equal
-	assert.Equal(t, original.PageNum, clonedSpec.PageNum)
-	assert.Equal(t, original.PageSize, clonedSpec.PageSize)
+	assert.Equal(t, original.PageNum, cloned.PageNum)
+	assert.Equal(t, original.PageSize, cloned.PageSize)
 
 	// Verify it's a different instance
-	assert.NotSame(t, original, clonedSpec)
+	assert.NotSame(t, original, cloned)
 }
 
 func TestPaginationSpec_MergeWith(t *testing.T) {

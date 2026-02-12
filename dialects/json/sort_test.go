@@ -221,12 +221,11 @@ func TestJSONSort_JSONMarshaling(t *testing.T) {
 	}
 }
 
-func TestJSONInboundDialector_TranslateIntoSortSpec(t *testing.T) {
+func TestJSONToSort_Func(t *testing.T) {
 	tests := []struct {
-		name        string
-		input       r3.DialectValue
-		expected    *r3.SortSpec
-		expectError bool
+		name     string
+		input    *r3json.JSONSort
+		expected *r3.SortSpec
 	}{
 		{
 			name: "valid JSONSort",
@@ -240,39 +239,26 @@ func TestJSONInboundDialector_TranslateIntoSortSpec(t *testing.T) {
 				NullsPosition: r3.NullsPositionNotSpecified,
 			},
 		},
-		{
-			name:        "invalid input type",
-			input:       "invalid",
-			expectError: true,
-		},
 	}
-
-	dialector := &r3json.JSONInboundDialector{}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := dialector.TranslateIntoSortSpec(tt.input)
-
-			if tt.expectError {
-				require.Error(t, err)
-				assert.Nil(t, result)
-			} else {
-				require.NoError(t, err)
-				require.NotNil(t, result)
-				assert.Equal(t, tt.expected.Column.String(), result.Column.String())
-				assert.Equal(t, tt.expected.Direction, result.Direction)
-				assert.Equal(t, tt.expected.NullsPosition, result.NullsPosition)
-			}
+			result, err := r3json.JSONToSort(tt.input)
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			assert.Equal(t, tt.expected.Column.String(), result.Column.String())
+			assert.Equal(t, tt.expected.Direction, result.Direction)
+			assert.Equal(t, tt.expected.NullsPosition, result.NullsPosition)
 		})
 	}
 }
 
-func TestJSONOutboundDialector_TranslateSortSpec(t *testing.T) {
+func TestSortToJSON_Func(t *testing.T) {
 	tests := []struct {
-		name        string
-		input       *r3.SortSpec
-		expected    *r3json.JSONSort
-		expectError bool
+		name     string
+		input    *r3.SortSpec
+		expected *r3json.JSONSort
+		isNil    bool
 	}{
 		{
 			name: "valid SortSpec",
@@ -288,30 +274,23 @@ func TestJSONOutboundDialector_TranslateSortSpec(t *testing.T) {
 			},
 		},
 		{
-			name:        "nil SortSpec",
-			input:       nil,
-			expectError: true,
+			name:  "nil SortSpec",
+			input: nil,
+			isNil: true,
 		},
 	}
 
-	dialector := &r3json.JSONOutboundDialector{}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := dialector.TranslateSortSpec(tt.input)
+			result := r3json.SortToJSON(tt.input)
 
-			if tt.expectError {
-				require.Error(t, err)
+			if tt.isNil {
 				assert.Nil(t, result)
 			} else {
-				require.NoError(t, err)
 				require.NotNil(t, result)
-
-				jsonSort, ok := result.(*r3json.JSONSort)
-				require.True(t, ok, "Result should be a JSONSort")
-				assert.Equal(t, tt.expected.Field, jsonSort.Field)
-				assert.Equal(t, tt.expected.Direction, jsonSort.Direction)
-				assert.Equal(t, tt.expected.NullsPosition, jsonSort.NullsPosition)
+				assert.Equal(t, tt.expected.Field, result.Field)
+				assert.Equal(t, tt.expected.Direction, result.Direction)
+				assert.Equal(t, tt.expected.NullsPosition, result.NullsPosition)
 			}
 		})
 	}

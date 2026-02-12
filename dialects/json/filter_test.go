@@ -293,12 +293,12 @@ func TestJSONFilter_ToFilterSpec(t *testing.T) {
 			},
 			validate: func(t *testing.T, spec *r3.FilterSpec) {
 				require.Len(t, spec.And, 2)
-				assert.Equal(t, "id", spec.And[0].(*r3.FilterSpec).Field.String())
-				assert.Equal(t, r3.OperatorGt, spec.And[0].(*r3.FilterSpec).Operator)
-				assert.Equal(t, 10, spec.And[0].(*r3.FilterSpec).Value)
-				assert.Equal(t, "status", spec.And[1].(*r3.FilterSpec).Field.String())
-				assert.Equal(t, r3.OperatorEq, spec.And[1].(*r3.FilterSpec).Operator)
-				assert.Equal(t, "active", spec.And[1].(*r3.FilterSpec).Value)
+				assert.Equal(t, "id", spec.And[0].Field.String())
+				assert.Equal(t, r3.OperatorGt, spec.And[0].Operator)
+				assert.Equal(t, 10, spec.And[0].Value)
+				assert.Equal(t, "status", spec.And[1].Field.String())
+				assert.Equal(t, r3.OperatorEq, spec.And[1].Operator)
+				assert.Equal(t, "active", spec.And[1].Value)
 			},
 		},
 		{
@@ -319,12 +319,12 @@ func TestJSONFilter_ToFilterSpec(t *testing.T) {
 			},
 			validate: func(t *testing.T, spec *r3.FilterSpec) {
 				require.Len(t, spec.Or, 2)
-				assert.Equal(t, "type", spec.Or[0].(*r3.FilterSpec).Field.String())
-				assert.Equal(t, r3.OperatorEq, spec.Or[0].(*r3.FilterSpec).Operator)
-				assert.Equal(t, "user", spec.Or[0].(*r3.FilterSpec).Value)
-				assert.Equal(t, "type", spec.Or[1].(*r3.FilterSpec).Field.String())
-				assert.Equal(t, r3.OperatorEq, spec.Or[1].(*r3.FilterSpec).Operator)
-				assert.Equal(t, "admin", spec.Or[1].(*r3.FilterSpec).Value)
+				assert.Equal(t, "type", spec.Or[0].Field.String())
+				assert.Equal(t, r3.OperatorEq, spec.Or[0].Operator)
+				assert.Equal(t, "user", spec.Or[0].Value)
+				assert.Equal(t, "type", spec.Or[1].Field.String())
+				assert.Equal(t, r3.OperatorEq, spec.Or[1].Operator)
+				assert.Equal(t, "admin", spec.Or[1].Value)
 			},
 		},
 		{
@@ -355,17 +355,17 @@ func TestJSONFilter_ToFilterSpec(t *testing.T) {
 			validate: func(t *testing.T, spec *r3.FilterSpec) {
 				require.Len(t, spec.And, 2)
 				// First AND condition
-				assert.Equal(t, "category", spec.And[0].(*r3.FilterSpec).Field.String())
-				assert.Equal(t, r3.OperatorEq, spec.And[0].(*r3.FilterSpec).Operator)
-				assert.Equal(t, "electronics", spec.And[0].(*r3.FilterSpec).Value)
+				assert.Equal(t, "category", spec.And[0].Field.String())
+				assert.Equal(t, r3.OperatorEq, spec.And[0].Operator)
+				assert.Equal(t, "electronics", spec.And[0].Value)
 
 				// Second AND condition (OR group)
-				secondCondition := spec.And[1].(*r3.FilterSpec)
+				secondCondition := spec.And[1]
 				require.Len(t, secondCondition.Or, 2)
-				assert.Equal(t, "price", secondCondition.Or[0].(*r3.FilterSpec).Field.String())
-				assert.Equal(t, r3.OperatorLt, secondCondition.Or[0].(*r3.FilterSpec).Operator)
-				assert.Equal(t, "on_sale", secondCondition.Or[1].(*r3.FilterSpec).Field.String())
-				assert.Equal(t, r3.OperatorEq, secondCondition.Or[1].(*r3.FilterSpec).Operator)
+				assert.Equal(t, "price", secondCondition.Or[0].Field.String())
+				assert.Equal(t, r3.OperatorLt, secondCondition.Or[0].Operator)
+				assert.Equal(t, "on_sale", secondCondition.Or[1].Field.String())
+				assert.Equal(t, r3.OperatorEq, secondCondition.Or[1].Operator)
 			},
 		},
 	}

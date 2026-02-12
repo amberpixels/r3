@@ -9,9 +9,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestSQLDialector_ToSQLColumn(t *testing.T) {
-	dialector := &r3sql.SQLDialector{}
-
+func TestFieldToSQL(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    *r3.FieldSpec
@@ -46,64 +44,45 @@ func TestSQLDialector_ToSQLColumn(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := dialector.ToSQLColumn(tt.input)
+			result := r3sql.FieldToSQL(tt.input)
 			assert.Equal(t, tt.expected, result.String())
 		})
 	}
 }
 
-func TestSQLDialector_TranslateFieldSpec(t *testing.T) {
-	dialector := &r3sql.SQLDialector{}
-
+func TestSQLToField(t *testing.T) {
 	tests := []struct {
-		name        string
-		input       *r3.FieldSpec
-		expected    string
-		expectError bool
+		name     string
+		input    r3sql.SQLColumn
+		expected string
 	}{
 		{
-			name:     "valid field spec",
-			input:    r3.NewFieldSpec("user_id"),
+			name:     "SQLColumn value",
+			input:    r3sql.SQLColumn("user_id"),
 			expected: "user_id",
 		},
 		{
-			name:     "field with dots",
-			input:    r3.NewFieldSpec("profile.user.name"),
-			expected: "profile.user.name",
-		},
-		{
-			name:     "empty field",
-			input:    r3.NewFieldSpec(""),
-			expected: "",
+			name:     "complex field path",
+			input:    r3sql.SQLColumn("orders.items.product.name"),
+			expected: "orders.items.product.name",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := dialector.TranslateFieldSpec(tt.input)
-
-			if tt.expectError {
-				require.Error(t, err)
-				assert.Nil(t, result)
-			} else {
-				require.NoError(t, err)
-				require.NotNil(t, result)
-				sqlCol, ok := result.(r3sql.SQLColumn)
-				require.True(t, ok)
-				assert.Equal(t, tt.expected, sqlCol.String())
-			}
+			result := r3sql.SQLToField(tt.input)
+			require.NotNil(t, result)
+			assert.Equal(t, tt.expected, result.String())
 		})
 	}
 }
 
-func TestSQLDialector_TranslateFilterSpec(t *testing.T) {
-	dialector := &r3sql.SQLDialector{}
-
+func TestFilterToSQL(t *testing.T) {
 	tests := []struct {
 		name        string
 		input       *r3.FilterSpec
 		expectError bool
-		validate    func(t *testing.T, result r3.DialectValue)
+		validate    func(t *testing.T, result r3sql.SQLClause)
 	}{
 		{
 			name: "simple equality filter",
@@ -112,13 +91,11 @@ func TestSQLDialector_TranslateFilterSpec(t *testing.T) {
 				Operator: r3.OperatorEq,
 				Value:    123,
 			},
-			validate: func(t *testing.T, result r3.DialectValue) {
-				clause, ok := result.(r3sql.SQLClause)
-				require.True(t, ok)
-				assert.Equal(t, "id = ?", clause.Clause)
-				require.Len(t, clause.Args, 1)
-				assert.Equal(t, 123, clause.Args[0])
-				assert.Empty(t, clause.Joins)
+			validate: func(t *testing.T, result r3sql.SQLClause) {
+				assert.Equal(t, "id = ?", result.Clause)
+				require.Len(t, result.Args, 1)
+				assert.Equal(t, 123, result.Args[0])
+				assert.Empty(t, result.Joins)
 			},
 		},
 		{
@@ -128,12 +105,10 @@ func TestSQLDialector_TranslateFilterSpec(t *testing.T) {
 				Operator: r3.OperatorNe,
 				Value:    "inactive",
 			},
-			validate: func(t *testing.T, result r3.DialectValue) {
-				clause, ok := result.(r3sql.SQLClause)
-				require.True(t, ok)
-				assert.Equal(t, "status != ?", clause.Clause)
-				require.Len(t, clause.Args, 1)
-				assert.Equal(t, "inactive", clause.Args[0])
+			validate: func(t *testing.T, result r3sql.SQLClause) {
+				assert.Equal(t, "status != ?", result.Clause)
+				require.Len(t, result.Args, 1)
+				assert.Equal(t, "inactive", result.Args[0])
 			},
 		},
 		{
@@ -143,12 +118,10 @@ func TestSQLDialector_TranslateFilterSpec(t *testing.T) {
 				Operator: r3.OperatorGt,
 				Value:    18,
 			},
-			validate: func(t *testing.T, result r3.DialectValue) {
-				clause, ok := result.(r3sql.SQLClause)
-				require.True(t, ok)
-				assert.Equal(t, "age > ?", clause.Clause)
-				require.Len(t, clause.Args, 1)
-				assert.Equal(t, 18, clause.Args[0])
+			validate: func(t *testing.T, result r3sql.SQLClause) {
+				assert.Equal(t, "age > ?", result.Clause)
+				require.Len(t, result.Args, 1)
+				assert.Equal(t, 18, result.Args[0])
 			},
 		},
 		{
@@ -158,12 +131,10 @@ func TestSQLDialector_TranslateFilterSpec(t *testing.T) {
 				Operator: r3.OperatorLike,
 				Value:    "John%",
 			},
-			validate: func(t *testing.T, result r3.DialectValue) {
-				clause, ok := result.(r3sql.SQLClause)
-				require.True(t, ok)
-				assert.Equal(t, "name LIKE ?", clause.Clause)
-				require.Len(t, clause.Args, 1)
-				assert.Equal(t, "John%", clause.Args[0])
+			validate: func(t *testing.T, result r3sql.SQLClause) {
+				assert.Equal(t, "name LIKE ?", result.Clause)
+				require.Len(t, result.Args, 1)
+				assert.Equal(t, "John%", result.Args[0])
 			},
 		},
 		{
@@ -173,12 +144,10 @@ func TestSQLDialector_TranslateFilterSpec(t *testing.T) {
 				Operator: r3.OperatorIn,
 				Value:    []string{"electronics", "books"},
 			},
-			validate: func(t *testing.T, result r3.DialectValue) {
-				clause, ok := result.(r3sql.SQLClause)
-				require.True(t, ok)
-				assert.Equal(t, "category IN ?", clause.Clause)
-				require.Len(t, clause.Args, 1)
-				assert.Equal(t, []string{"electronics", "books"}, clause.Args[0])
+			validate: func(t *testing.T, result r3sql.SQLClause) {
+				assert.Equal(t, "category IN ?", result.Clause)
+				require.Len(t, result.Args, 1)
+				assert.Equal(t, []string{"electronics", "books"}, result.Args[0])
 			},
 		},
 		{
@@ -188,11 +157,9 @@ func TestSQLDialector_TranslateFilterSpec(t *testing.T) {
 				Operator: r3.OperatorEq,
 				Value:    nil,
 			},
-			validate: func(t *testing.T, result r3.DialectValue) {
-				clause, ok := result.(r3sql.SQLClause)
-				require.True(t, ok)
-				assert.Equal(t, "deleted_at IS NULL", clause.Clause)
-				assert.Empty(t, clause.Args)
+			validate: func(t *testing.T, result r3sql.SQLClause) {
+				assert.Equal(t, "deleted_at IS NULL", result.Clause)
+				assert.Empty(t, result.Args)
 			},
 		},
 		{
@@ -202,11 +169,9 @@ func TestSQLDialector_TranslateFilterSpec(t *testing.T) {
 				Operator: r3.OperatorNe,
 				Value:    nil,
 			},
-			validate: func(t *testing.T, result r3.DialectValue) {
-				clause, ok := result.(r3sql.SQLClause)
-				require.True(t, ok)
-				assert.Equal(t, "deleted_at IS NOT NULL", clause.Clause)
-				assert.Empty(t, clause.Args)
+			validate: func(t *testing.T, result r3sql.SQLClause) {
+				assert.Equal(t, "deleted_at IS NOT NULL", result.Clause)
+				assert.Empty(t, result.Args)
 			},
 		},
 		{
@@ -216,14 +181,12 @@ func TestSQLDialector_TranslateFilterSpec(t *testing.T) {
 				Operator: r3.OperatorEq,
 				Value:    "John",
 			},
-			validate: func(t *testing.T, result r3.DialectValue) {
-				clause, ok := result.(r3sql.SQLClause)
-				require.True(t, ok)
-				assert.Equal(t, "user.profile.name = ?", clause.Clause)
-				require.Len(t, clause.Args, 1)
-				assert.Equal(t, "John", clause.Args[0])
-				require.Len(t, clause.Joins, 1)
-				assert.Equal(t, "user", clause.Joins[0].String())
+			validate: func(t *testing.T, result r3sql.SQLClause) {
+				assert.Equal(t, "user.profile.name = ?", result.Clause)
+				require.Len(t, result.Args, 1)
+				assert.Equal(t, "John", result.Args[0])
+				require.Len(t, result.Joins, 1)
+				assert.Equal(t, "user", result.Joins[0].String())
 			},
 		},
 		{
@@ -242,13 +205,11 @@ func TestSQLDialector_TranslateFilterSpec(t *testing.T) {
 					},
 				},
 			},
-			validate: func(t *testing.T, result r3.DialectValue) {
-				clause, ok := result.(r3sql.SQLClause)
-				require.True(t, ok)
-				assert.Equal(t, "(age >= ? AND status = ?)", clause.Clause)
-				require.Len(t, clause.Args, 2)
-				assert.Equal(t, 18, clause.Args[0])
-				assert.Equal(t, "active", clause.Args[1])
+			validate: func(t *testing.T, result r3sql.SQLClause) {
+				assert.Equal(t, "(age >= ? AND status = ?)", result.Clause)
+				require.Len(t, result.Args, 2)
+				assert.Equal(t, 18, result.Args[0])
+				assert.Equal(t, "active", result.Args[1])
 			},
 		},
 		{
@@ -267,13 +228,11 @@ func TestSQLDialector_TranslateFilterSpec(t *testing.T) {
 					},
 				},
 			},
-			validate: func(t *testing.T, result r3.DialectValue) {
-				clause, ok := result.(r3sql.SQLClause)
-				require.True(t, ok)
-				assert.Equal(t, "(type = ? OR vip = ?)", clause.Clause)
-				require.Len(t, clause.Args, 2)
-				assert.Equal(t, "premium", clause.Args[0])
-				assert.Equal(t, true, clause.Args[1])
+			validate: func(t *testing.T, result r3sql.SQLClause) {
+				assert.Equal(t, "(type = ? OR vip = ?)", result.Clause)
+				require.Len(t, result.Args, 2)
+				assert.Equal(t, "premium", result.Args[0])
+				assert.Equal(t, true, result.Args[1])
 			},
 		},
 		{
@@ -301,14 +260,12 @@ func TestSQLDialector_TranslateFilterSpec(t *testing.T) {
 					},
 				},
 			},
-			validate: func(t *testing.T, result r3.DialectValue) {
-				clause, ok := result.(r3sql.SQLClause)
-				require.True(t, ok)
-				assert.Equal(t, "(category = ? AND (price < ? OR on_sale = ?))", clause.Clause)
-				require.Len(t, clause.Args, 3)
-				assert.Equal(t, "electronics", clause.Args[0])
-				assert.Equal(t, 100, clause.Args[1])
-				assert.Equal(t, true, clause.Args[2])
+			validate: func(t *testing.T, result r3sql.SQLClause) {
+				assert.Equal(t, "(category = ? AND (price < ? OR on_sale = ?))", result.Clause)
+				require.Len(t, result.Args, 3)
+				assert.Equal(t, "electronics", result.Args[0])
+				assert.Equal(t, 100, result.Args[1])
+				assert.Equal(t, true, result.Args[2])
 			},
 		},
 		{
@@ -324,14 +281,12 @@ func TestSQLDialector_TranslateFilterSpec(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := dialector.TranslateFilterSpec(tt.input)
+			result, err := r3sql.FilterToSQL(tt.input)
 
 			if tt.expectError {
 				require.Error(t, err)
-				assert.Nil(t, result)
 			} else {
 				require.NoError(t, err)
-				require.NotNil(t, result)
 				if tt.validate != nil {
 					tt.validate(t, result)
 				}
@@ -340,113 +295,72 @@ func TestSQLDialector_TranslateFilterSpec(t *testing.T) {
 	}
 }
 
-func TestSQLDialector_TranslateFilterOperatorSpec(t *testing.T) {
-	dialector := &r3sql.SQLDialector{}
-
+func TestOperatorToSQL(t *testing.T) {
 	tests := []struct {
 		name        string
-		input       *r3.FilterOperatorSpec
+		input       r3.FilterOperatorSpec
 		expected    r3sql.SQLClauseOperator
 		expectError bool
 	}{
-		{
-			name:     "OperatorEq",
-			input:    func() *r3.FilterOperatorSpec { op := r3.OperatorEq; return &op }(),
-			expected: r3sql.SQLClauseOperatorEq,
-		},
-		{
-			name:     "OperatorNe",
-			input:    func() *r3.FilterOperatorSpec { op := r3.OperatorNe; return &op }(),
-			expected: r3sql.SQLClauseOperatorNe,
-		},
-		{
-			name:     "OperatorGt",
-			input:    func() *r3.FilterOperatorSpec { op := r3.OperatorGt; return &op }(),
-			expected: r3sql.SQLClauseOperatorGt,
-		},
-		{
-			name:     "OperatorGte",
-			input:    func() *r3.FilterOperatorSpec { op := r3.OperatorGte; return &op }(),
-			expected: r3sql.SQLClauseOperatorGte,
-		},
-		{
-			name:     "OperatorLt",
-			input:    func() *r3.FilterOperatorSpec { op := r3.OperatorLt; return &op }(),
-			expected: r3sql.SQLClauseOperatorLt,
-		},
-		{
-			name:     "OperatorLte",
-			input:    func() *r3.FilterOperatorSpec { op := r3.OperatorLte; return &op }(),
-			expected: r3sql.SQLClauseOperatorLte,
-		},
-		{
-			name:     "OperatorLike",
-			input:    func() *r3.FilterOperatorSpec { op := r3.OperatorLike; return &op }(),
-			expected: r3sql.SQLClauseOperatorLike,
-		},
-		{
-			name:     "OperatorNotLike",
-			input:    func() *r3.FilterOperatorSpec { op := r3.OperatorNotLike; return &op }(),
-			expected: r3sql.SQLClauseOperatorNotLike,
-		},
-		{
-			name:     "OperatorILike",
-			input:    func() *r3.FilterOperatorSpec { op := r3.OperatorILike; return &op }(),
-			expected: r3sql.SQLClauseOperatorILike,
-		},
-		{
-			name:     "OperatorIn",
-			input:    func() *r3.FilterOperatorSpec { op := r3.OperatorIn; return &op }(),
-			expected: r3sql.SQLClauseOperatorIn,
-		},
-		{
-			name:     "OperatorNotIn",
-			input:    func() *r3.FilterOperatorSpec { op := r3.OperatorNotIn; return &op }(),
-			expected: r3sql.SQLClauseOperatorNotIn,
-		},
-		{
-			name:        "OperatorBetween - not implemented",
-			input:       func() *r3.FilterOperatorSpec { op := r3.OperatorBetween; return &op }(),
-			expectError: true,
-		},
-		{
-			name:        "OperatorExists - not implemented",
-			input:       func() *r3.FilterOperatorSpec { op := r3.OperatorExists; return &op }(),
-			expectError: true,
-		},
-		{
-			name:        "OperatorUnspecified",
-			input:       func() *r3.FilterOperatorSpec { op := r3.OperatorUnspecified; return &op }(),
-			expectError: true,
-		},
-		{
-			name:        "nil operator",
-			input:       nil,
-			expectError: true,
-		},
+		{name: "OperatorEq", input: r3.OperatorEq, expected: r3sql.SQLClauseOperatorEq},
+		{name: "OperatorNe", input: r3.OperatorNe, expected: r3sql.SQLClauseOperatorNe},
+		{name: "OperatorGt", input: r3.OperatorGt, expected: r3sql.SQLClauseOperatorGt},
+		{name: "OperatorGte", input: r3.OperatorGte, expected: r3sql.SQLClauseOperatorGte},
+		{name: "OperatorLt", input: r3.OperatorLt, expected: r3sql.SQLClauseOperatorLt},
+		{name: "OperatorLte", input: r3.OperatorLte, expected: r3sql.SQLClauseOperatorLte},
+		{name: "OperatorLike", input: r3.OperatorLike, expected: r3sql.SQLClauseOperatorLike},
+		{name: "OperatorNotLike", input: r3.OperatorNotLike, expected: r3sql.SQLClauseOperatorNotLike},
+		{name: "OperatorILike", input: r3.OperatorILike, expected: r3sql.SQLClauseOperatorILike},
+		{name: "OperatorIn", input: r3.OperatorIn, expected: r3sql.SQLClauseOperatorIn},
+		{name: "OperatorNotIn", input: r3.OperatorNotIn, expected: r3sql.SQLClauseOperatorNotIn},
+		{name: "OperatorBetween - not implemented", input: r3.OperatorBetween, expectError: true},
+		{name: "OperatorExists - not implemented", input: r3.OperatorExists, expectError: true},
+		{name: "OperatorUnspecified", input: r3.OperatorUnspecified, expectError: true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := dialector.TranslateFilterOperatorSpec(tt.input)
+			result, err := r3sql.OperatorToSQL(tt.input)
 
 			if tt.expectError {
 				require.Error(t, err)
-				assert.Nil(t, result)
 			} else {
 				require.NoError(t, err)
-				require.NotNil(t, result)
-				sqlOp, ok := result.(r3sql.SQLClauseOperator)
-				require.True(t, ok)
-				assert.Equal(t, tt.expected, sqlOp)
+				assert.Equal(t, tt.expected, result)
 			}
 		})
 	}
 }
 
-func TestSQLDialector_TranslateSortSpec(t *testing.T) {
-	dialector := &r3sql.SQLDialector{}
+func TestSQLToOperator(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       r3sql.SQLClauseOperator
+		expected    r3.FilterOperatorSpec
+		expectError bool
+	}{
+		{name: "Eq", input: r3sql.SQLClauseOperatorEq, expected: r3.OperatorEq},
+		{name: "Gt", input: r3sql.SQLClauseOperatorGt, expected: r3.OperatorGt},
+		{name: "Like", input: r3sql.SQLClauseOperatorLike, expected: r3.OperatorLike},
+		{name: "NotIn", input: r3sql.SQLClauseOperatorNotIn, expected: r3.OperatorNotIn},
+		{name: "unsupported", input: r3sql.SQLClauseOperator("CUSTOM_OP"), expectError: true},
+	}
 
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := r3sql.SQLToOperator(tt.input)
+
+			if tt.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.expected, result)
+			}
+		})
+	}
+}
+
+func TestSortToSQL(t *testing.T) {
 	tests := []struct {
 		name        string
 		input       *r3.SortSpec
@@ -504,142 +418,27 @@ func TestSQLDialector_TranslateSortSpec(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := dialector.TranslateSortSpec(tt.input)
+			result, err := r3sql.SortToSQL(tt.input)
 
 			if tt.expectError {
 				require.Error(t, err)
-				assert.Nil(t, result)
 			} else {
 				require.NoError(t, err)
-				require.NotNil(t, result)
-				sqlSort, ok := result.(r3sql.SQLSort)
-				require.True(t, ok)
-				assert.Equal(t, tt.expected, string(sqlSort))
+				assert.Equal(t, tt.expected, string(result))
 			}
 		})
 	}
 }
 
-func TestSQLInboundDialector_TranslateIntoFieldSpec(t *testing.T) {
-	dialector := &r3sql.SQLInboundDialector{}
-
+func TestSQLToSort(t *testing.T) {
 	tests := []struct {
 		name        string
-		input       r3.DialectValue
-		expected    string
-		expectError bool
-	}{
-		{
-			name:     "SQLColumn value",
-			input:    r3sql.SQLColumn("user_id"),
-			expected: "user_id",
-		},
-		{
-			name:     "SQLColumn pointer",
-			input:    func() *r3sql.SQLColumn { col := r3sql.SQLColumn("profile_name"); return &col }(),
-			expected: "profile_name",
-		},
-		{
-			name:     "string value",
-			input:    "status",
-			expected: "status",
-		},
-		{
-			name:     "complex field path",
-			input:    r3sql.SQLColumn("orders.items.product.name"),
-			expected: "orders.items.product.name",
-		},
-		{
-			name:        "invalid type",
-			input:       123,
-			expectError: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := dialector.TranslateIntoFieldSpec(tt.input)
-
-			if tt.expectError {
-				require.Error(t, err)
-				assert.Nil(t, result)
-			} else {
-				require.NoError(t, err)
-				require.NotNil(t, result)
-				assert.Equal(t, tt.expected, result.String())
-			}
-		})
-	}
-}
-
-func TestSQLInboundDialector_TranslateIntoFilterOperatorSpec(t *testing.T) {
-	dialector := &r3sql.SQLInboundDialector{}
-
-	tests := []struct {
-		name        string
-		input       r3.DialectValue
-		expected    r3.FilterOperatorSpec
-		expectError bool
-	}{
-		{
-			name:     "SQLClauseOperator value",
-			input:    r3sql.SQLClauseOperatorEq,
-			expected: r3.OperatorEq,
-		},
-		{
-			name:     "SQLClauseOperator pointer",
-			input:    func() *r3sql.SQLClauseOperator { op := r3sql.SQLClauseOperatorGt; return &op }(),
-			expected: r3.OperatorGt,
-		},
-		{
-			name:     "string value",
-			input:    "LIKE",
-			expected: r3.OperatorLike,
-		},
-		{
-			name:     "all supported operators",
-			input:    r3sql.SQLClauseOperatorNotIn,
-			expected: r3.OperatorNotIn,
-		},
-		{
-			name:        "unsupported operator",
-			input:       r3sql.SQLClauseOperator("CUSTOM_OP"),
-			expectError: true,
-		},
-		{
-			name:        "invalid type",
-			input:       123,
-			expectError: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := dialector.TranslateIntoFilterOperatorSpec(tt.input)
-
-			if tt.expectError {
-				require.Error(t, err)
-				assert.Nil(t, result)
-			} else {
-				require.NoError(t, err)
-				require.NotNil(t, result)
-				assert.Equal(t, tt.expected, *result)
-			}
-		})
-	}
-}
-
-func TestSQLInboundDialector_TranslateIntoSortSpec(t *testing.T) {
-	dialector := &r3sql.SQLInboundDialector{}
-
-	tests := []struct {
-		name        string
-		input       r3.DialectValue
+		input       r3sql.SQLSort
 		expectError bool
 		validate    func(t *testing.T, result *r3.SortSpec)
 	}{
 		{
-			name:  "SQLSort value - simple ASC",
+			name:  "simple ASC",
 			input: r3sql.SQLSort("name ASC"),
 			validate: func(t *testing.T, result *r3.SortSpec) {
 				assert.Equal(t, "name", result.Column.String())
@@ -647,7 +446,7 @@ func TestSQLInboundDialector_TranslateIntoSortSpec(t *testing.T) {
 			},
 		},
 		{
-			name:  "SQLSort value - simple DESC",
+			name:  "simple DESC",
 			input: r3sql.SQLSort("created_at DESC"),
 			validate: func(t *testing.T, result *r3.SortSpec) {
 				assert.Equal(t, "created_at", result.Column.String())
@@ -655,36 +454,46 @@ func TestSQLInboundDialector_TranslateIntoSortSpec(t *testing.T) {
 			},
 		},
 		{
-			name:  "SQLSort pointer",
-			input: func() *r3sql.SQLSort { sort := r3sql.SQLSort("priority DESC"); return &sort }(),
+			name:  "field only",
+			input: r3sql.SQLSort("id"),
 			validate: func(t *testing.T, result *r3.SortSpec) {
-				assert.Equal(t, "priority", result.Column.String())
+				assert.Equal(t, "id", result.Column.String())
+				assert.Equal(t, r3.SortDirectionUnspecified, result.Direction)
+			},
+		},
+		{
+			name:  "sort with nulls first",
+			input: r3sql.SQLSort("status DESC NULLS FIRST"),
+			validate: func(t *testing.T, result *r3.SortSpec) {
+				assert.Equal(t, "status", result.Column.String())
 				assert.Equal(t, r3.SortDirectionDesc, result.Direction)
+				assert.Equal(t, r3.NullsPositionFirst, result.NullsPosition)
 			},
 		},
 		{
-			name:  "string value",
-			input: "score ASC",
+			name:  "sort with nulls last",
+			input: r3sql.SQLSort("updated_at ASC NULLS LAST"),
 			validate: func(t *testing.T, result *r3.SortSpec) {
-				assert.Equal(t, "score", result.Column.String())
+				assert.Equal(t, "updated_at", result.Column.String())
 				assert.Equal(t, r3.SortDirectionAsc, result.Direction)
+				assert.Equal(t, r3.NullsPositionLast, result.NullsPosition)
 			},
 		},
 		{
-			name:        "invalid sort format",
-			input:       r3sql.SQLSort("invalid_sort_format"),
+			name:        "empty string",
+			input:       r3sql.SQLSort(""),
 			expectError: true,
 		},
 		{
-			name:        "invalid type",
-			input:       123,
+			name:        "whitespace only",
+			input:       r3sql.SQLSort("   "),
 			expectError: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := dialector.TranslateIntoSortSpec(tt.input)
+			result, err := r3sql.SQLToSort(tt.input)
 
 			if tt.expectError {
 				require.Error(t, err)
@@ -700,190 +509,13 @@ func TestSQLInboundDialector_TranslateIntoSortSpec(t *testing.T) {
 	}
 }
 
-func TestSQLInboundDialector_TranslateIntoFilterSpec(t *testing.T) {
-	dialector := &r3sql.SQLInboundDialector{}
-
-	tests := []struct {
-		name        string
-		input       r3.DialectValue
-		expectError bool
-	}{
-		{
-			name:        "SQLClause value - not fully implemented",
-			input:       r3sql.SQLClause{Clause: "id = ?", Args: []any{123}},
-			expectError: true, // Expected because SQL to FilterSpec conversion is not fully implemented
-		},
-		{
-			name:        "SQLClause pointer - not fully implemented",
-			input:       &r3sql.SQLClause{Clause: "name LIKE ?", Args: []any{"John%"}},
-			expectError: true, // Expected because SQL to FilterSpec conversion is not fully implemented
-		},
-		{
-			name:        "invalid type",
-			input:       "invalid",
-			expectError: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := dialector.TranslateIntoFilterSpec(tt.input)
-
-			if tt.expectError {
-				require.Error(t, err)
-			} else {
-				require.NoError(t, err)
-				require.NotNil(t, result)
-			}
-		})
-	}
-}
-
-// func TestSqlToR3Operator(t *testing.T) {
-// 	tests := []struct {
-// 		name        string
-// 		input       r3sql.SQLClauseOperator
-// 		expected    r3.FilterOperatorSpec
-// 		expectError bool
-// 	}{
-// 		{
-// 			name:     "equals operator",
-// 			input:    r3sql.SQLClauseOperatorEq,
-// 			expected: r3.OperatorEq,
-// 		},
-// 		{
-// 			name:     "not equals operator",
-// 			input:    r3sql.SQLClauseOperatorNe,
-// 			expected: r3.OperatorNe,
-// 		},
-// 		{
-// 			name:     "greater than operator",
-// 			input:    r3sql.SQLClauseOperatorGt,
-// 			expected: r3.OperatorGt,
-// 		},
-// 		{
-// 			name:     "greater than or equal operator",
-// 			input:    r3sql.SQLClauseOperatorGte,
-// 			expected: r3.OperatorGte,
-// 		},
-// 		{
-// 			name:     "less than operator",
-// 			input:    r3sql.SQLClauseOperatorLt,
-// 			expected: r3.OperatorLt,
-// 		},
-// 		{
-// 			name:     "less than or equal operator",
-// 			input:    r3sql.SQLClauseOperatorLte,
-// 			expected: r3.OperatorLte,
-// 		},
-// 		{
-// 			name:     "like operator",
-// 			input:    r3sql.SQLClauseOperatorLike,
-// 			expected: r3.OperatorLike,
-// 		},
-// 		{
-// 			name:     "not like operator",
-// 			input:    r3sql.SQLClauseOperatorNotLike,
-// 			expected: r3.OperatorNotLike,
-// 		},
-// 		{
-// 			name:     "ilike operator",
-// 			input:    r3sql.SQLClauseOperatorILike,
-// 			expected: r3.OperatorILike,
-// 		},
-// 		{
-// 			name:     "in operator",
-// 			input:    r3sql.SQLClauseOperatorIn,
-// 			expected: r3.OperatorIn,
-// 		},
-// 		{
-// 			name:     "not in operator",
-// 			input:    r3sql.SQLClauseOperatorNotIn,
-// 			expected: r3.OperatorNotIn,
-// 		},
-// 		{
-// 			name:        "unsupported operator",
-// 			input:       r3sql.SQLClauseOperator("CUSTOM"),
-// 			expected:    r3.OperatorUnspecified,
-// 			expectError: true,
-// 		},
-// 	}
-
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			result, err := sqlToR3Operator(tt.input)
-
-// 			if tt.expectError {
-// 				require.Error(t, err)
-// 				assert.Equal(t, r3.OperatorUnspecified, result)
-// 			} else {
-// 				require.NoError(t, err)
-// 				assert.Equal(t, tt.expected, result)
-// 			}
-// 		})
-// 	}
-// }
-
-// func TestExtractJoinFromField(t *testing.T) {
-// 	tests := []struct {
-// 		name     string
-// 		input    r3sql.SQLColumn
-// 		expected []r3sql.SQLColumn
-// 	}{
-// 		{
-// 			name:     "simple field - no join",
-// 			input:    r3sql.SQLColumn("id"),
-// 			expected: nil,
-// 		},
-// 		{
-// 			name:     "field with join",
-// 			input:    r3sql.SQLColumn("user.name"),
-// 			expected: []r3sql.SQLColumn{r3sql.SQLColumn("user")},
-// 		},
-// 		{
-// 			name:     "nested field with join",
-// 			input:    r3sql.SQLColumn("orders.items.product.name"),
-// 			expected: []r3sql.SQLColumn{r3sql.SQLColumn("orders")},
-// 		},
-// 		{
-// 			name:     "empty field",
-// 			input:    r3sql.SQLColumn(""),
-// 			expected: nil,
-// 		},
-// 		{
-// 			name:     "field starting with dot",
-// 			input:    r3sql.SQLColumn(".name"),
-// 			expected: nil,
-// 		},
-// 		{
-// 			name:     "field with only dots",
-// 			input:    r3sql.SQLColumn("..."),
-// 			expected: nil,
-// 		},
-// 	}
-
-// 	for _, tt := range tests {
-// 		t.Run(tt.name, func(t *testing.T) {
-// 			result := extractJoinFromField(tt.input)
-// 			if tt.expected == nil {
-// 				assert.Nil(t, result)
-// 			} else {
-// 				require.NotNil(t, result)
-// 				assert.Equal(t, tt.expected, result)
-// 			}
-// 		})
-// 	}
-// }
-
-func TestSQLDialector_Integration(t *testing.T) {
+func TestFilterToSQL_Integration(t *testing.T) {
 	// Test realistic scenarios combining multiple features
-	dialector := &r3sql.SQLDialector{}
-
 	tests := []struct {
 		name     string
 		scenario string
 		input    *r3.FilterSpec
-		validate func(t *testing.T, result r3.DialectValue)
+		validate func(t *testing.T, result r3sql.SQLClause)
 	}{
 		{
 			name:     "user authentication query",
@@ -907,13 +539,11 @@ func TestSQLDialector_Integration(t *testing.T) {
 					},
 				},
 			},
-			validate: func(t *testing.T, result r3.DialectValue) {
-				clause, ok := result.(r3sql.SQLClause)
-				require.True(t, ok)
-				assert.Equal(t, "(email = ? AND status = ? AND last_login IS NOT NULL)", clause.Clause)
-				require.Len(t, clause.Args, 2)
-				assert.Equal(t, "user@example.com", clause.Args[0])
-				assert.Equal(t, "active", clause.Args[1])
+			validate: func(t *testing.T, result r3sql.SQLClause) {
+				assert.Equal(t, "(email = ? AND status = ? AND last_login IS NOT NULL)", result.Clause)
+				require.Len(t, result.Args, 2)
+				assert.Equal(t, "user@example.com", result.Args[0])
+				assert.Equal(t, "active", result.Args[1])
 			},
 		},
 		{
@@ -942,25 +572,23 @@ func TestSQLDialector_Integration(t *testing.T) {
 					},
 				},
 			},
-			validate: func(t *testing.T, result r3.DialectValue) {
-				clause, ok := result.(r3sql.SQLClause)
-				require.True(t, ok)
-				assert.Equal(t, "(category.name IN ? AND (price < ? OR discount.active = ?))", clause.Clause)
-				require.Len(t, clause.Args, 3)
-				assert.Equal(t, []string{"electronics", "computers"}, clause.Args[0])
-				assert.Equal(t, 1000, clause.Args[1])
-				assert.Equal(t, true, clause.Args[2])
+			validate: func(t *testing.T, result r3sql.SQLClause) {
+				assert.Equal(t, "(category.name IN ? AND (price < ? OR discount.active = ?))", result.Clause)
+				require.Len(t, result.Args, 3)
+				assert.Equal(t, []string{"electronics", "computers"}, result.Args[0])
+				assert.Equal(t, 1000, result.Args[1])
+				assert.Equal(t, true, result.Args[2])
 
 				// Should extract joins from category.name and discount.active
 				expectedJoins := []r3sql.SQLColumn{r3sql.SQLColumn("category"), r3sql.SQLColumn("discount")}
-				assert.ElementsMatch(t, expectedJoins, clause.Joins)
+				assert.ElementsMatch(t, expectedJoins, result.Joins)
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := dialector.TranslateFilterSpec(tt.input)
+			result, err := r3sql.FilterToSQL(tt.input)
 			require.NoError(t, err, "Scenario: %s", tt.scenario)
 			if tt.validate != nil {
 				tt.validate(t, result)
@@ -969,9 +597,7 @@ func TestSQLDialector_Integration(t *testing.T) {
 	}
 }
 
-func BenchmarkSQLDialector_TranslateFilterSpec(b *testing.B) {
-	dialector := &r3sql.SQLDialector{}
-
+func BenchmarkFilterToSQL(b *testing.B) {
 	// Create a complex filter for benchmarking
 	filter := &r3.FilterSpec{
 		And: r3.Filters{
@@ -1004,92 +630,111 @@ func BenchmarkSQLDialector_TranslateFilterSpec(b *testing.B) {
 
 	b.ResetTimer()
 	for range b.N {
-		_, err := dialector.TranslateFilterSpec(filter)
+		_, err := r3sql.FilterToSQL(filter)
 		if err != nil {
 			b.Fatal(err)
 		}
 	}
 }
 
-func TestParseSQLSortString(t *testing.T) {
+func TestPaginationToSQL(t *testing.T) {
 	tests := []struct {
-		name        string
-		input       string
-		expected    *r3.SortSpec
-		expectError bool
+		name     string
+		input    *r3.PaginationSpec
+		expected *r3sql.SQLPagination
 	}{
 		{
-			name:  "simple ascending sort",
-			input: "name ASC",
-			expected: &r3.SortSpec{
-				Column:        func() *r3.FieldSpec { f := r3.FieldSpec("name"); return &f }(),
-				Direction:     r3.SortDirectionAsc,
-				NullsPosition: r3.NullsPositionNotSpecified,
-			},
+			name:     "valid pagination",
+			input:    r3.NewPaginationSpec(2, 25),
+			expected: r3sql.NewSQLPagination(25, 25),
 		},
 		{
-			name:  "descending sort",
-			input: "created_at DESC",
-			expected: &r3.SortSpec{
-				Column:        func() *r3.FieldSpec { f := r3.FieldSpec("created_at"); return &f }(),
-				Direction:     r3.SortDirectionDesc,
-				NullsPosition: r3.NullsPositionNotSpecified,
-			},
+			name:     "page 1",
+			input:    r3.NewPaginationSpec(1, 50),
+			expected: r3sql.NewSQLPagination(50, 0),
 		},
 		{
-			name:  "field only (defaults to unspecified)",
-			input: "id",
-			expected: &r3.SortSpec{
-				Column:        func() *r3.FieldSpec { f := r3.FieldSpec("id"); return &f }(),
-				Direction:     r3.SortDirectionUnspecified,
-				NullsPosition: r3.NullsPositionNotSpecified,
-			},
+			name:     "default pagination",
+			input:    r3.DefaultPagination(),
+			expected: r3sql.NewSQLPagination(r3.PageSizeDefault, 0),
 		},
 		{
-			name:  "sort with nulls first",
-			input: "status DESC NULLS FIRST",
-			expected: &r3.SortSpec{
-				Column:        func() *r3.FieldSpec { f := r3.FieldSpec("status"); return &f }(),
-				Direction:     r3.SortDirectionDesc,
-				NullsPosition: r3.NullsPositionFirst,
-			},
-		},
-		{
-			name:  "sort with nulls last",
-			input: "updated_at ASC NULLS LAST",
-			expected: &r3.SortSpec{
-				Column:        func() *r3.FieldSpec { f := r3.FieldSpec("updated_at"); return &f }(),
-				Direction:     r3.SortDirectionAsc,
-				NullsPosition: r3.NullsPositionLast,
-			},
-		},
-		{
-			name:        "empty string",
-			input:       "",
-			expectError: true,
-		},
-		{
-			name:        "whitespace only",
-			input:       "   ",
-			expectError: true,
+			name:     "nil pagination",
+			input:    nil,
+			expected: nil,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dialector := &r3sql.SQLInboundDialector{}
-			result, err := dialector.TranslateIntoSortSpec(r3sql.SQLSort(tt.input))
-
-			if tt.expectError {
-				require.Error(t, err)
+			result := r3sql.PaginationToSQL(tt.input)
+			if tt.expected == nil {
 				assert.Nil(t, result)
 			} else {
-				require.NoError(t, err)
 				require.NotNil(t, result)
-				assert.Equal(t, tt.expected.Column.String(), result.Column.String())
-				assert.Equal(t, tt.expected.Direction, result.Direction)
-				assert.Equal(t, tt.expected.NullsPosition, result.NullsPosition)
+				assert.Equal(t, tt.expected.Limit, result.Limit)
+				assert.Equal(t, tt.expected.Offset, result.Offset)
 			}
+		})
+	}
+}
+
+func TestSQLToPagination(t *testing.T) {
+	tests := []struct {
+		name  string
+		input *r3sql.SQLPagination
+		isNil bool
+	}{
+		{
+			name:  "valid SQL pagination",
+			input: r3sql.NewSQLPagination(25, 25),
+		},
+		{
+			name:  "nil input",
+			input: nil,
+			isNil: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := r3sql.SQLToPagination(tt.input)
+			if tt.isNil {
+				assert.Nil(t, result)
+			} else {
+				require.NotNil(t, result)
+			}
+		})
+	}
+}
+
+func TestPagination_RoundTrip(t *testing.T) {
+	tests := []struct {
+		name     string
+		pageNum  int
+		pageSize int
+	}{
+		{name: "page 1 size 10", pageNum: 1, pageSize: 10},
+		{name: "page 2 size 25", pageNum: 2, pageSize: 25},
+		{name: "page 5 size 50", pageNum: 5, pageSize: 50},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create original PaginationSpec
+			original := r3.NewPaginationSpec(tt.pageNum, tt.pageSize)
+
+			// Convert to SQL
+			sqlPagination := r3sql.PaginationToSQL(original)
+			require.NotNil(t, sqlPagination)
+
+			// Convert back to PaginationSpec
+			result := r3sql.SQLToPagination(sqlPagination)
+			require.NotNil(t, result)
+
+			// Verify round-trip
+			assert.Equal(t, tt.pageNum, result.GetPageNum())
+			assert.Equal(t, tt.pageSize, result.GetPageSize())
 		})
 	}
 }

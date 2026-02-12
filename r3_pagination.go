@@ -11,32 +11,13 @@ const (
 	PageSizeDefault = 50
 )
 
-// Pagination represents pagination parameters using Visitor pattern.
-type Pagination interface {
-	String() string
-	Clone() Pagination
-	// ToDialect converts pagination to dialect-specific representation.
-	ToDialect(dialector PaginationDialector) (DialectValue, error)
-}
-
-// PaginationDialector defines the interface for converting pagination to/from dialect formats.
-type PaginationDialector interface {
-	// TranslateIntoPaginationSpec converts a dialect value to PaginationSpec.
-	TranslateIntoPaginationSpec(DialectValue) (*PaginationSpec, error)
-	// TranslatePaginationSpec converts PaginationSpec to dialect value.
-	TranslatePaginationSpec(*PaginationSpec) (DialectValue, error)
-}
-
-// PaginationSpec is the core implementation of Pagination using PageNum/PageSize.
+// PaginationSpec is the core pagination type using PageNum/PageSize.
 type PaginationSpec struct {
 	// PageNum is 1-indexed page number (1 = first page).
 	PageNum maybe.Int
 	// PageSize is the number of items per page.
 	PageSize maybe.Int
 }
-
-// Ensure PaginationSpec implements Pagination interface.
-var _ Pagination = (*PaginationSpec)(nil)
 
 // NewPaginationSpec creates a new PaginationSpec with given page number and page size.
 func NewPaginationSpec(pageNum int, pageSize ...int) *PaginationSpec {
@@ -77,21 +58,19 @@ func (p *PaginationSpec) String() string {
 }
 
 // Clone creates a deep copy of the PaginationSpec.
-func (p *PaginationSpec) Clone() Pagination {
+func (p *PaginationSpec) Clone() *PaginationSpec {
+	if p == nil {
+		return nil
+	}
 	return &PaginationSpec{
 		PageNum:  p.PageNum,
 		PageSize: p.PageSize,
 	}
 }
 
-// ToDialect converts PaginationSpec to dialect-specific representation.
-func (p *PaginationSpec) ToDialect(dialector PaginationDialector) (DialectValue, error) {
-	return dialector.TranslatePaginationSpec(p)
-}
-
 // MergeWith merges this pagination with another, with other taking precedence.
 func (p *PaginationSpec) MergeWith(other *PaginationSpec) *PaginationSpec {
-	result, _ := p.Clone().(*PaginationSpec)
+	result := p.Clone()
 
 	if other.PageNum.Some() {
 		result.PageNum = other.PageNum
@@ -137,9 +116,4 @@ func (p *PaginationSpec) ToLimitOffset() (int, int) {
 	offset := (pageNum - 1) * pageSize // Convert 1-indexed page to 0-indexed offset
 
 	return limit, offset
-}
-
-// FromDialect creates a PaginationSpec from a dialect value.
-func FromDialect(dialector PaginationDialector, dialectValue DialectValue) (*PaginationSpec, error) {
-	return dialector.TranslateIntoPaginationSpec(dialectValue)
 }

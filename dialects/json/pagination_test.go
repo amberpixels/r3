@@ -154,55 +154,11 @@ func TestJSONPagination_JSONMarshaling(t *testing.T) {
 	}
 }
 
-func TestJSONInboundDialector_TranslateIntoPaginationSpec(t *testing.T) {
-	dialector := &r3json.JSONInboundDialector{}
-
+func TestPaginationToJSON_Func(t *testing.T) {
 	tests := []struct {
-		name        string
-		input       r3.DialectValue
-		expected    *r3.PaginationSpec
-		expectError bool
-	}{
-		{
-			name: "valid JSONPagination",
-			input: &r3json.JSONPagination{
-				PageNum:  2,
-				PageSize: 30,
-			},
-			expected: r3.NewPaginationSpec(2, 30),
-		},
-		{
-			name:        "invalid input type",
-			input:       "invalid",
-			expectError: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := dialector.TranslateIntoPaginationSpec(tt.input)
-
-			if tt.expectError {
-				require.Error(t, err)
-				assert.Nil(t, result)
-			} else {
-				require.NoError(t, err)
-				require.NotNil(t, result)
-				assert.Equal(t, tt.expected.GetPageNum(), result.GetPageNum())
-				assert.Equal(t, tt.expected.GetPageSize(), result.GetPageSize())
-			}
-		})
-	}
-}
-
-func TestJSONInboundDialector_TranslatePaginationSpec(t *testing.T) {
-	dialector := &r3json.JSONInboundDialector{}
-
-	tests := []struct {
-		name        string
-		input       *r3.PaginationSpec
-		expected    *r3json.JSONPagination
-		expectError bool
+		name     string
+		input    *r3.PaginationSpec
+		expected *r3json.JSONPagination
 	}{
 		{
 			name:  "valid PaginationSpec",
@@ -213,121 +169,53 @@ func TestJSONInboundDialector_TranslatePaginationSpec(t *testing.T) {
 			},
 		},
 		{
-			name:        "nil PaginationSpec",
-			input:       nil,
-			expectError: true,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := dialector.TranslatePaginationSpec(tt.input)
-
-			if tt.expectError {
-				require.Error(t, err)
-				assert.Nil(t, result)
-			} else {
-				require.NoError(t, err)
-				require.NotNil(t, result)
-
-				jsonPagination, ok := result.(*r3json.JSONPagination)
-				require.True(t, ok, "Result should be a JSONPagination")
-				assert.Equal(t, tt.expected.PageNum, jsonPagination.PageNum)
-				assert.Equal(t, tt.expected.PageSize, jsonPagination.PageSize)
-			}
-		})
-	}
-}
-
-func TestJSONOutboundDialector_TranslatePaginationSpec(t *testing.T) {
-	dialector := &r3json.JSONOutboundDialector{}
-
-	tests := []struct {
-		name        string
-		input       *r3.PaginationSpec
-		expected    *r3json.JSONPagination
-		expectError bool
-	}{
-		{
-			name:  "valid PaginationSpec",
-			input: r3.NewPaginationSpec(4, 15),
+			name:  "default pagination",
+			input: r3.DefaultPagination(),
 			expected: &r3json.JSONPagination{
-				PageNum:  4,
-				PageSize: 15,
+				PageNum:  1,
+				PageSize: r3.PageSizeDefault,
 			},
 		},
-		{
-			name:        "nil PaginationSpec",
-			input:       nil,
-			expectError: true,
-		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := dialector.TranslatePaginationSpec(tt.input)
-
-			if tt.expectError {
-				require.Error(t, err)
-				assert.Nil(t, result)
-			} else {
-				require.NoError(t, err)
-				require.NotNil(t, result)
-
-				jsonPagination, ok := result.(*r3json.JSONPagination)
-				require.True(t, ok, "Result should be a JSONPagination")
-				assert.Equal(t, tt.expected.PageNum, jsonPagination.PageNum)
-				assert.Equal(t, tt.expected.PageSize, jsonPagination.PageSize)
-			}
+			result := r3json.PaginationToJSON(tt.input)
+			require.NotNil(t, result)
+			assert.Equal(t, tt.expected.PageNum, result.PageNum)
+			assert.Equal(t, tt.expected.PageSize, result.PageSize)
 		})
 	}
 }
 
-func TestJSONOutboundDialector_TranslateIntoPaginationSpec(t *testing.T) {
-	dialector := &r3json.JSONOutboundDialector{}
-
+func TestJSONToPagination_Func(t *testing.T) {
 	tests := []struct {
-		name        string
-		input       r3.DialectValue
-		expected    *r3.PaginationSpec
-		expectError bool
+		name     string
+		input    *r3json.JSONPagination
+		expected *r3.PaginationSpec
 	}{
 		{
 			name: "valid JSONPagination",
 			input: &r3json.JSONPagination{
-				PageNum:  5,
-				PageSize: 20,
+				PageNum:  2,
+				PageSize: 30,
 			},
-			expected: r3.NewPaginationSpec(5, 20),
-		},
-		{
-			name:        "invalid input type",
-			input:       42,
-			expectError: true,
+			expected: r3.NewPaginationSpec(2, 30),
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := dialector.TranslateIntoPaginationSpec(tt.input)
-
-			if tt.expectError {
-				require.Error(t, err)
-				assert.Nil(t, result)
-			} else {
-				require.NoError(t, err)
-				require.NotNil(t, result)
-				assert.Equal(t, tt.expected.GetPageNum(), result.GetPageNum())
-				assert.Equal(t, tt.expected.GetPageSize(), result.GetPageSize())
-			}
+			result, err := r3json.JSONToPagination(tt.input)
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			assert.Equal(t, tt.expected.GetPageNum(), result.GetPageNum())
+			assert.Equal(t, tt.expected.GetPageSize(), result.GetPageSize())
 		})
 	}
 }
 
 func TestJSONPagination_RoundTrip(t *testing.T) {
-	inboundDialector := &r3json.JSONInboundDialector{}
-	outboundDialector := &r3json.JSONOutboundDialector{}
-
 	tests := []struct {
 		name     string
 		original *r3.PaginationSpec
@@ -349,11 +237,11 @@ func TestJSONPagination_RoundTrip(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Convert to JSON
-			jsonValue, err := outboundDialector.TranslatePaginationSpec(tt.original)
-			require.NoError(t, err)
+			jsonPagination := r3json.PaginationToJSON(tt.original)
+			require.NotNil(t, jsonPagination)
 
 			// Convert back to PaginationSpec
-			result, err := inboundDialector.TranslateIntoPaginationSpec(jsonValue)
+			result, err := r3json.JSONToPagination(jsonPagination)
 			require.NoError(t, err)
 
 			// Verify round-trip consistency
