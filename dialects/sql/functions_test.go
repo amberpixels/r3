@@ -343,7 +343,11 @@ func TestFiltersToSQLClauses_Integration(t *testing.T) {
 			},
 			validate: func(t *testing.T, result r3sql.SQLClauses) {
 				require.Len(t, result, 1)
-				assert.Equal(t, `("category"."name" IN ? AND ("price" < ? OR "discount"."active" = ?))`, result[0].Clause)
+				assert.Equal(
+					t,
+					`("category"."name" IN ? AND ("price" < ? OR "discount"."active" = ?))`,
+					result[0].Clause,
+				)
 				require.Len(t, result[0].Args, 3)
 				assert.Equal(t, []string{"electronics", "computers"}, result[0].Args[0])
 				assert.Equal(t, 1000, result[0].Args[1])

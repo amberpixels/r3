@@ -3,6 +3,7 @@ package sqlbase
 import (
 	"strings"
 
+	"github.com/amberpixels/r3"
 	"github.com/d3rty/json/cases"
 )
 
@@ -29,4 +30,18 @@ func ToSnakeCasePlural(s string) string {
 // ColumnsString joins column names with commas.
 func ColumnsString(cols []string) string {
 	return strings.Join(cols, ", ")
+}
+
+// FieldsToColumns converts r3.Fields to a []string of column names.
+func FieldsToColumns(fields r3.Fields) []string {
+	if len(fields) == 0 {
+		return nil
+	}
+	cols := make([]string, 0, len(fields))
+	for _, f := range fields {
+		if f != nil {
+			cols = append(cols, f.String())
+		}
+	}
+	return cols
 }

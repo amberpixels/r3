@@ -3,8 +3,8 @@ package r3gorm
 import (
 	"context"
 	"reflect"
-	"strings"
 
+	"github.com/amberpixels/r3/sqlbase"
 	"gorm.io/gorm"
 )
 
@@ -23,6 +23,7 @@ func NewGormRaw[T any, ID comparable](db *gorm.DB) *GormRaw[T, ID] {
 }
 
 // getTableName derives table name from generic type T.
+// GORM uses singular snake_case table names by default (e.g. City -> city).
 func getTableName[T any]() string {
 	var t T
 	typ := reflect.TypeOf(t)
@@ -33,20 +34,7 @@ func getTableName[T any]() string {
 	}
 
 	// Convert struct name to snake_case for table name
-	return toSnakeCase(typ.Name())
-}
-
-// toSnakeCase converts CamelCase to snake_case.
-func toSnakeCase(s string) string {
-	var result strings.Builder
-	const lowercaseBitMask = 32 // ASCII bit difference between uppercase and lowercase
-	for i, r := range s {
-		if i > 0 && r >= 'A' && r <= 'Z' {
-			result.WriteByte('_')
-		}
-		result.WriteRune(r | lowercaseBitMask) // Convert to lowercase
-	}
-	return result.String()
+	return sqlbase.ToSnakeCase(typ.Name())
 }
 
 func (r *GormRaw[T, ID]) Find(ctx context.Context, cb func(*gorm.DB) *gorm.DB) ([]T, error) {

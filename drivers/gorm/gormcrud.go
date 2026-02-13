@@ -44,6 +44,21 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 	var entity T
 	query := r.db.WithContext(ctx).Model(&entity)
 
+	// Apply fields selection
+	if fieldCols := sqlbase.FieldsToColumns(prep.Query.Fields); len(fieldCols) > 0 {
+		query = query.Select(fieldCols)
+	}
+
+	// Apply preloads
+	for _, preload := range prep.Query.Preloads {
+		query = query.Preload(preload.GetName())
+	}
+
+	// Handle soft-deleted records
+	if prep.Query.IncludeTrashed.Some(true) {
+		query = query.Unscoped()
+	}
+
 	// Apply joins
 	for _, join := range prep.Joins() {
 		query = query.Joins(join.String())
@@ -87,14 +102,18 @@ func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 
 	query := r.db.WithContext(ctx)
 
+	// Apply fields selection
+	if fieldCols := sqlbase.FieldsToColumns(q.Fields); len(fieldCols) > 0 {
+		query = query.Select(fieldCols)
+	}
+
 	// Apply preloads
 	for _, preload := range q.Preloads {
 		query = query.Preload(preload.GetName())
 	}
 
 	// Handle soft-deleted records
-	if q.IncludeTrashed.Some() {
-		// TODO: check bool value (it can be negative!)
+	if q.IncludeTrashed.Some(true) {
 		query = query.Unscoped()
 	}
 

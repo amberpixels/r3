@@ -3,8 +3,8 @@ package r3gopg
 import (
 	"context"
 	"reflect"
-	"strings"
 
+	"github.com/amberpixels/r3/sqlbase"
 	"github.com/go-pg/pg/v10"
 	"github.com/go-pg/pg/v10/orm"
 )
@@ -25,6 +25,7 @@ func NewGoPgRaw[T any, ID comparable](db *pg.DB) *GoPgRaw[T, ID] {
 }
 
 // getTableName derives table name from generic type T using go-pg conventions.
+// go-pg pluralizes table names by default (e.g., City -> cities, Event -> events).
 func getTableName[T any]() string {
 	var t T
 	typ := reflect.TypeOf(t)
@@ -35,36 +36,7 @@ func getTableName[T any]() string {
 	}
 
 	// Convert struct name to snake_case and pluralize for table name
-	return toSnakeCasePlural(typ.Name())
-}
-
-// toSnakeCase converts CamelCase to snake_case.
-func toSnakeCase(s string) string {
-	var result strings.Builder
-	const lowercaseBitMask = 32 // ASCII bit difference between uppercase and lowercase
-	for i, r := range s {
-		if i > 0 && r >= 'A' && r <= 'Z' {
-			result.WriteByte('_')
-		}
-		result.WriteRune(r | lowercaseBitMask) // Convert to lowercase
-	}
-	return result.String()
-}
-
-// toSnakeCasePlural converts CamelCase to snake_case and adds a naive "s" pluralization.
-// go-pg pluralizes table names by default (e.g., City -> cities, Event -> events).
-func toSnakeCasePlural(s string) string {
-	snake := toSnakeCase(s)
-
-	// Naive pluralization matching go-pg's default behavior
-	if strings.HasSuffix(snake, "y") {
-		return snake[:len(snake)-1] + "ies"
-	}
-	if strings.HasSuffix(snake, "s") || strings.HasSuffix(snake, "x") ||
-		strings.HasSuffix(snake, "sh") || strings.HasSuffix(snake, "ch") {
-		return snake + "es"
-	}
-	return snake + "s"
+	return sqlbase.ToSnakeCasePlural(typ.Name())
 }
 
 // Find executes a custom query and returns the results.

@@ -120,6 +120,11 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 	var whereArgs []any
 	argIdx := 1
 
+	// Soft-delete: auto-add WHERE deleted_at IS NULL unless IncludeTrashed is true
+	if r.Meta.SoftDeleteColumn != "" && !prep.Query.IncludeTrashed.Some(true) {
+		whereParts = append(whereParts, fmt.Sprintf("%s IS NULL", r.Meta.SoftDeleteColumn))
+	}
+
 	for _, clause := range prep.Clauses {
 		converted, nextIdx := r.Flavor.ConvertPlaceholders(clause.Clause, argIdx)
 		whereParts = append(whereParts, converted)
@@ -171,10 +176,14 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		limitSQL = fmt.Sprintf(" LIMIT %d OFFSET %d", prep.Limit, prep.Offset)
 	}
 
+	// Resolve selected columns (Fields selection)
+	selectedCols := FieldsToColumns(prep.Query.Fields)
+	selectCols, _ := r.Meta.FieldIndicesForColumns(selectedCols)
+
 	// Execute the main SELECT
 	selectQuery := fmt.Sprintf(
 		"SELECT %s FROM %s%s%s%s%s",
-		ColumnsString(r.Meta.Columns),
+		ColumnsString(selectCols),
 		r.Meta.TableName,
 		joinSQL,
 		whereSQL,
@@ -191,7 +200,7 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 	var entities []T
 	for rows.Next() {
 		var entity T
-		dests := r.Meta.ScanDest(&entity)
+		dests := r.Meta.ScanDestForColumns(&entity, selectedCols)
 		if err := rows.Scan(dests...); err != nil {
 			return nil, 0, err
 		}
@@ -203,6 +212,13 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 
 	entities, totalCount = FinalizeCount(entities, totalCount, prep.IsPaginated)
 
+	// Run preloads if any are requested and the model has relations
+	if len(prep.Query.Preloads) > 0 && len(r.Meta.Relations) > 0 {
+		if err := RunPreloads(ctx, r.DB, &r.Meta, r.Flavor, &entities, prep.Query.Preloads); err != nil {
+			return nil, 0, fmt.Errorf("preload failed: %w", err)
+		}
+	}
+
 	return entities, totalCount, nil
 }
 
@@ -210,18 +226,40 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 func (r *BaseCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, error) {
 	var entity T
 
+	q := r.MergeGetQuery(qarg...)
+
+	// Resolve selected columns (Fields selection)
+	selectedCols := FieldsToColumns(q.Fields)
+	selectCols, _ := r.Meta.FieldIndicesForColumns(selectedCols)
+
+	// Build WHERE clause: pk = ? [AND deleted_at IS NULL]
+	whereParts := []string{r.Flavor.WhereEq(r.Meta.PKColumn, 1)}
+	if r.Meta.SoftDeleteColumn != "" && !q.IncludeTrashed.Some(true) {
+		whereParts = append(whereParts, fmt.Sprintf("%s IS NULL", r.Meta.SoftDeleteColumn))
+	}
+
 	query := fmt.Sprintf(
 		"SELECT %s FROM %s WHERE %s",
-		ColumnsString(r.Meta.Columns),
+		ColumnsString(selectCols),
 		r.Meta.TableName,
-		r.Flavor.WhereEq(r.Meta.PKColumn, 1),
+		strings.Join(whereParts, " AND "),
 	)
 
-	dests := r.Meta.ScanDest(&entity)
+	dests := r.Meta.ScanDestForColumns(&entity, selectedCols)
 	err := r.DB.QueryRowContext(ctx, query, id).Scan(dests...)
 	if err != nil {
 		return entity, err
 	}
+
+	// Run preloads if any are requested and the model has relations
+	if len(q.Preloads) > 0 && len(r.Meta.Relations) > 0 {
+		entities := []T{entity}
+		if err := RunPreloads(ctx, r.DB, &r.Meta, r.Flavor, &entities, q.Preloads); err != nil {
+			return entity, fmt.Errorf("preload failed: %w", err)
+		}
+		entity = entities[0]
+	}
+
 	return entity, nil
 }
 
@@ -247,12 +285,28 @@ func (r *BaseCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 }
 
 // Delete removes a record by its ID.
+// If the model has a soft-delete column (tagged with `r3:"soft_delete"`),
+// it performs a soft-delete by setting the column to the current timestamp.
+// Otherwise, it performs a hard delete.
 func (r *BaseCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
-	query := fmt.Sprintf(
-		"DELETE FROM %s WHERE %s",
-		r.Meta.TableName,
-		r.Flavor.WhereEq(r.Meta.PKColumn, 1),
-	)
+	var query string
+	if r.Meta.SoftDeleteColumn != "" {
+		// Soft-delete: UPDATE SET deleted_at = NOW() WHERE pk = ?
+		query = fmt.Sprintf(
+			"UPDATE %s SET %s = %s WHERE %s",
+			r.Meta.TableName,
+			r.Meta.SoftDeleteColumn,
+			r.Flavor.TimestampFunc,
+			r.Flavor.WhereEq(r.Meta.PKColumn, 1),
+		)
+	} else {
+		// Hard delete
+		query = fmt.Sprintf(
+			"DELETE FROM %s WHERE %s",
+			r.Meta.TableName,
+			r.Flavor.WhereEq(r.Meta.PKColumn, 1),
+		)
+	}
 
 	_, err := r.DB.ExecContext(ctx, query, id)
 	return err

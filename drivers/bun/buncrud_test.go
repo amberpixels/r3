@@ -249,7 +249,7 @@ func TestBunRepository(t *testing.T) {
 		// Aggregate queries return a different shape than the model,
 		// so we use Scan into a dedicated struct.
 		type LocationAggregate struct {
-			bun.BaseModel `bun:"table:locations"`
+			bun.BaseModel `       bun:"table:locations"`
 			ID            int64  `bun:"id"`
 			Name          string `bun:"name"`
 			TotalWeight   int64  `bun:"total_weight"`

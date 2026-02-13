@@ -33,13 +33,22 @@ type Flavor struct {
 	// in INSERT statements (PostgreSQL, SQLite 3.35+).
 	// When false, Create() uses INSERT + last-insert-id + SELECT.
 	SupportsRETURNING bool
+
+	// TimestampFunc is the SQL expression for the current timestamp.
+	// Used by soft-delete to set the deleted_at column.
+	// Examples: "NOW()" (PostgreSQL), "CURRENT_TIMESTAMP" (MySQL), "datetime('now')" (SQLite).
+	TimestampFunc string
 }
 
 // Pre-defined flavors for common databases.
 var (
-	FlavorPostgres = Flavor{Placeholder: PlaceholderDollar, SupportsRETURNING: true}
-	FlavorSQLite   = Flavor{Placeholder: PlaceholderQuestion, SupportsRETURNING: true}
-	FlavorMySQL    = Flavor{Placeholder: PlaceholderQuestion, SupportsRETURNING: false}
+	FlavorPostgres = Flavor{Placeholder: PlaceholderDollar, SupportsRETURNING: true, TimestampFunc: "NOW()"}
+	FlavorSQLite   = Flavor{Placeholder: PlaceholderQuestion, SupportsRETURNING: true, TimestampFunc: "datetime('now')"}
+	FlavorMySQL    = Flavor{
+		Placeholder:       PlaceholderQuestion,
+		SupportsRETURNING: false,
+		TimestampFunc:     "CURRENT_TIMESTAMP",
+	}
 )
 
 // Placeholders generates a placeholder string for count parameters.

@@ -68,9 +68,19 @@ func (r *BunCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64
 	var entities []T
 	query := r.db.NewSelect().Model(&entities)
 
+	// Apply fields selection
+	if fieldCols := sqlbase.FieldsToColumns(prep.Query.Fields); len(fieldCols) > 0 {
+		query = query.Column(fieldCols...)
+	}
+
 	// Apply preloads (Bun uses Relation for eager loading)
 	for _, preload := range prep.Query.Preloads {
 		query = query.Relation(preload.GetName())
+	}
+
+	// Handle soft-deleted records
+	if prep.Query.IncludeTrashed.Some(true) {
+		query = query.WhereAllWithDeleted()
 	}
 
 	// Apply joins
@@ -117,13 +127,18 @@ func (r *BunCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, e
 
 	query := r.db.NewSelect().Model(&entity).Where("id = ?", id)
 
+	// Apply fields selection
+	if fieldCols := sqlbase.FieldsToColumns(q.Fields); len(fieldCols) > 0 {
+		query = query.Column(fieldCols...)
+	}
+
 	// Apply preloads (Bun uses Relation for eager loading)
 	for _, preload := range q.Preloads {
 		query = query.Relation(preload.GetName())
 	}
 
 	// Handle soft-deleted records
-	if q.IncludeTrashed.Some() {
+	if q.IncludeTrashed.Some(true) {
 		query = query.WhereAllWithDeleted()
 	}
 
