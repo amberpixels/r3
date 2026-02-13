@@ -24,7 +24,7 @@ func GetStructMeta[T any]() StructMeta {
 	var t T
 	typ := reflect.TypeOf(t)
 
-	if typ.Kind() == reflect.Ptr {
+	if typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 	}
 
@@ -48,7 +48,7 @@ func GetStructMeta[T any]() StructMeta {
 		if fKind == reflect.Slice || fKind == reflect.Map {
 			continue
 		}
-		if fKind == reflect.Ptr {
+		if fKind == reflect.Pointer {
 			elemKind := field.Type.Elem().Kind()
 			if elemKind == reflect.Struct && field.Type.Elem().String() != "time.Time" {
 				continue
@@ -105,7 +105,7 @@ func (m *StructMeta) NonPKColumns() []string {
 // FieldValues extracts the column values from a struct in the same order as Columns.
 func (m *StructMeta) FieldValues(entity any) []any {
 	v := reflect.ValueOf(entity)
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 	vals := make([]any, len(m.Fields))
@@ -118,7 +118,7 @@ func (m *StructMeta) FieldValues(entity any) []any {
 // NonPKFieldValues extracts column values excluding the PK, for INSERT/UPDATE.
 func (m *StructMeta) NonPKFieldValues(entity any) []any {
 	v := reflect.ValueOf(entity)
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 	var vals []any
@@ -144,7 +144,7 @@ func (m *StructMeta) ScanDest(entityPtr any) []any {
 // PKValue extracts the primary key value from an entity.
 func (m *StructMeta) PKValue(entity any) any {
 	v := reflect.ValueOf(entity)
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 	if m.PKField >= 0 && m.PKField < len(m.Fields) {

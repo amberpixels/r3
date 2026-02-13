@@ -30,7 +30,7 @@ func getTableName[T any]() string {
 	typ := reflect.TypeOf(t)
 
 	// Handle pointer types
-	if typ.Kind() == reflect.Ptr {
+	if typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 	}
 
