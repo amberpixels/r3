@@ -5,7 +5,59 @@ import (
 
 	"github.com/amberpixels/r3"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
+
+func TestValidateIdentifier(t *testing.T) {
+	valid := []string{
+		"id",
+		"name",
+		"user_name",
+		"_private",
+		"CamelCase",
+		"col123",
+		"user.name",
+		"user.profile.name",
+		"a.b.c.d",
+		"_a._b",
+		"T1.col_2",
+	}
+
+	for _, s := range valid {
+		t.Run("valid/"+s, func(t *testing.T) {
+			assert.NoError(t, r3.ValidateIdentifier(s))
+		})
+	}
+
+	invalid := []string{
+		"",
+		"1col",                         // starts with digit
+		"a b",                          // space
+		"x;y",                          // semicolon
+		"col--",                        // double dash (SQL comment)
+		"table.*",                      // wildcard
+		"a..b",                         // empty segment
+		".leading",                     // leading dot
+		"trailing.",                    // trailing dot
+		"col name",                     // space in name
+		"id; DROP TABLE users--",       // SQL injection attempt
+		"1=1) UNION SELECT password--", // SQL injection attempt
+		`"quoted"`,                     // already quoted
+		"col\x00name",                  // null byte
+		"(subquery)",                   // parentheses
+		"a,b",                          // comma
+		"a=b",                          // equals
+		"col'name",                     // single quote
+	}
+
+	for _, s := range invalid {
+		t.Run("invalid/"+s, func(t *testing.T) {
+			err := r3.ValidateIdentifier(s)
+			require.Error(t, err)
+			assert.ErrorIs(t, err, r3.ErrInvalidIdentifier)
+		})
+	}
+}
 
 func TestFieldsMergeWith(t *testing.T) {
 	a := r3.NewFieldSpec("a")

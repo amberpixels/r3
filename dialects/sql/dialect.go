@@ -37,7 +37,9 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// FieldToSQL converts a FieldSpec to an SQLColumn.
+// FieldToSQL converts a FieldSpec to an SQLColumn (raw, no quoting).
+// This does NOT validate or quote the identifier. For safe SQL generation from
+// user-supplied field names, use SafeColumnExpr instead.
 func FieldToSQL(f *r3.FieldSpec) SQLColumn {
 	return SQLColumn(f.String())
 }
@@ -125,18 +127,25 @@ func SQLToOperator(op SQLClauseOperator) (r3.FilterOperatorSpec, error) {
 func FilterToSQL(cf *r3.FilterSpec) (SQLClause, error) {
 	// Case 1. A simple filter when Field is set.
 	if cf.Field != nil {
-		sqlCol := FieldToSQL(cf.Field)
+		// Validate and quote the field name to prevent SQL injection.
+		safeCol, err := SafeColumnExpr(cf.Field)
+		if err != nil {
+			return SQLClause{}, fmt.Errorf("unsafe filter field: %w", err)
+		}
 
-		// Extract join information from the field.
-		joins := extractJoinFromField(sqlCol)
+		// Extract join information from the field (uses raw name for table extraction).
+		joins, err := extractJoinFromField(cf.Field.String())
+		if err != nil {
+			return SQLClause{}, fmt.Errorf("unsafe join in filter field: %w", err)
+		}
 
 		// Nil value means we need to generate an "IS NULL" or "IS NOT NULL" clause.
 		if cf.Value == nil {
 			if cf.Operator == r3.OperatorEq { //nolint: staticcheck // we care only about these 2 values here
-				clause := fmt.Sprintf("%s %s", cf.Field, sqlIsNull)
+				clause := fmt.Sprintf("%s %s", safeCol, sqlIsNull)
 				return SQLClause{Clause: clause, Args: nil, Joins: joins}, nil
 			} else if cf.Operator == r3.OperatorNe {
-				clause := fmt.Sprintf("%s %s", cf.Field, sqlIsNotNull)
+				clause := fmt.Sprintf("%s %s", safeCol, sqlIsNotNull)
 				return SQLClause{Clause: clause, Args: nil, Joins: joins}, nil
 			}
 
@@ -149,7 +158,7 @@ func FilterToSQL(cf *r3.FilterSpec) (SQLClause, error) {
 			return SQLClause{}, err
 		}
 
-		clause := fmt.Sprintf("%s %s ?", cf.Field, sqlClauseOperator)
+		clause := fmt.Sprintf("%s %s ?", safeCol, sqlClauseOperator)
 		return SQLClause{
 			Clause: clause,
 			Args:   []any{cf.Value},
@@ -222,10 +231,14 @@ func SortToSQL(s *r3.SortSpec) (SQLSort, error) {
 		return "", errors.New("sort spec cannot be nil")
 	}
 
-	sqlCol := FieldToSQL(s.Column)
+	// Validate and quote the column name to prevent SQL injection.
+	safeCol, err := SafeColumnExpr(s.Column)
+	if err != nil {
+		return "", fmt.Errorf("unsafe sort column: %w", err)
+	}
 
 	// Build SQL sort string
-	sortStr := sqlCol.String() + " " + sqlSortDirectionString(s.Direction)
+	sortStr := safeCol + " " + sqlSortDirectionString(s.Direction)
 
 	if s.NullsPosition != r3.NullsPositionNotSpecified {
 		sortStr += " " + sqlNullsPositionString(s.NullsPosition)

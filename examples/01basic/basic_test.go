@@ -9,7 +9,7 @@ import (
 )
 
 func ExampleJSONFilters() {
-	jsonRaw := `[{"f":"\"Country\".name","op":"eq","v":"United States"}, {"f":"popularity","op":"gt","v":50}]`
+	jsonRaw := `[{"f":"Country.name","op":"eq","v":"United States"}, {"f":"popularity","op":"gt","v":50}]`
 
 	var inboundFilters r3json.JSONFilters
 	err := json.Unmarshal([]byte(jsonRaw), &inboundFilters)
@@ -38,15 +38,15 @@ func ExampleJSONFilters() {
 		fmt.Println("   -", clause.Joins)
 	}
 
-	// Output: [{"f":"\"Country\".name","op":"eq","v":"United States"},{"f":"popularity","op":"gt","v":50}]
-	// [{"Field":"\"Country\".name","Operator":1,"Value":"United States","And":[],"Or":[]} {"Field":"popularity","Operator":4,"Value":50,"And":[],"Or":[]}]
+	// Output: [{"f":"Country.name","op":"eq","v":"United States"},{"f":"popularity","op":"gt","v":50}]
+	// [{"Field":"Country.name","Operator":1,"Value":"United States","And":[],"Or":[]} {"Field":"popularity","Operator":4,"Value":50,"And":[],"Or":[]}]
 	// <nil>
 	// CLAUSE ...  0
-	//    - "Country".name = ?
+	//    - "Country"."name" = ?
 	//    - [United States]
 	//    - ["Country"]
 	// CLAUSE ...  1
-	//    - popularity > ?
+	//    - "popularity" > ?
 	//    - [50]
 	//    - []
 }

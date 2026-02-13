@@ -42,7 +42,7 @@ func TestFiltersToSQLClauses(t *testing.T) {
 			},
 			validate: func(t *testing.T, result r3sql.SQLClauses) {
 				require.Len(t, result, 1)
-				assert.Equal(t, "id = ?", result[0].Clause)
+				assert.Equal(t, `"id" = ?`, result[0].Clause)
 				require.Len(t, result[0].Args, 1)
 				assert.Equal(t, 123, result[0].Args[0])
 				assert.Empty(t, result[0].Joins)
@@ -71,17 +71,17 @@ func TestFiltersToSQLClauses(t *testing.T) {
 				require.Len(t, result, 3)
 
 				// First filter: id > 10
-				assert.Equal(t, "id > ?", result[0].Clause)
+				assert.Equal(t, `"id" > ?`, result[0].Clause)
 				require.Len(t, result[0].Args, 1)
 				assert.Equal(t, 10, result[0].Args[0])
 
 				// Second filter: name LIKE 'John%'
-				assert.Equal(t, "name LIKE ?", result[1].Clause)
+				assert.Equal(t, `"name" LIKE ?`, result[1].Clause)
 				require.Len(t, result[1].Args, 1)
 				assert.Equal(t, "John%", result[1].Args[0])
 
 				// Third filter: status IN ('active', 'pending')
-				assert.Equal(t, "status IN ?", result[2].Clause)
+				assert.Equal(t, `"status" IN ?`, result[2].Clause)
 				require.Len(t, result[2].Args, 1)
 				assert.Equal(t, []string{"active", "pending"}, result[2].Args[0])
 			},
@@ -104,18 +104,18 @@ func TestFiltersToSQLClauses(t *testing.T) {
 				require.Len(t, result, 2)
 
 				// First filter with user join
-				assert.Equal(t, "user.name = ?", result[0].Clause)
+				assert.Equal(t, `"user"."name" = ?`, result[0].Clause)
 				require.Len(t, result[0].Args, 1)
 				assert.Equal(t, "John", result[0].Args[0])
 				require.Len(t, result[0].Joins, 1)
-				assert.Equal(t, r3sql.SQLColumn("user"), result[0].Joins[0])
+				assert.Equal(t, r3sql.SQLColumn(`"user"`), result[0].Joins[0])
 
 				// Second filter with profile join
-				assert.Equal(t, "profile.age >= ?", result[1].Clause)
+				assert.Equal(t, `"profile"."age" >= ?`, result[1].Clause)
 				require.Len(t, result[1].Args, 1)
 				assert.Equal(t, 18, result[1].Args[0])
 				require.Len(t, result[1].Joins, 1)
-				assert.Equal(t, r3sql.SQLColumn("profile"), result[1].Joins[0])
+				assert.Equal(t, r3sql.SQLColumn(`"profile"`), result[1].Joins[0])
 			},
 		},
 		{
@@ -147,7 +147,7 @@ func TestFiltersToSQLClauses(t *testing.T) {
 			},
 			validate: func(t *testing.T, result r3sql.SQLClauses) {
 				require.Len(t, result, 1)
-				assert.Equal(t, "(category = ? AND (price < ? OR on_sale = ?))", result[0].Clause)
+				assert.Equal(t, `("category" = ? AND ("price" < ? OR "on_sale" = ?))`, result[0].Clause)
 				require.Len(t, result[0].Args, 3)
 				assert.Equal(t, "electronics", result[0].Args[0])
 				assert.Equal(t, 100, result[0].Args[1])
@@ -172,11 +172,11 @@ func TestFiltersToSQLClauses(t *testing.T) {
 				require.Len(t, result, 2)
 
 				// First filter: deleted_at IS NULL
-				assert.Equal(t, "deleted_at IS NULL", result[0].Clause)
+				assert.Equal(t, `"deleted_at" IS NULL`, result[0].Clause)
 				assert.Empty(t, result[0].Args)
 
 				// Second filter: archived_at IS NOT NULL
-				assert.Equal(t, "archived_at IS NOT NULL", result[1].Clause)
+				assert.Equal(t, `"archived_at" IS NOT NULL`, result[1].Clause)
 				assert.Empty(t, result[1].Args)
 			},
 		},
@@ -199,8 +199,8 @@ func TestFiltersToSQLClauses(t *testing.T) {
 				require.Len(t, result, 11)
 
 				expectedClauses := []string{
-					"f1 = ?", "f2 != ?", "f3 > ?", "f4 >= ?", "f5 < ?", "f6 <= ?",
-					"f7 LIKE ?", "f8 NOT LIKE ?", "f9 ILIKE ?", "f10 IN ?", "f11 NOT IN ?",
+					`"f1" = ?`, `"f2" != ?`, `"f3" > ?`, `"f4" >= ?`, `"f5" < ?`, `"f6" <= ?`,
+					`"f7" LIKE ?`, `"f8" NOT LIKE ?`, `"f9" ILIKE ?`, `"f10" IN ?`, `"f11" NOT IN ?`,
 				}
 
 				for i, expectedClause := range expectedClauses {
@@ -237,19 +237,19 @@ func TestFiltersToSQLClauses(t *testing.T) {
 				require.Len(t, result, 4)
 
 				// Integer
-				assert.Equal(t, "id = ?", result[0].Clause)
+				assert.Equal(t, `"id" = ?`, result[0].Clause)
 				assert.Equal(t, 42, result[0].Args[0])
 
 				// Float
-				assert.Equal(t, "score >= ?", result[1].Clause)
+				assert.Equal(t, `"score" >= ?`, result[1].Clause)
 				assert.InDelta(t, 85.5, result[1].Args[0], 0.0001)
 
 				// Boolean
-				assert.Equal(t, "active = ?", result[2].Clause)
+				assert.Equal(t, `"active" = ?`, result[2].Clause)
 				assert.Equal(t, true, result[2].Args[0])
 
 				// Interface slice
-				assert.Equal(t, "tags IN ?", result[3].Clause)
+				assert.Equal(t, `"tags" IN ?`, result[3].Clause)
 				assert.Equal(t, []any{"golang", "testing", "sql"}, result[3].Args[0])
 			},
 		},
@@ -306,7 +306,7 @@ func TestFiltersToSQLClauses_Integration(t *testing.T) {
 			},
 			validate: func(t *testing.T, result r3sql.SQLClauses) {
 				require.Len(t, result, 1)
-				assert.Equal(t, "(email = ? AND status = ? AND last_login IS NOT NULL)", result[0].Clause)
+				assert.Equal(t, `("email" = ? AND "status" = ? AND "last_login" IS NOT NULL)`, result[0].Clause)
 				require.Len(t, result[0].Args, 2)
 				assert.Equal(t, "user@example.com", result[0].Args[0])
 				assert.Equal(t, "active", result[0].Args[1])
@@ -343,14 +343,14 @@ func TestFiltersToSQLClauses_Integration(t *testing.T) {
 			},
 			validate: func(t *testing.T, result r3sql.SQLClauses) {
 				require.Len(t, result, 1)
-				assert.Equal(t, "(category.name IN ? AND (price < ? OR discount.active = ?))", result[0].Clause)
+				assert.Equal(t, `("category"."name" IN ? AND ("price" < ? OR "discount"."active" = ?))`, result[0].Clause)
 				require.Len(t, result[0].Args, 3)
 				assert.Equal(t, []string{"electronics", "computers"}, result[0].Args[0])
 				assert.Equal(t, 1000, result[0].Args[1])
 				assert.Equal(t, true, result[0].Args[2])
 
 				// Check joins
-				expectedJoins := []r3sql.SQLColumn{r3sql.SQLColumn("category"), r3sql.SQLColumn("discount")}
+				expectedJoins := []r3sql.SQLColumn{r3sql.SQLColumn(`"category"`), r3sql.SQLColumn(`"discount"`)}
 				assert.ElementsMatch(t, expectedJoins, result[0].Joins)
 			},
 		},
@@ -387,7 +387,7 @@ func TestFiltersToSQLClauses_Integration(t *testing.T) {
 				require.Len(t, result, 1)
 				assert.Equal(
 					t,
-					"(created_at >= ? AND created_at <= ? AND user.role NOT IN ? AND deleted_at IS NULL)",
+					`("created_at" >= ? AND "created_at" <= ? AND "user"."role" NOT IN ? AND "deleted_at" IS NULL)`,
 					result[0].Clause,
 				)
 				require.Len(t, result[0].Args, 3)
@@ -396,7 +396,7 @@ func TestFiltersToSQLClauses_Integration(t *testing.T) {
 				assert.Equal(t, []string{"system", "bot"}, result[0].Args[2])
 
 				// Check joins
-				expectedJoins := []r3sql.SQLColumn{r3sql.SQLColumn("user")}
+				expectedJoins := []r3sql.SQLColumn{r3sql.SQLColumn(`"user"`)}
 				assert.ElementsMatch(t, expectedJoins, result[0].Joins)
 			},
 		},
@@ -433,19 +433,19 @@ func TestFiltersToSQLClauses_Integration(t *testing.T) {
 				require.Len(t, result, 3)
 
 				// First filter: status = 'published'
-				assert.Equal(t, "status = ?", result[0].Clause)
+				assert.Equal(t, `"status" = ?`, result[0].Clause)
 				require.Len(t, result[0].Args, 1)
 				assert.Equal(t, "published", result[0].Args[0])
 
 				// Second filter: author.verified = true
-				assert.Equal(t, "author.verified = ?", result[1].Clause)
+				assert.Equal(t, `"author"."verified" = ?`, result[1].Clause)
 				require.Len(t, result[1].Args, 1)
 				assert.Equal(t, true, result[1].Args[0])
 				require.Len(t, result[1].Joins, 1)
-				assert.Equal(t, r3sql.SQLColumn("author"), result[1].Joins[0])
+				assert.Equal(t, r3sql.SQLColumn(`"author"`), result[1].Joins[0])
 
 				// Third filter: (priority >= 5 OR featured = true)
-				assert.Equal(t, "(priority >= ? OR featured = ?)", result[2].Clause)
+				assert.Equal(t, `("priority" >= ? OR "featured" = ?)`, result[2].Clause)
 				require.Len(t, result[2].Args, 2)
 				assert.Equal(t, 5, result[2].Args[0])
 				assert.Equal(t, true, result[2].Args[1])
@@ -495,9 +495,9 @@ func TestFiltersToSQLClauses_CombinedJoins(t *testing.T) {
 			validate: func(t *testing.T, result r3sql.SQLClauses) {
 				allJoins := result.Joins()
 				expectedJoins := []r3sql.SQLColumn{
-					r3sql.SQLColumn("user"),
-					r3sql.SQLColumn("profile"),
-					r3sql.SQLColumn("address"),
+					r3sql.SQLColumn(`"user"`),
+					r3sql.SQLColumn(`"profile"`),
+					r3sql.SQLColumn(`"address"`),
 				}
 				assert.ElementsMatch(t, expectedJoins, allJoins)
 			},
@@ -526,8 +526,8 @@ func TestFiltersToSQLClauses_CombinedJoins(t *testing.T) {
 				allJoins := result.Joins()
 				// Should be deduplicated by quick.Append
 				expectedJoins := []r3sql.SQLColumn{
-					r3sql.SQLColumn("user"),
-					r3sql.SQLColumn("profile"),
+					r3sql.SQLColumn(`"user"`),
+					r3sql.SQLColumn(`"profile"`),
 				}
 				assert.Equal(t, expectedJoins, allJoins)
 			},

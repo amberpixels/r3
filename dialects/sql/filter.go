@@ -36,13 +36,17 @@ func (cs SQLClauses) Joins() []SQLColumn {
 }
 
 // extractJoinFromField inspects the field name and returns a slice with join information if necessary.
-// For demonstration, assume join information is determined by a prefix separated by a dot.
-// E.g., "user.name" could signal a join to the "user" table.
-func extractJoinFromField(field SQLColumn) []SQLColumn {
-	// If there is a dot, we assume the portion before the dot indicates a join.
-	parts := strings.Split(string(field), ".")
+// The field name is the raw (unquoted) identifier path. If it contains a dot, the portion before
+// the first dot indicates a join table. The table name is validated and quoted.
+// E.g., "user.name" signals a join to the "user" table and returns ['"user"'].
+func extractJoinFromField(fieldName string) ([]SQLColumn, error) {
+	parts := strings.Split(fieldName, ".")
 	if len(parts) > 1 && parts[0] != "" {
-		return []SQLColumn{SQLColumn(parts[0])}
+		quoted, err := safeJoinTable(parts[0])
+		if err != nil {
+			return nil, err
+		}
+		return []SQLColumn{quoted}, nil
 	}
-	return nil
+	return nil, nil
 }

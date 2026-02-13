@@ -16,27 +16,27 @@ func TestSortSpec_DialectString(t *testing.T) {
 		{
 			name:     "simple ascending sort",
 			sort:     r3.NewSortAscSpec(r3.NewFieldSpec("name")),
-			expected: "name ASC",
+			expected: `"name" ASC`,
 		},
 		{
 			name:     "descending sort",
 			sort:     r3.NewSortDescSpec(r3.NewFieldSpec("created_at")),
-			expected: "created_at DESC",
+			expected: `"created_at" DESC`,
 		},
 		{
 			name:     "sort with nulls first",
 			sort:     r3.NewSortSpec(r3.NewFieldSpec("updated_at"), r3.SortDirectionAsc, r3.NullsPositionFirst),
-			expected: "updated_at ASC NULLS FIRST",
+			expected: `"updated_at" ASC NULLS FIRST`,
 		},
 		{
 			name:     "sort with nulls last",
 			sort:     r3.NewSortSpec(r3.NewFieldSpec("status"), r3.SortDirectionDesc, r3.NullsPositionLast),
-			expected: "status DESC NULLS LAST",
+			expected: `"status" DESC NULLS LAST`,
 		},
 		{
 			name:     "unspecified direction defaults to DESC",
 			sort:     r3.NewSortSpec(r3.NewFieldSpec("id"), r3.SortDirectionUnspecified),
-			expected: "id DESC",
+			expected: `"id" DESC`,
 		},
 	}
 

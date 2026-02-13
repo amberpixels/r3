@@ -92,7 +92,7 @@ func TestFilterToSQL(t *testing.T) {
 				Value:    123,
 			},
 			validate: func(t *testing.T, result r3sql.SQLClause) {
-				assert.Equal(t, "id = ?", result.Clause)
+				assert.Equal(t, `"id" = ?`, result.Clause)
 				require.Len(t, result.Args, 1)
 				assert.Equal(t, 123, result.Args[0])
 				assert.Empty(t, result.Joins)
@@ -106,7 +106,7 @@ func TestFilterToSQL(t *testing.T) {
 				Value:    "inactive",
 			},
 			validate: func(t *testing.T, result r3sql.SQLClause) {
-				assert.Equal(t, "status != ?", result.Clause)
+				assert.Equal(t, `"status" != ?`, result.Clause)
 				require.Len(t, result.Args, 1)
 				assert.Equal(t, "inactive", result.Args[0])
 			},
@@ -119,7 +119,7 @@ func TestFilterToSQL(t *testing.T) {
 				Value:    18,
 			},
 			validate: func(t *testing.T, result r3sql.SQLClause) {
-				assert.Equal(t, "age > ?", result.Clause)
+				assert.Equal(t, `"age" > ?`, result.Clause)
 				require.Len(t, result.Args, 1)
 				assert.Equal(t, 18, result.Args[0])
 			},
@@ -132,7 +132,7 @@ func TestFilterToSQL(t *testing.T) {
 				Value:    "John%",
 			},
 			validate: func(t *testing.T, result r3sql.SQLClause) {
-				assert.Equal(t, "name LIKE ?", result.Clause)
+				assert.Equal(t, `"name" LIKE ?`, result.Clause)
 				require.Len(t, result.Args, 1)
 				assert.Equal(t, "John%", result.Args[0])
 			},
@@ -145,7 +145,7 @@ func TestFilterToSQL(t *testing.T) {
 				Value:    []string{"electronics", "books"},
 			},
 			validate: func(t *testing.T, result r3sql.SQLClause) {
-				assert.Equal(t, "category IN ?", result.Clause)
+				assert.Equal(t, `"category" IN ?`, result.Clause)
 				require.Len(t, result.Args, 1)
 				assert.Equal(t, []string{"electronics", "books"}, result.Args[0])
 			},
@@ -158,7 +158,7 @@ func TestFilterToSQL(t *testing.T) {
 				Value:    nil,
 			},
 			validate: func(t *testing.T, result r3sql.SQLClause) {
-				assert.Equal(t, "deleted_at IS NULL", result.Clause)
+				assert.Equal(t, `"deleted_at" IS NULL`, result.Clause)
 				assert.Empty(t, result.Args)
 			},
 		},
@@ -170,7 +170,7 @@ func TestFilterToSQL(t *testing.T) {
 				Value:    nil,
 			},
 			validate: func(t *testing.T, result r3sql.SQLClause) {
-				assert.Equal(t, "deleted_at IS NOT NULL", result.Clause)
+				assert.Equal(t, `"deleted_at" IS NOT NULL`, result.Clause)
 				assert.Empty(t, result.Args)
 			},
 		},
@@ -182,11 +182,11 @@ func TestFilterToSQL(t *testing.T) {
 				Value:    "John",
 			},
 			validate: func(t *testing.T, result r3sql.SQLClause) {
-				assert.Equal(t, "user.profile.name = ?", result.Clause)
+				assert.Equal(t, `"user"."profile"."name" = ?`, result.Clause)
 				require.Len(t, result.Args, 1)
 				assert.Equal(t, "John", result.Args[0])
 				require.Len(t, result.Joins, 1)
-				assert.Equal(t, "user", result.Joins[0].String())
+				assert.Equal(t, `"user"`, result.Joins[0].String())
 			},
 		},
 		{
@@ -206,7 +206,7 @@ func TestFilterToSQL(t *testing.T) {
 				},
 			},
 			validate: func(t *testing.T, result r3sql.SQLClause) {
-				assert.Equal(t, "(age >= ? AND status = ?)", result.Clause)
+				assert.Equal(t, `("age" >= ? AND "status" = ?)`, result.Clause)
 				require.Len(t, result.Args, 2)
 				assert.Equal(t, 18, result.Args[0])
 				assert.Equal(t, "active", result.Args[1])
@@ -229,7 +229,7 @@ func TestFilterToSQL(t *testing.T) {
 				},
 			},
 			validate: func(t *testing.T, result r3sql.SQLClause) {
-				assert.Equal(t, "(type = ? OR vip = ?)", result.Clause)
+				assert.Equal(t, `("type" = ? OR "vip" = ?)`, result.Clause)
 				require.Len(t, result.Args, 2)
 				assert.Equal(t, "premium", result.Args[0])
 				assert.Equal(t, true, result.Args[1])
@@ -261,7 +261,7 @@ func TestFilterToSQL(t *testing.T) {
 				},
 			},
 			validate: func(t *testing.T, result r3sql.SQLClause) {
-				assert.Equal(t, "(category = ? AND (price < ? OR on_sale = ?))", result.Clause)
+				assert.Equal(t, `("category" = ? AND ("price" < ? OR "on_sale" = ?))`, result.Clause)
 				require.Len(t, result.Args, 3)
 				assert.Equal(t, "electronics", result.Args[0])
 				assert.Equal(t, 100, result.Args[1])
@@ -291,6 +291,116 @@ func TestFilterToSQL(t *testing.T) {
 					tt.validate(t, result)
 				}
 			}
+		})
+	}
+}
+
+// TestFilterToSQL_SQLInjection verifies that SQL injection attempts are rejected.
+func TestFilterToSQL_SQLInjection(t *testing.T) {
+	injectionAttempts := []struct {
+		name  string
+		field string
+	}{
+		{"semicolon injection", "id; DROP TABLE users--"},
+		{"union injection", "1=1) UNION SELECT password FROM users--"},
+		{"comment injection", "id--"},
+		{"subquery injection", "(SELECT 1)"},
+		{"space in name", "col name"},
+		{"single quote", "col'name"},
+		{"wildcard", "table.*"},
+		{"equals injection", "1=1"},
+		{"comma injection", "a,b"},
+	}
+
+	for _, tt := range injectionAttempts {
+		t.Run(tt.name+"/equality", func(t *testing.T) {
+			_, err := r3sql.FilterToSQL(&r3.FilterSpec{
+				Field:    r3.NewFieldSpec(tt.field),
+				Operator: r3.OperatorEq,
+				Value:    "anything",
+			})
+			require.Error(t, err, "filter with field %q should be rejected", tt.field)
+		})
+
+		t.Run(tt.name+"/null", func(t *testing.T) {
+			_, err := r3sql.FilterToSQL(&r3.FilterSpec{
+				Field:    r3.NewFieldSpec(tt.field),
+				Operator: r3.OperatorEq,
+				Value:    nil,
+			})
+			require.Error(t, err, "null filter with field %q should be rejected", tt.field)
+		})
+	}
+}
+
+// TestSortToSQL_SQLInjection verifies that SQL injection attempts in sort columns are rejected.
+func TestSortToSQL_SQLInjection(t *testing.T) {
+	injectionAttempts := []struct {
+		name  string
+		field string
+	}{
+		{"semicolon injection", "id; DROP TABLE users--"},
+		{"subquery injection", "(SELECT 1)"},
+		{"comment injection", "id--"},
+		{"space in name", "col name"},
+	}
+
+	for _, tt := range injectionAttempts {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := r3sql.SortToSQL(&r3.SortSpec{
+				Column:    r3.NewFieldSpec(tt.field),
+				Direction: r3.SortDirectionAsc,
+			})
+			require.Error(t, err, "sort with column %q should be rejected", tt.field)
+		})
+	}
+}
+
+// TestSafeColumnExpr tests the SafeColumnExpr function directly.
+func TestSafeColumnExpr(t *testing.T) {
+	tests := []struct {
+		name        string
+		input       *r3.FieldSpec
+		expected    string
+		expectError bool
+	}{
+		{name: "simple", input: r3.NewFieldSpec("id"), expected: `"id"`},
+		{name: "underscore", input: r3.NewFieldSpec("user_name"), expected: `"user_name"`},
+		{name: "dotted", input: r3.NewFieldSpec("user.name"), expected: `"user"."name"`},
+		{name: "deep dotted", input: r3.NewFieldSpec("a.b.c"), expected: `"a"."b"."c"`},
+		{name: "nil field", input: nil, expectError: true},
+		{name: "empty", input: r3.NewFieldSpec(""), expectError: true},
+		{name: "injection", input: r3.NewFieldSpec("id; DROP TABLE"), expectError: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := r3sql.SafeColumnExpr(tt.input)
+			if tt.expectError {
+				require.Error(t, err)
+			} else {
+				require.NoError(t, err)
+				assert.Equal(t, tt.expected, result)
+			}
+		})
+	}
+}
+
+// TestQuoteIdentifier tests the QuoteIdentifier function.
+func TestQuoteIdentifier(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{name: "simple", input: "id", expected: `"id"`},
+		{name: "with underscore", input: "user_name", expected: `"user_name"`},
+		{name: "with embedded quote", input: `col"name`, expected: `"col""name"`},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			assert.Equal(t, tt.expected, r3sql.QuoteIdentifier(tt.input))
 		})
 	}
 }
@@ -373,7 +483,7 @@ func TestSortToSQL(t *testing.T) {
 				Column:    r3.NewFieldSpec("name"),
 				Direction: r3.SortDirectionAsc,
 			},
-			expected: "name ASC",
+			expected: `"name" ASC`,
 		},
 		{
 			name: "descending sort",
@@ -381,7 +491,7 @@ func TestSortToSQL(t *testing.T) {
 				Column:    r3.NewFieldSpec("created_at"),
 				Direction: r3.SortDirectionDesc,
 			},
-			expected: "created_at DESC",
+			expected: `"created_at" DESC`,
 		},
 		{
 			name: "sort with nulls first",
@@ -390,7 +500,7 @@ func TestSortToSQL(t *testing.T) {
 				Direction:     r3.SortDirectionDesc,
 				NullsPosition: r3.NullsPositionFirst,
 			},
-			expected: "priority DESC NULLS FIRST",
+			expected: `"priority" DESC NULLS FIRST`,
 		},
 		{
 			name: "sort with nulls last",
@@ -399,7 +509,7 @@ func TestSortToSQL(t *testing.T) {
 				Direction:     r3.SortDirectionAsc,
 				NullsPosition: r3.NullsPositionLast,
 			},
-			expected: "score ASC NULLS LAST",
+			expected: `"score" ASC NULLS LAST`,
 		},
 		{
 			name: "complex field sort",
@@ -407,7 +517,7 @@ func TestSortToSQL(t *testing.T) {
 				Column:    r3.NewFieldSpec("user.profile.last_login"),
 				Direction: r3.SortDirectionDesc,
 			},
-			expected: "user.profile.last_login DESC",
+			expected: `"user"."profile"."last_login" DESC`,
 		},
 		{
 			name:        "nil sort spec",
@@ -540,7 +650,7 @@ func TestFilterToSQL_Integration(t *testing.T) {
 				},
 			},
 			validate: func(t *testing.T, result r3sql.SQLClause) {
-				assert.Equal(t, "(email = ? AND status = ? AND last_login IS NOT NULL)", result.Clause)
+				assert.Equal(t, `("email" = ? AND "status" = ? AND "last_login" IS NOT NULL)`, result.Clause)
 				require.Len(t, result.Args, 2)
 				assert.Equal(t, "user@example.com", result.Args[0])
 				assert.Equal(t, "active", result.Args[1])
@@ -573,14 +683,14 @@ func TestFilterToSQL_Integration(t *testing.T) {
 				},
 			},
 			validate: func(t *testing.T, result r3sql.SQLClause) {
-				assert.Equal(t, "(category.name IN ? AND (price < ? OR discount.active = ?))", result.Clause)
+				assert.Equal(t, `("category"."name" IN ? AND ("price" < ? OR "discount"."active" = ?))`, result.Clause)
 				require.Len(t, result.Args, 3)
 				assert.Equal(t, []string{"electronics", "computers"}, result.Args[0])
 				assert.Equal(t, 1000, result.Args[1])
 				assert.Equal(t, true, result.Args[2])
 
-				// Should extract joins from category.name and discount.active
-				expectedJoins := []r3sql.SQLColumn{r3sql.SQLColumn("category"), r3sql.SQLColumn("discount")}
+				// Joins should be quoted table names
+				expectedJoins := []r3sql.SQLColumn{r3sql.SQLColumn(`"category"`), r3sql.SQLColumn(`"discount"`)}
 				assert.ElementsMatch(t, expectedJoins, result.Joins)
 			},
 		},
