@@ -1,4 +1,4 @@
-package r3_test
+package r3sql_test
 
 import (
 	"testing"

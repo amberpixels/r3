@@ -1,14 +1,30 @@
 # Variables
 GOLANGCI_LINT := $(shell which golangci-lint)
 
+# All module directories (order matters: dependencies first)
+MODULES = \
+	. \
+	./dialects/json \
+	./dialects/sql \
+	./sqlbase \
+	./drivers/bun \
+	./drivers/gopg \
+	./drivers/gorm \
+	./drivers/mysql \
+	./drivers/pgx \
+	./drivers/pq \
+	./drivers/sqlite3 \
+	./examples
+
 # Default target
 all: tidy
 
-# Tidy: format and vet the code
+# Tidy: format, vet, and tidy all modules
 tidy:
-	@go fmt $$(go list ./...)
-	@go vet $$(go list ./...)
-	@go mod tidy
+	@for dir in $(MODULES); do \
+		echo "=> tidy $$dir"; \
+		(cd $$dir && go fmt ./... && go vet ./... && go mod tidy) || exit 1; \
+	done
 
 # Install golangci-lint only if it's not already installed
 lint-install:
@@ -22,8 +38,33 @@ lint: lint-install
 	$(shell which golangci-lint) fmt
 	$(shell which golangci-lint) run
 
+# Test all modules
 test:
-	go test ./...
+	@for dir in $(MODULES); do \
+		echo "=> test $$dir"; \
+		(cd $$dir && go test ./...) || exit 1; \
+	done
+
+# Test only short tests (skip integration tests requiring Docker)
+test-short:
+	@for dir in $(MODULES); do \
+		echo "=> test-short $$dir"; \
+		(cd $$dir && go test -short ./...) || exit 1; \
+	done
+
+# Vet all modules
+vet:
+	@for dir in $(MODULES); do \
+		echo "=> vet $$dir"; \
+		(cd $$dir && go vet ./...) || exit 1; \
+	done
+
+# Run go mod tidy on all modules
+mod-tidy:
+	@for dir in $(MODULES); do \
+		echo "=> mod tidy $$dir"; \
+		(cd $$dir && go mod tidy) || exit 1; \
+	done
 
 # Run the pet store example (starts PostgreSQL in Docker + the Go server)
 example:
@@ -36,4 +77,4 @@ example:
 	@go run ./examples/02petstore/cmd
 
 # Phony targets
-.PHONY: all tidy lint-install lint test example
+.PHONY: all tidy lint-install lint test test-short vet mod-tidy example
