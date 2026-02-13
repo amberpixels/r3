@@ -5,17 +5,9 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/amberpixels/r3"
-	r3sql "github.com/amberpixels/r3/dialects/sql"
 )
-
-// Defaults stores the default values for repo queries.
-type Defaults struct {
-	ListQuery r3.Query
-	GetQuery  r3.Query
-}
 
 // BaseCRUD is a generic CRUD repository backed by database/sql.
 // It implements the full r3.CRUD[T, ID] interface using reflection-based struct scanning
@@ -26,8 +18,7 @@ type Defaults struct {
 type BaseCRUD[T any, ID comparable] struct {
 	DB *sql.DB
 
-	Defaults   Defaults
-	DefaultsMu sync.RWMutex
+	DefaultsManager
 
 	Meta   StructMeta
 	Flavor Flavor
@@ -42,43 +33,12 @@ var _ r3.CRUD[any, any] = &BaseCRUD[any, any]{}
 func NewBaseCRUD[T any, ID comparable](db *sql.DB, flavor Flavor) *BaseCRUD[T, ID] {
 	meta := GetStructMeta[T]()
 	return &BaseCRUD[T, ID]{
-		DB: db,
-		Defaults: Defaults{
-			ListQuery: r3.DefaultQuery(),
-			GetQuery:  r3.DefaultQuery(),
-		},
-		Meta:   meta,
-		Flavor: flavor,
-		Raw:    NewBaseRaw[T, ID](db, meta),
+		DB:              db,
+		DefaultsManager: NewDefaultsManager(),
+		Meta:            meta,
+		Flavor:          flavor,
+		Raw:             NewBaseRaw[T, ID](db, meta),
 	}
-}
-
-// SetDefaultListQuery sets default ListQuery.
-func (r *BaseCRUD[T, ID]) SetDefaultListQuery(q r3.Query) {
-	r.DefaultsMu.Lock()
-	r.Defaults.ListQuery = q
-	r.DefaultsMu.Unlock()
-}
-
-// SetDefaultGetQuery sets default GetQuery.
-func (r *BaseCRUD[T, ID]) SetDefaultGetQuery(q r3.Query) {
-	r.DefaultsMu.Lock()
-	r.Defaults.GetQuery = q
-	r.DefaultsMu.Unlock()
-}
-
-// GetDefaultListQuery returns the default ListQuery (thread-safe).
-func (r *BaseCRUD[T, ID]) GetDefaultListQuery() r3.Query {
-	r.DefaultsMu.RLock()
-	defer r.DefaultsMu.RUnlock()
-	return r.Defaults.ListQuery
-}
-
-// GetDefaultGetQuery returns the default GetQuery (thread-safe).
-func (r *BaseCRUD[T, ID]) GetDefaultGetQuery() r3.Query {
-	r.DefaultsMu.RLock()
-	defer r.DefaultsMu.RUnlock()
-	return r.Defaults.GetQuery
 }
 
 // Create inserts a new record and returns it with the auto-generated PK populated.
@@ -150,22 +110,17 @@ func (r *BaseCRUD[T, ID]) createWithLastInsertID(ctx context.Context, entity T) 
 
 // List retrieves records based on the provided query parameters.
 func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, error) {
-	q := r.GetDefaultListQuery()
-	for _, other := range qarg {
-		q = q.MergeWith(other)
+	prep, err := PrepareListQuery(&r.DefaultsManager, qarg...)
+	if err != nil {
+		return nil, 0, err
 	}
 
-	// Build WHERE clauses
+	// Build WHERE clauses (with placeholder conversion for this flavor)
 	var whereParts []string
 	var whereArgs []any
 	argIdx := 1
 
-	clauses, err := r3sql.FiltersToSQL(q.Filters)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to convert filters to SQL: %w", err)
-	}
-
-	for _, clause := range clauses {
+	for _, clause := range prep.Clauses {
 		converted, nextIdx := r.Flavor.ConvertPlaceholders(clause.Clause, argIdx)
 		whereParts = append(whereParts, converted)
 		whereArgs = append(whereArgs, clause.Args...)
@@ -179,20 +134,17 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 
 	// Build JOIN clauses
 	var joinSQL string
-	if len(clauses) > 0 {
-		var joins []string
-		for _, join := range clauses.Joins() {
-			joins = append(joins, fmt.Sprintf("JOIN %s ON TRUE", join.String()))
+	if joins := prep.Joins(); len(joins) > 0 {
+		var joinParts []string
+		for _, join := range joins {
+			joinParts = append(joinParts, fmt.Sprintf("JOIN %s ON TRUE", join.String()))
 		}
-		if len(joins) > 0 {
-			joinSQL = " " + strings.Join(joins, " ")
-		}
+		joinSQL = " " + strings.Join(joinParts, " ")
 	}
 
 	// Pagination: count first if needed
 	var totalCount int64
-	var isPaginated bool
-	if q.Pagination != nil && q.Pagination.IsPaginated() {
+	if prep.IsPaginated {
 		countQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s%s%s", r.Meta.TableName, joinSQL, whereSQL)
 		err := r.DB.QueryRowContext(ctx, countQuery, whereArgs...).Scan(&totalCount)
 		if err != nil {
@@ -201,18 +153,13 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		if totalCount == 0 {
 			return nil, 0, nil
 		}
-		isPaginated = true
 	}
 
 	// Build ORDER BY
 	var orderSQL string
-	if len(q.Sorts) > 0 {
-		sorts, err := r3sql.SortsToSQL(q.Sorts)
-		if err != nil {
-			return nil, 0, fmt.Errorf("failed to convert sorts to SQL: %w", err)
-		}
+	if len(prep.Sorts) > 0 {
 		var sortParts []string
-		for _, sort := range sorts {
+		for _, sort := range prep.Sorts {
 			sortParts = append(sortParts, sort.String())
 		}
 		orderSQL = " ORDER BY " + strings.Join(sortParts, ", ")
@@ -220,9 +167,8 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 
 	// Build LIMIT/OFFSET
 	var limitSQL string
-	if isPaginated {
-		limit, offset := q.Pagination.ToLimitOffset()
-		limitSQL = fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
+	if prep.IsPaginated {
+		limitSQL = fmt.Sprintf(" LIMIT %d OFFSET %d", prep.Limit, prep.Offset)
 	}
 
 	// Execute the main SELECT
@@ -255,9 +201,7 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		return nil, 0, err
 	}
 
-	if !isPaginated {
-		totalCount = int64(len(entities))
-	}
+	entities, totalCount = FinalizeCount(entities, totalCount, prep.IsPaginated)
 
 	return entities, totalCount, nil
 }

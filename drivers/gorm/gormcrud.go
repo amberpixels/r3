@@ -2,68 +2,30 @@ package r3gorm
 
 import (
 	"context"
-	"fmt"
-	"sync"
 
 	"github.com/amberpixels/r3"
-	r3sql "github.com/amberpixels/r3/dialects/sql"
+	"github.com/amberpixels/r3/sqlbase"
 	"gorm.io/gorm"
 )
 
-// defaults stores the default values for repo q.
-type defaults struct {
-	ListQuery r3.Query
-	GetQuery  r3.Query
-}
-
-// GormCRUD is a richfull CRUD repository based on gorm.DB.
+// GormCRUD is a CRUD repository based on gorm.DB.
 type GormCRUD[T any, ID comparable] struct {
 	db *gorm.DB
 
-	defaults   defaults
-	defaultsMu sync.RWMutex
+	sqlbase.DefaultsManager
 
 	raw *GormRaw[T, ID]
 }
 
 var _ r3.CRUD[any, any] = &GormCRUD[any, any]{}
 
-// NewGormCRUD creates a new GORM-based.
+// NewGormCRUD creates a new GORM-based CRUD repository.
 func NewGormCRUD[T any, ID comparable](db *gorm.DB) *GormCRUD[T, ID] {
 	return &GormCRUD[T, ID]{
-		db: db,
-		defaults: defaults{
-			ListQuery: r3.DefaultQuery(),
-			GetQuery:  r3.DefaultQuery(),
-		},
-		raw: NewGormRaw[T, ID](db),
+		db:              db,
+		DefaultsManager: sqlbase.NewDefaultsManager(),
+		raw:             NewGormRaw[T, ID](db),
 	}
-}
-
-// SetDefaultListQuery sets default ListQuery.
-func (r *GormCRUD[T, ID]) SetDefaultListQuery(q r3.Query) {
-	r.defaultsMu.Lock()
-	r.defaults.ListQuery = q
-	r.defaultsMu.Unlock()
-}
-
-// SetDefaultGetQuery sets default GetQuery.
-func (r *GormCRUD[T, ID]) SetDefaultGetQuery(q r3.Query) {
-	r.defaultsMu.Lock()
-	r.defaults.GetQuery = q
-	r.defaultsMu.Unlock()
-}
-
-func (r *GormCRUD[T, ID]) getDefaultListQuery() r3.Query {
-	r.defaultsMu.RLock()
-	defer r.defaultsMu.RUnlock()
-	return r.defaults.ListQuery
-}
-
-func (r *GormCRUD[T, ID]) getDefaultGetQuery() r3.Query {
-	r.defaultsMu.RLock()
-	defer r.defaultsMu.RUnlock()
-	return r.defaults.GetQuery
 }
 
 func (r *GormCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
@@ -74,100 +36,68 @@ func (r *GormCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 }
 
 func (r *GormCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, error) {
-	var entities []T
-	var totalCount int64
-
-	// Merge query with defaults
-	q := r.getDefaultListQuery()
-	for _, other := range qarg {
-		q = q.MergeWith(other)
+	prep, err := sqlbase.PrepareListQuery(&r.DefaultsManager, qarg...)
+	if err != nil {
+		return nil, 0, err
 	}
 
 	var entity T
-	query := r.db.WithContext(ctx).Debug().Model(&entity)
+	query := r.db.WithContext(ctx).Model(&entity)
 
-	// TODO:
-	// FIELDS
-
-	// Handle custom filters:
-	clauses, err := r3sql.FiltersToSQL(q.Filters)
-	if err != nil {
-		return nil, 0, fmt.Errorf("failed to convert filters to SQL: %w", err)
+	// Apply joins
+	for _, join := range prep.Joins() {
+		query = query.Joins(join.String())
 	}
 
-	if len(clauses) > 0 {
-		for _, join := range clauses.Joins() {
-			query = query.Joins(join.String())
-		}
-
-		for _, clause := range clauses {
-			query = query.Where(clause.Clause, clause.Args...)
-		}
+	// Apply filters
+	for _, clause := range prep.Clauses {
+		query = query.Where(clause.Clause, clause.Args...)
 	}
 
-	// Sorting
-	if len(q.Sorts) > 0 {
-		sorts, err := r3sql.SortsToSQL(q.Sorts)
-		if err != nil {
-			return nil, 0, fmt.Errorf("failed to convert sorts to SQL: %w", err)
-		}
-
-		for _, sort := range sorts {
-			query = query.Order(sort.String())
-		}
+	// Apply sorts
+	for _, sort := range prep.Sorts {
+		query = query.Order(sort.String())
 	}
 
-	// If Pagination is given, then we need to first Count all results without pagination:
-	var isPaginated bool
-	if q.Pagination != nil && q.Pagination.IsPaginated() {
-		// We have to count first:
+	// Pagination: count first, then limit/offset
+	var totalCount int64
+	if prep.IsPaginated {
 		if err := query.Count(&totalCount).Error; err != nil {
 			return nil, 0, err
 		}
 		if totalCount == 0 {
-			// no reason to call Find() if it has zero data
 			return nil, 0, nil
 		}
-
-		// Then to add limit & offset for main Find() query
-		limit, offset := q.Pagination.ToLimitOffset()
-		query = query.Limit(limit)
-		query = query.Offset(offset)
-		isPaginated = true
+		query = query.Limit(prep.Limit).Offset(prep.Offset)
 	}
 
+	var entities []T
 	if err := query.Find(&entities).Error; err != nil {
 		return nil, 0, err
 	}
 
-	// If there was no pagination, let's simply count results
-	if !isPaginated {
-		totalCount = int64(len(entities))
-	}
-
+	entities, totalCount = sqlbase.FinalizeCount(entities, totalCount, prep.IsPaginated)
 	return entities, totalCount, nil
 }
 
 func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, error) {
 	var entity T
 
-	// Merge query with defaults
-	q := r.getDefaultGetQuery()
-	for _, other := range qarg {
-		q = q.MergeWith(other)
-	}
+	q := r.MergeGetQuery(qarg...)
+
+	query := r.db.WithContext(ctx)
 
 	// Apply preloads
-	query := r.db.WithContext(ctx)
 	for _, preload := range q.Preloads {
 		query = query.Preload(preload.GetName())
 	}
 
-	// Fetch the record
+	// Handle soft-deleted records
 	if q.IncludeTrashed.Some() {
-		// TODO: it can be negative!
-		query = query.Unscoped() // Include soft-deleted records
+		// TODO: check bool value (it can be negative!)
+		query = query.Unscoped()
 	}
+
 	if err := query.First(&entity, id).Error; err != nil {
 		return entity, err
 	}
@@ -175,7 +105,6 @@ func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 }
 
 func (r *GormCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
-	// Perform a full update using GORM's `Save` method, rewriting the entire model.
 	if err := r.db.WithContext(ctx).Save(&entity).Error; err != nil {
 		return entity, err
 	}
@@ -189,4 +118,8 @@ func (r *GormCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 	return nil
 }
 
+// Raw returns the GormRaw escape hatch for custom queries.
 func (r *GormCRUD[T, ID]) Raw() *GormRaw[T, ID] { return r.raw }
+
+// DB returns the underlying *gorm.DB for advanced usage.
+func (r *GormCRUD[T, ID]) DB() *gorm.DB { return r.db }
