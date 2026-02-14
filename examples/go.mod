@@ -18,6 +18,7 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/amberpixels/k1 v0.1.4 // indirect
+	github.com/amberpixels/r3/sqlbase v0.0.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
@@ -25,6 +26,7 @@ require (
 	github.com/containerd/log v0.1.0 // indirect
 	github.com/containerd/platforms v0.2.1 // indirect
 	github.com/cpuguy83/dockercfg v0.3.2 // indirect
+	github.com/d3rty/json v0.0.0-20260213115610-d08e6c7f6a6f // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/distribution/reference v0.6.0 // indirect
 	github.com/docker/docker v28.5.1+incompatible // indirect
@@ -82,4 +84,5 @@ replace (
 	github.com/amberpixels/r3/dialects/json => ../dialects/json
 	github.com/amberpixels/r3/dialects/sql => ../dialects/sql
 	github.com/amberpixels/r3/drivers/gorm => ../drivers/gorm
+	github.com/amberpixels/r3/sqlbase => ../sqlbase
 )
