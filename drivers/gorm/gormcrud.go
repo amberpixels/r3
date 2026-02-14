@@ -130,6 +130,21 @@ func (r *GormCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	return entity, nil
 }
 
+func (r *GormCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields) (T, error) {
+	cols := sqlbase.FieldsToColumns(fields)
+
+	meta := sqlbase.GetStructMeta[T]()
+	cols, err := meta.ValidatePatchColumns(cols)
+	if err != nil {
+		return entity, err
+	}
+
+	if err := r.db.WithContext(ctx).Model(&entity).Select(cols).Updates(entity).Error; err != nil {
+		return entity, err
+	}
+	return entity, nil
+}
+
 func (r *GormCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 	if err := r.db.WithContext(ctx).Delete(new(T), id).Error; err != nil {
 		return err

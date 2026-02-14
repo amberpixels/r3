@@ -284,6 +284,74 @@ func (r *BaseCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	return entity, nil
 }
 
+// Patch performs a partial update, modifying only the columns specified by fields.
+// The entity must have its primary key set. Returns the full entity after the update.
+func (r *BaseCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields) (T, error) {
+	cols := FieldsToColumns(fields)
+
+	cols, err := r.Meta.ValidatePatchColumns(cols)
+	if err != nil {
+		return entity, err
+	}
+
+	if !r.Flavor.SupportsRETURNING {
+		return r.patchWithoutRETURNING(ctx, entity, cols)
+	}
+
+	vals := r.Meta.FieldValuesForColumns(entity, cols)
+	pkVal := r.Meta.PKValue(entity)
+
+	query := fmt.Sprintf(
+		"UPDATE %s SET %s WHERE %s RETURNING %s",
+		r.Meta.TableName,
+		r.Flavor.SetExprs(cols, 1),
+		r.Flavor.WhereEq(r.Meta.PKColumn, len(cols)+1),
+		ColumnsString(r.Meta.Columns),
+	)
+
+	args := append(vals, pkVal) //nolint: gocritic // intentional append to new slice
+	dests := r.Meta.ScanDest(&entity)
+	err = r.DB.QueryRowContext(ctx, query, args...).Scan(dests...)
+	if err != nil {
+		return entity, err
+	}
+	return entity, nil
+}
+
+// patchWithoutRETURNING is the fallback Patch for databases without RETURNING (MySQL).
+func (r *BaseCRUD[T, ID]) patchWithoutRETURNING(ctx context.Context, entity T, cols []string) (T, error) {
+	vals := r.Meta.FieldValuesForColumns(entity, cols)
+	pkVal := r.Meta.PKValue(entity)
+
+	updateQuery := fmt.Sprintf(
+		"UPDATE %s SET %s WHERE %s",
+		r.Meta.TableName,
+		r.Flavor.SetExprs(cols, 1),
+		r.Flavor.WhereEq(r.Meta.PKColumn, len(cols)+1),
+	)
+
+	args := append(vals, pkVal) //nolint: gocritic // intentional append to new slice
+	_, err := r.DB.ExecContext(ctx, updateQuery, args...)
+	if err != nil {
+		return entity, err
+	}
+
+	// Re-fetch the full entity
+	selectQuery := fmt.Sprintf(
+		"SELECT %s FROM %s WHERE %s",
+		ColumnsString(r.Meta.Columns),
+		r.Meta.TableName,
+		r.Flavor.WhereEq(r.Meta.PKColumn, 1),
+	)
+
+	dests := r.Meta.ScanDest(&entity)
+	err = r.DB.QueryRowContext(ctx, selectQuery, pkVal).Scan(dests...)
+	if err != nil {
+		return entity, err
+	}
+	return entity, nil
+}
+
 // Delete removes a record by its ID.
 // If the model has a soft-delete column (tagged with `r3:"soft_delete"`),
 // it performs a soft-delete by setting the column to the current timestamp.

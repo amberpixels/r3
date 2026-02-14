@@ -1,8 +1,10 @@
 package sqlbase
 
 import (
+	"fmt"
 	"reflect"
 
+	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/internal/r3lib"
 	"github.com/amberpixels/r3/internal/r3tag"
 )
@@ -259,4 +261,61 @@ func (m *StructMeta) ScanDestForColumns(entityPtr any, selectedCols []string) []
 		dests[i] = v.Field(idx).Addr().Interface()
 	}
 	return dests
+}
+
+// FieldValuesForColumns extracts field values from an entity for the given column names.
+// The returned values are in the same order as the provided columns.
+// Columns that don't exist in the struct are silently skipped (validate beforehand).
+func (m *StructMeta) FieldValuesForColumns(entity any, columns []string) []any {
+	v := reflect.ValueOf(entity)
+	if v.Kind() == reflect.Pointer {
+		v = v.Elem()
+	}
+
+	// Build column→field-index lookup
+	colToField := make(map[string]int, len(m.Columns))
+	for i, col := range m.Columns {
+		colToField[col] = m.Fields[i]
+	}
+
+	vals := make([]any, 0, len(columns))
+	for _, col := range columns {
+		if idx, ok := colToField[col]; ok {
+			vals = append(vals, v.Field(idx).Interface())
+		}
+	}
+	return vals
+}
+
+// ValidatePatchColumns checks that the given columns are valid for a Patch operation.
+// It returns an error if:
+//   - columns is empty
+//   - any column does not exist in the struct
+//   - any column is the primary key
+//   - any column is the soft-delete column
+//
+// On success, it returns the validated column list (same as input).
+func (m *StructMeta) ValidatePatchColumns(columns []string) ([]string, error) {
+	if len(columns) == 0 {
+		return nil, r3.ErrNoPatchFields
+	}
+
+	known := make(map[string]bool, len(m.Columns))
+	for _, col := range m.Columns {
+		known[col] = true
+	}
+
+	for _, col := range columns {
+		if !known[col] {
+			return nil, fmt.Errorf("%w: %q does not exist", r3.ErrInvalidPatchField, col)
+		}
+		if col == m.PKColumn {
+			return nil, fmt.Errorf("%w: %q is the primary key", r3.ErrInvalidPatchField, col)
+		}
+		if m.SoftDeleteColumn != "" && col == m.SoftDeleteColumn {
+			return nil, fmt.Errorf("%w: %q is the soft-delete column", r3.ErrInvalidPatchField, col)
+		}
+	}
+
+	return columns, nil
 }

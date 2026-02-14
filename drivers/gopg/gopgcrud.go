@@ -158,6 +158,22 @@ func (r *GoPgCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	return entity, nil
 }
 
+func (r *GoPgCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields) (T, error) {
+	cols := sqlbase.FieldsToColumns(fields)
+
+	meta := sqlbase.GetStructMeta[T]()
+	cols, err := meta.ValidatePatchColumns(cols)
+	if err != nil {
+		return entity, err
+	}
+
+	_, err = r.db.ModelContext(ctx, &entity).Column(cols...).WherePK().Update()
+	if err != nil {
+		return entity, err
+	}
+	return entity, nil
+}
+
 func (r *GoPgCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 	var entity T
 	_, err := r.db.ModelContext(ctx, &entity).Where("id = ?", id).Delete()

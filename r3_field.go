@@ -9,6 +9,13 @@ import (
 // that are not valid SQL identifiers.
 var ErrInvalidIdentifier = errors.New("invalid identifier")
 
+// ErrNoPatchFields is returned by Patch when the Fields list is empty or nil.
+var ErrNoPatchFields = errors.New("patch requires at least one field")
+
+// ErrInvalidPatchField is returned by Patch when a field name does not match
+// any column in the model, or refers to a non-patchable column (e.g. PK, soft-delete).
+var ErrInvalidPatchField = errors.New("invalid patch field")
+
 // ValidateIdentifier checks that s is a safe SQL identifier or dotted identifier path.
 // Each dot-separated segment must match [a-zA-Z_][a-zA-Z0-9_]*.
 // Examples of valid identifiers: "id", "user_name", "user.profile", "orders.items.product_name".

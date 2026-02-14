@@ -18,10 +18,13 @@ type CRUD[T any, ID comparable] interface {
 	// Update modifies an existing record in the database with optional parameters.
 	Update(context.Context, T) (T, error)
 
+	// Patch performs a partial update, modifying only the columns specified by Fields.
+	// The entity must have its primary key set. Only the fields named in the Fields
+	// list are written to the database; all other columns remain unchanged.
+	// Returns the full entity after the update.
+	Patch(context.Context, T, Fields) (T, error)
+
 	// Delete removes a record by its ID.
 	// It can use soft delete (if it's turned on the repository level)
 	Delete(context.Context, ID) error
-
-	// TODO(future): Add Patch method for partial updates
-	// Patch(context.Context, T, Fields) (T, error)
 }
