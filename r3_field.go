@@ -18,8 +18,7 @@ func ValidateIdentifier(s string) error {
 		return ErrInvalidIdentifier
 	}
 
-	segments := strings.Split(s, ".")
-	for _, seg := range segments {
+	for seg := range strings.SplitSeq(s, ".") {
 		if !isValidIdentifierSegment(seg) {
 			return ErrInvalidIdentifier
 		}

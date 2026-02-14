@@ -32,7 +32,7 @@ func (r *BunRaw[T, ID]) Find(ctx context.Context, cb func(*bun.SelectQuery) *bun
 }
 
 // Scan executes a custom select query and scans results into the provided destination.
-func (r *BunRaw[T, ID]) Scan(ctx context.Context, cb func(*bun.SelectQuery) *bun.SelectQuery, dest interface{}) error {
+func (r *BunRaw[T, ID]) Scan(ctx context.Context, cb func(*bun.SelectQuery) *bun.SelectQuery, dest any) error {
 	var entities []T
 	query := r.db.NewSelect().Model(&entities)
 	query = cb(query)

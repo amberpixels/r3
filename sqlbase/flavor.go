@@ -53,7 +53,7 @@ var (
 
 // Placeholders generates a placeholder string for count parameters.
 // For PlaceholderDollar starting from startIdx: "$1, $2, $3"
-// For PlaceholderQuestion: "?, ?, ?"
+// For PlaceholderQuestion: "?, ?, ?".
 func (f Flavor) Placeholders(count int, startIdx int) string {
 	parts := make([]string, count)
 	switch f.Placeholder {
@@ -108,7 +108,7 @@ func (f Flavor) ConvertPlaceholders(clause string, startIdx int) (string, int) {
 	}
 	var b strings.Builder
 	idx := startIdx
-	for i := 0; i < len(clause); i++ {
+	for i := range len(clause) {
 		if clause[i] == '?' {
 			b.WriteString(fmt.Sprintf("$%d", idx))
 			idx++

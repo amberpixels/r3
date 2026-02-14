@@ -52,7 +52,7 @@ func (r *GoPgRaw[T, ID]) Find(ctx context.Context, cb func(*orm.Query) *orm.Quer
 }
 
 // Scan executes a custom query and scans results into the provided destination.
-func (r *GoPgRaw[T, ID]) Scan(ctx context.Context, cb func(*orm.Query) *orm.Query, dest interface{}) error {
+func (r *GoPgRaw[T, ID]) Scan(ctx context.Context, cb func(*orm.Query) *orm.Query, dest any) error {
 	var entities []T
 	query := r.db.ModelContext(ctx, &entities)
 	query = cb(query)

@@ -78,6 +78,7 @@ linters:
     - loggercheck # checks key value pairs for common logger libraries (kitlog,klog,logr,zap)
     - makezero # finds slice declarations with non-zero initial length
     - mirror # reports wrong mirror patterns of bytes/strings usage
+    - modernize # suggests simplifications using modern Go language and library features
     - mnd # detects magic numbers
     - nakedret # finds naked returns in functions greater than a specified function length
     - nilerr # finds the code that returns nil even if it checks that the error is not nil

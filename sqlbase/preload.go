@@ -66,7 +66,7 @@ func RunPreloads(
 }
 
 // preloadHasMany loads child records for a has-many relation.
-// Parent PK -> Child FK (e.g. City.ID -> CityTranslation.CityID)
+// Parent PK -> Child FK (e.g. City.ID -> CityTranslation.CityID).
 func preloadHasMany(
 	ctx context.Context,
 	db *sql.DB,
@@ -83,7 +83,7 @@ func preloadHasMany(
 	// Collect unique parent PK values
 	pkSet := make(map[any]bool, n)
 	var pkValues []any
-	for i := 0; i < n; i++ {
+	for i := range n {
 		entity := sliceVal.Index(i)
 		pkVal := entity.Field(parentMeta.Fields[parentMeta.PKField]).Interface()
 		if !pkSet[pkVal] {
@@ -144,7 +144,7 @@ func preloadHasMany(
 	}
 
 	// Assign grouped children back to parent entities
-	for i := 0; i < n; i++ {
+	for i := range n {
 		entity := sliceVal.Index(i)
 		pkVal := entity.Field(parentMeta.Fields[parentMeta.PKField]).Interface()
 		children, ok := grouped[pkVal]
@@ -164,7 +164,7 @@ func preloadHasMany(
 }
 
 // preloadBelongsTo loads parent records for a belongs-to relation.
-// Child FK -> Parent PK (e.g. Location.CityID -> City.ID)
+// Child FK -> Parent PK (e.g. Location.CityID -> City.ID).
 func preloadBelongsTo(
 	ctx context.Context,
 	db *sql.DB,
@@ -193,7 +193,7 @@ func preloadBelongsTo(
 	// Collect unique FK values from the parent entities
 	fkSet := make(map[any]bool, n)
 	var fkValues []any
-	for i := 0; i < n; i++ {
+	for i := range n {
 		entity := sliceVal.Index(i)
 		fkVal := entity.Field(parentMeta.Fields[fkColIdx]).Interface()
 		if !fkSet[fkVal] {
@@ -240,7 +240,7 @@ func preloadBelongsTo(
 	}
 
 	// Assign targets back to parent entities
-	for i := 0; i < n; i++ {
+	for i := range n {
 		entity := sliceVal.Index(i)
 		fkVal := entity.Field(parentMeta.Fields[fkColIdx]).Interface()
 		target, ok := indexed[fkVal]

@@ -2,19 +2,20 @@ package sqlbase
 
 import (
 	"reflect"
-	"strings"
+
+	"github.com/amberpixels/r3/internal/r3lib"
+	"github.com/amberpixels/r3/internal/r3tag"
 )
 
 // RelationKind describes the type of relationship between two entities.
-type RelationKind int
+// Alias of r3tag.RelationKind.
+type RelationKind = r3tag.RelationKind
 
 const (
 	// RelHasMany represents a one-to-many relationship (e.g. City has many Translations).
-	// The FK column is on the child table, referencing the parent's PK.
-	RelHasMany RelationKind = iota
+	RelHasMany = r3tag.RelHasMany
 	// RelBelongsTo represents a many-to-one relationship (e.g. Location belongs to City).
-	// The FK column is on the parent table, referencing the child's PK.
-	RelBelongsTo
+	RelBelongsTo = r3tag.RelBelongsTo
 )
 
 // RelationMeta holds metadata about a struct field that represents a relation.
@@ -47,230 +48,109 @@ type StructMeta struct {
 }
 
 // GetStructMeta derives table name and column info from a generic type T.
-// It looks for `db:"column_name"` struct tags. Fields without a `db` tag
-// use the snake_case version of the field name. Fields with `db:"-"` are ignored.
+//
+// Tag priority: `r3` tag is checked first, `db` tag is used as fallback.
+// Fields with tag value "-" (in either tag) are ignored.
 // Pointer-to-basic types are kept (nullable columns); slices, maps, and
-// struct fields (except time.Time) are skipped as relations.
+// struct fields (except time.Time) are treated as relation fields.
 func GetStructMeta[T any]() StructMeta {
 	var t T
 	typ := reflect.TypeOf(t)
-
 	if typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 	}
+	return buildStructMeta(typ, true)
+}
 
+// getStructMetaForType derives StructMeta from a reflect.Type.
+// Used internally for relation target types where we don't need to parse relations
+// recursively (avoids deep nesting, only column metadata is needed).
+func getStructMetaForType(typ reflect.Type) StructMeta {
+	if typ.Kind() == reflect.Pointer {
+		typ = typ.Elem()
+	}
+	return buildStructMeta(typ, false)
+}
+
+// buildStructMeta is the shared implementation for struct metadata extraction.
+// When parseRelations is true, relation fields (slices, pointer-to-struct) are
+// inspected for `r3` relation tags. When false, they are simply skipped.
+func buildStructMeta(typ reflect.Type, parseRelations bool) StructMeta {
 	meta := StructMeta{
-		TableName: ToSnakeCasePlural(typ.Name()),
+		TableName: r3lib.ToSnakeCasePlural(typ.Name()),
 		PKColumn:  "id",
 		PKField:   -1,
 	}
 
-	for i := 0; i < typ.NumField(); i++ {
+	for i := range typ.NumField() {
 		field := typ.Field(i)
 
-		// Skip unexported fields
 		if !field.IsExported() {
 			continue
 		}
 
-		fKind := field.Type.Kind()
-
-		// Check if this is a relation field (slice or pointer-to-struct, except time.Time).
-		// If so, check for an `r3` tag declaring a relation before skipping.
-		isRelationField := false
-		if fKind == reflect.Slice || fKind == reflect.Map {
-			isRelationField = true
-		} else if fKind == reflect.Pointer {
-			elemKind := field.Type.Elem().Kind()
-			if elemKind == reflect.Struct && field.Type.Elem().String() != "time.Time" {
-				isRelationField = true
-			}
-		} else if fKind == reflect.Struct && field.Type.String() != "time.Time" {
-			isRelationField = true
-		}
-
-		if isRelationField {
-			// Check for r3 relation tag on this field
-			if rel, ok := parseRelationTag(field, i); ok {
-				meta.Relations = append(meta.Relations, rel)
-			}
-			continue
-		}
-
-		// Parse the `db` tag for column fields
-		tag := field.Tag.Get("db")
-		if tag == "-" {
-			continue
-		}
-
-		colName := tag
-		isPK := false
-		if tag != "" {
-			parts := strings.Split(tag, ",")
-			colName = parts[0]
-			for _, part := range parts[1:] {
-				if strings.TrimSpace(part) == "pk" {
-					isPK = true
+		// Determine if this field looks like a relation (by its Go type).
+		if r3tag.IsRelationType(field.Type) {
+			if parseRelations {
+				if rel, ok := buildRelationMeta(field, i); ok {
+					meta.Relations = append(meta.Relations, rel)
 				}
 			}
-		}
-		if colName == "" {
-			colName = ToSnakeCase(field.Name)
+			continue
 		}
 
-		meta.Columns = append(meta.Columns, colName)
+		// Parse column tag info (r3 first, db fallback).
+		tag := r3tag.ParseColumnTag(field)
+		if tag.Skip {
+			continue
+		}
+
+		meta.Columns = append(meta.Columns, tag.Column)
 		meta.Fields = append(meta.Fields, i)
 
-		if isPK || colName == "id" {
-			meta.PKColumn = colName
+		if tag.IsPK || tag.Column == "id" {
+			meta.PKColumn = tag.Column
 			meta.PKField = len(meta.Fields) - 1
 		}
 
-		// Parse `r3` tag for soft-delete
-		r3Tag := field.Tag.Get("r3")
-		if r3Tag != "" {
-			for _, part := range strings.Split(r3Tag, ",") {
-				part = strings.TrimSpace(part)
-				if part == "soft_delete" {
-					meta.SoftDeleteColumn = colName
-				}
-			}
+		if tag.SoftDelete {
+			meta.SoftDeleteColumn = tag.Column
 		}
 	}
 
 	return meta
 }
 
-// parseRelationTag parses the `r3` struct tag on a relation field.
-// Returns a RelationMeta and true if the tag declares a valid relation.
-// Tag format: `r3:"rel:has-many,fk:city_id"` or `r3:"rel:belongs-to,fk:city_id"`
-// Optional table override: `r3:"rel:has-many,fk:city_id,table:my_translations"`
-func parseRelationTag(field reflect.StructField, fieldIndex int) (RelationMeta, bool) {
-	r3Tag := field.Tag.Get("r3")
-	if r3Tag == "" {
+// buildRelationMeta parses the `r3` struct tag on a relation field and builds
+// the full RelationMeta including the target type's StructMeta.
+func buildRelationMeta(field reflect.StructField, fieldIndex int) (RelationMeta, bool) {
+	tag, ok := r3tag.ParseRelationTag(field)
+	if !ok {
 		return RelationMeta{}, false
 	}
 
-	parts := strings.Split(r3Tag, ",")
-	var kind RelationKind
-	var hasRel bool
-	var fkCol string
-	var tableName string
+	targetType := r3tag.ResolveElementType(field.Type)
 
-	for _, part := range parts {
-		part = strings.TrimSpace(part)
-		switch {
-		case part == "rel:has-many":
-			kind = RelHasMany
-			hasRel = true
-		case part == "rel:belongs-to":
-			kind = RelBelongsTo
-			hasRel = true
-		case strings.HasPrefix(part, "fk:"):
-			fkCol = strings.TrimPrefix(part, "fk:")
-		case strings.HasPrefix(part, "table:"):
-			tableName = strings.TrimPrefix(part, "table:")
-		}
-	}
-
-	if !hasRel || fkCol == "" {
-		return RelationMeta{}, false
-	}
-
-	// Determine the target element type
-	var targetType reflect.Type
-	switch field.Type.Kind() {
-	case reflect.Slice:
-		targetType = field.Type.Elem()
-		if targetType.Kind() == reflect.Pointer {
-			targetType = targetType.Elem()
-		}
-	case reflect.Pointer:
-		targetType = field.Type.Elem()
-	default:
-		targetType = field.Type
-	}
-
-	// Build StructMeta for the target type (recursive, but safe since relations
-	// are skipped when they don't have r3 tags — no infinite loops)
+	// Build StructMeta for the target type (without parsing its relations
+	// to avoid deep/infinite recursion).
 	targetMeta := getStructMetaForType(targetType)
-	if tableName != "" {
-		targetMeta.TableName = tableName
+	if tag.TableName != "" {
+		targetMeta.TableName = tag.TableName
 	}
 
 	return RelationMeta{
 		FieldName:  field.Name,
 		FieldIndex: fieldIndex,
-		Kind:       kind,
-		FKColumn:   fkCol,
+		Kind:       tag.Kind,
+		FKColumn:   tag.FKColumn,
 		TargetMeta: targetMeta,
 		TargetType: targetType,
 	}, true
 }
 
-// getStructMetaForType derives StructMeta from a reflect.Type (used for relation targets).
-func getStructMetaForType(typ reflect.Type) StructMeta {
-	if typ.Kind() == reflect.Pointer {
-		typ = typ.Elem()
-	}
-
-	meta := StructMeta{
-		TableName: ToSnakeCasePlural(typ.Name()),
-		PKColumn:  "id",
-		PKField:   -1,
-	}
-
-	for i := 0; i < typ.NumField(); i++ {
-		field := typ.Field(i)
-		if !field.IsExported() {
-			continue
-		}
-
-		fKind := field.Type.Kind()
-		if fKind == reflect.Slice || fKind == reflect.Map {
-			continue
-		}
-		if fKind == reflect.Pointer {
-			elemKind := field.Type.Elem().Kind()
-			if elemKind == reflect.Struct && field.Type.Elem().String() != "time.Time" {
-				continue
-			}
-		}
-		if fKind == reflect.Struct && field.Type.String() != "time.Time" {
-			continue
-		}
-
-		tag := field.Tag.Get("db")
-		if tag == "-" {
-			continue
-		}
-
-		colName := tag
-		isPK := false
-		if tag != "" {
-			parts := strings.Split(tag, ",")
-			colName = parts[0]
-			for _, part := range parts[1:] {
-				if strings.TrimSpace(part) == "pk" {
-					isPK = true
-				}
-			}
-		}
-		if colName == "" {
-			colName = ToSnakeCase(field.Name)
-		}
-
-		meta.Columns = append(meta.Columns, colName)
-		meta.Fields = append(meta.Fields, i)
-
-		if isPK || colName == "id" {
-			meta.PKColumn = colName
-			meta.PKField = len(meta.Fields) - 1
-		}
-	}
-
-	return meta
-}
+// --------------------------------------------------------------------------
+// StructMeta methods
+// --------------------------------------------------------------------------
 
 // NonPKColumns returns all column names except the primary key.
 func (m *StructMeta) NonPKColumns() []string {
