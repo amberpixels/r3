@@ -4,12 +4,15 @@ GOLANGCI_LINT := $(shell which golangci-lint)
 # All module directories (order matters: dependencies first)
 MODULES = \
 	. \
+	./dialects/bson \
 	./dialects/json \
 	./dialects/sql \
+	./mongobase \
 	./sqlbase \
 	./drivers/bun \
 	./drivers/gopg \
 	./drivers/gorm \
+	./drivers/mongo \
 	./drivers/mysql \
 	./drivers/pgx \
 	./drivers/pq \

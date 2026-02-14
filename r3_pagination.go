@@ -117,3 +117,13 @@ func (p *PaginationSpec) ToLimitOffset() (int, int) {
 
 	return limit, offset
 }
+
+// FinalizeCount returns (entities, totalCount) with the correct total.
+// If pagination was not active, totalCount is simply len(entities).
+// This is a backend-agnostic helper reused by sqlbase, mongobase, etc.
+func FinalizeCount[T any](entities []T, paginatedCount int64, isPaginated bool) ([]T, int64) {
+	if !isPaginated {
+		return entities, int64(len(entities))
+	}
+	return entities, paginatedCount
+}

@@ -77,9 +77,8 @@ func (p *PreparedListQuery) Joins() []r3sql.SQLColumn {
 
 // FinalizeCount returns (entities, totalCount) with the correct total.
 // If pagination was not active, totalCount is simply len(entities).
+//
+// Deprecated: Use r3.FinalizeCount directly.
 func FinalizeCount[T any](entities []T, paginatedCount int64, isPaginated bool) ([]T, int64) {
-	if !isPaginated {
-		return entities, int64(len(entities))
-	}
-	return entities, paginatedCount
+	return r3.FinalizeCount(entities, paginatedCount, isPaginated)
 }

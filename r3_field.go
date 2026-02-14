@@ -107,3 +107,18 @@ func (f *FieldSpec) Clone() *FieldSpec {
 	clone := *f
 	return &clone
 }
+
+// FieldsToStrings converts Fields to a []string of field names.
+// This is a backend-agnostic helper reused by sqlbase, mongobase, etc.
+func FieldsToStrings(fields Fields) []string {
+	if len(fields) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(fields))
+	for _, f := range fields {
+		if f != nil {
+			out = append(out, f.String())
+		}
+	}
+	return out
+}
