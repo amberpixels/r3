@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"strings"
 	"time"
+
+	"github.com/amberpixels/r3/internal/utils"
 )
 
 // timeType is used to distinguish time.Time from other structs.
@@ -260,7 +262,7 @@ func resolveColumnName(field reflect.StructField) string {
 	}
 
 	// Fallback: snake_case of Go field name
-	return toSnakeCase(field.Name)
+	return r3utils.ToSnakeCase(field.Name)
 }
 
 // tagFirstPart returns the first comma-separated part of a struct tag value.
@@ -294,22 +296,4 @@ func isRelationKind(t reflect.Type) bool {
 	default:
 		return false
 	}
-}
-
-// toSnakeCase is a simple PascalCase/camelCase to snake_case converter.
-func toSnakeCase(s string) string {
-	var b strings.Builder
-	b.Grow(len(s) + 4)
-
-	for i, r := range s {
-		if r >= 'A' && r <= 'Z' {
-			if i > 0 {
-				b.WriteByte('_')
-			}
-			b.WriteRune(r + ('a' - 'A'))
-		} else {
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
 }

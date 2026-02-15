@@ -12,10 +12,10 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"time"
 
 	"github.com/amberpixels/r3"
-	"github.com/amberpixels/r3/internal/r3tag"
+	"github.com/amberpixels/r3/internal/tag"
+	"github.com/amberpixels/r3/internal/utils"
 )
 
 // RelationKind describes the type of relationship between two entities.
@@ -27,9 +27,6 @@ const (
 	// RelBelongsTo represents a many-to-one relationship.
 	RelBelongsTo = r3tag.RelBelongsTo
 )
-
-// timeType is used to distinguish time.Time from other structs.
-var timeType = reflect.TypeFor[time.Time]()
 
 // RelationMeta holds metadata about a struct field that represents a relation.
 type RelationMeta struct {
@@ -82,7 +79,7 @@ func getStructMetaForType(typ reflect.Type) StructMeta {
 // buildStructMeta is the shared implementation for struct metadata extraction.
 func buildStructMeta(typ reflect.Type, parseRelations bool) StructMeta {
 	meta := StructMeta{
-		CollectionName: r3.ToSnakeCasePlural(typ.Name()),
+		CollectionName: r3utils.ToSnakeCasePlural(typ.Name()),
 		IDField:        "_id",
 		IDFieldIdx:     -1,
 	}
@@ -95,7 +92,7 @@ func buildStructMeta(typ reflect.Type, parseRelations bool) StructMeta {
 		}
 
 		// Detect relation fields by Go type.
-		if isRelationType(field.Type) {
+		if r3utils.IsRelationType(field.Type) {
 			if parseRelations {
 				if rel, ok := buildRelationMeta(field, i); ok {
 					meta.Relations = append(meta.Relations, rel)
@@ -195,20 +192,6 @@ func isR3OnlyFlags(raw string) bool {
 	return true
 }
 
-// isRelationType returns true if the Go type represents a relation field.
-func isRelationType(t reflect.Type) bool {
-	switch t.Kind() {
-	case reflect.Slice, reflect.Map:
-		return true
-	case reflect.Pointer:
-		return t.Elem().Kind() == reflect.Struct && t.Elem() != timeType
-	case reflect.Struct:
-		return t != timeType
-	default:
-		return false
-	}
-}
-
 // buildRelationMeta parses the r3 tag on a relation field.
 func buildRelationMeta(field reflect.StructField, fieldIndex int) (RelationMeta, bool) {
 	tag, ok := r3tag.ParseRelationTag(field)
@@ -216,7 +199,7 @@ func buildRelationMeta(field reflect.StructField, fieldIndex int) (RelationMeta,
 		return RelationMeta{}, false
 	}
 
-	targetType := r3tag.ResolveElementType(field.Type)
+	targetType := r3utils.ResolveElementType(field.Type)
 	targetMeta := getStructMetaForType(targetType)
 	if tag.TableName != "" {
 		targetMeta.CollectionName = tag.TableName

@@ -3,7 +3,7 @@ package r3history
 import (
 	"context"
 
-	"github.com/amberpixels/r3"
+	"github.com/amberpixels/r3/internal/utils"
 )
 
 // MetadataFunc extracts Metadata from a context.Context.
@@ -152,5 +152,5 @@ func applyDefaults[T any, ID comparable](opts *Options[T, ID]) {
 // deriveRecordType derives the record type name from the struct type T.
 // It converts the struct name to snake_case plural (e.g. Order -> "orders").
 func deriveRecordType[T any]() string {
-	return r3.ToSnakeCasePlural(typeName[T]())
+	return r3utils.ToSnakeCasePlural(typeName[T]())
 }

@@ -21,13 +21,9 @@ package r3tag
 import (
 	"reflect"
 	"strings"
-	"time"
 
-	"github.com/amberpixels/r3/internal/r3lib"
+	"github.com/amberpixels/r3/internal/utils"
 )
-
-// timeType is used to distinguish time.Time from other structs during reflection.
-var timeType = reflect.TypeFor[time.Time]()
 
 // ColumnTag holds parsed column-level tag info for a single struct field.
 type ColumnTag struct {
@@ -73,7 +69,7 @@ func ParseColumnTag(field reflect.StructField) ColumnTag {
 
 	// Final fallback: derive column name from Go field name.
 	if tag.Column == "" {
-		tag.Column = r3lib.ToSnakeCase(field.Name)
+		tag.Column = r3utils.ToSnakeCase(field.Name)
 	}
 
 	return tag
@@ -173,36 +169,4 @@ func ParseRelationTag(field reflect.StructField) (RelationTag, bool) {
 	}
 
 	return tag, true
-}
-
-// IsRelationType returns true if the Go type represents a relation field
-// (slice, map, pointer-to-struct, or struct — except time.Time).
-func IsRelationType(t reflect.Type) bool {
-	switch t.Kind() {
-	case reflect.Slice, reflect.Map:
-		return true
-	case reflect.Pointer:
-		return t.Elem().Kind() == reflect.Struct && t.Elem() != timeType
-	case reflect.Struct:
-		return t != timeType
-	default:
-		return false
-	}
-}
-
-// ResolveElementType unwraps slice and pointer types to get the underlying
-// struct type. E.g. []CityTranslation -> CityTranslation, *City -> City.
-func ResolveElementType(t reflect.Type) reflect.Type {
-	switch t.Kind() {
-	case reflect.Slice:
-		elem := t.Elem()
-		if elem.Kind() == reflect.Pointer {
-			return elem.Elem()
-		}
-		return elem
-	case reflect.Pointer:
-		return t.Elem()
-	default:
-		return t
-	}
 }

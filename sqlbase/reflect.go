@@ -5,8 +5,8 @@ import (
 	"reflect"
 
 	"github.com/amberpixels/r3"
-	"github.com/amberpixels/r3/internal/r3lib"
-	"github.com/amberpixels/r3/internal/r3tag"
+	"github.com/amberpixels/r3/internal/tag"
+	"github.com/amberpixels/r3/internal/utils"
 )
 
 // RelationKind describes the type of relationship between two entities.
@@ -79,7 +79,7 @@ func getStructMetaForType(typ reflect.Type) StructMeta {
 // inspected for `r3` relation tags. When false, they are simply skipped.
 func buildStructMeta(typ reflect.Type, parseRelations bool) StructMeta {
 	meta := StructMeta{
-		TableName: r3lib.ToSnakeCasePlural(typ.Name()),
+		TableName: r3utils.ToSnakeCasePlural(typ.Name()),
 		PKColumn:  "id",
 		PKField:   -1,
 	}
@@ -92,7 +92,7 @@ func buildStructMeta(typ reflect.Type, parseRelations bool) StructMeta {
 		}
 
 		// Determine if this field looks like a relation (by its Go type).
-		if r3tag.IsRelationType(field.Type) {
+		if r3utils.IsRelationType(field.Type) {
 			if parseRelations {
 				if rel, ok := buildRelationMeta(field, i); ok {
 					meta.Relations = append(meta.Relations, rel)
@@ -131,7 +131,7 @@ func buildRelationMeta(field reflect.StructField, fieldIndex int) (RelationMeta,
 		return RelationMeta{}, false
 	}
 
-	targetType := r3tag.ResolveElementType(field.Type)
+	targetType := r3utils.ResolveElementType(field.Type)
 
 	// Build StructMeta for the target type (without parsing its relations
 	// to avoid deep/infinite recursion).

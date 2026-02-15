@@ -4,7 +4,7 @@ import (
 	"context"
 	"reflect"
 
-	"github.com/amberpixels/r3/sqlbase"
+	"github.com/amberpixels/r3/internal/utils"
 	"gorm.io/gorm"
 )
 
@@ -34,7 +34,7 @@ func getTableName[T any]() string {
 	}
 
 	// Convert struct name to snake_case for table name
-	return sqlbase.ToSnakeCase(typ.Name())
+	return r3utils.ToSnakeCase(typ.Name())
 }
 
 func (r *GormRaw[T, ID]) Find(ctx context.Context, cb func(*gorm.DB) *gorm.DB) ([]T, error) {

@@ -4,7 +4,7 @@ import (
 	"context"
 	"reflect"
 
-	"github.com/amberpixels/r3/sqlbase"
+	"github.com/amberpixels/r3/internal/utils"
 	"github.com/go-pg/pg/v10/orm"
 )
 
@@ -35,7 +35,7 @@ func getTableName[T any]() string {
 	}
 
 	// Convert struct name to snake_case and pluralize for table name
-	return sqlbase.ToSnakeCasePlural(typ.Name())
+	return r3utils.ToSnakeCasePlural(typ.Name())
 }
 
 // Find executes a custom query and returns the results.

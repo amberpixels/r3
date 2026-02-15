@@ -9,7 +9,4 @@ require (
 	go.mongodb.org/mongo-driver/v2 v2.5.0
 )
 
-require (
-	github.com/amberpixels/k1 v0.1.4 // indirect
-	github.com/d3rty/json v0.0.0-20260213115610-d08e6c7f6a6f // indirect
-)
+require github.com/amberpixels/k1 v0.1.4 // indirect
