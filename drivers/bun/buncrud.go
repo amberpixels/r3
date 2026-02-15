@@ -32,8 +32,10 @@ import (
 )
 
 // BunCRUD is a CRUD repository based on Bun's *bun.DB.
+// Internally it uses bun.IDB so that it can operate within transactions as well.
 type BunCRUD[T any, ID comparable] struct {
-	db *bun.DB
+	db    bun.IDB
+	sqlDB *bun.DB // original *bun.DB, nil when inside a transaction
 
 	sqlbase.DefaultsManager
 
@@ -46,9 +48,19 @@ var _ r3.CRUD[any, any] = &BunCRUD[any, any]{}
 func NewBunCRUD[T any, ID comparable](db *bun.DB) *BunCRUD[T, ID] {
 	return &BunCRUD[T, ID]{
 		db:              db,
+		sqlDB:           db,
 		DefaultsManager: sqlbase.NewDefaultsManager(),
 		raw:             NewBunRaw[T, ID](db),
 	}
+}
+
+// DB returns the underlying *bun.DB for advanced usage.
+// Panics if BunCRUD is operating inside a transaction.
+func (r *BunCRUD[T, ID]) DB() *bun.DB {
+	if r.sqlDB == nil {
+		panic("r3/bun: DB() called on a transactional BunCRUD (use the transaction's CRUD instead)")
+	}
+	return r.sqlDB
 }
 
 func (r *BunCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {

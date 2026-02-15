@@ -9,6 +9,15 @@ import (
 	"github.com/amberpixels/r3"
 )
 
+// SQLExecutor is the common interface between *sql.DB and *sql.Tx.
+// Both types satisfy this interface, allowing BaseCRUD to operate
+// transparently in both normal and transactional modes.
+type SQLExecutor interface {
+	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
+	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
+	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
+}
+
 // BaseCRUD is a generic CRUD repository backed by database/sql.
 // It implements the full r3.CRUD[T, ID] interface using reflection-based struct scanning
 // and the r3 SQL dialect for filters, sorts, and pagination.
@@ -16,7 +25,13 @@ import (
 // Database-specific drivers embed this type and may override individual methods
 // (e.g. MySQL overrides Create because it lacks RETURNING support).
 type BaseCRUD[T any, ID comparable] struct {
-	DB *sql.DB
+	// Executor is the SQL executor used for all queries. It is either a *sql.DB
+	// or a *sql.Tx, both of which implement [SQLExecutor].
+	Executor SQLExecutor
+
+	// sqlDB holds the original *sql.DB, used for starting transactions.
+	// It is nil when BaseCRUD is operating inside a transaction.
+	sqlDB *sql.DB
 
 	DefaultsManager
 
@@ -33,12 +48,23 @@ var _ r3.CRUD[any, any] = &BaseCRUD[any, any]{}
 func NewBaseCRUD[T any, ID comparable](db *sql.DB, flavor Flavor) *BaseCRUD[T, ID] {
 	meta := GetStructMeta[T]()
 	return &BaseCRUD[T, ID]{
-		DB:              db,
+		Executor:        db,
+		sqlDB:           db,
 		DefaultsManager: NewDefaultsManager(),
 		Meta:            meta,
 		Flavor:          flavor,
 		Raw:             NewBaseRaw[T, ID](db, meta),
 	}
+}
+
+// SqlDB returns the underlying *sql.DB for advanced usage (opening new connections,
+// starting transactions manually, etc.).
+// Panics if BaseCRUD is operating inside a transaction (use the transaction's CRUD instead).
+func (r *BaseCRUD[T, ID]) SqlDB() *sql.DB {
+	if r.sqlDB == nil {
+		panic("r3/sqlbase: SqlDB() called on a transactional BaseCRUD (use the transaction's CRUD instead)")
+	}
+	return r.sqlDB
 }
 
 // Create inserts a new record and returns it with the auto-generated PK populated.
@@ -61,7 +87,7 @@ func (r *BaseCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 	)
 
 	dests := r.Meta.ScanDest(&entity)
-	err := r.DB.QueryRowContext(ctx, query, vals...).Scan(dests...)
+	err := r.Executor.QueryRowContext(ctx, query, vals...).Scan(dests...)
 	if err != nil {
 		return entity, err
 	}
@@ -80,7 +106,7 @@ func (r *BaseCRUD[T, ID]) createWithLastInsertID(ctx context.Context, entity T) 
 		r.Flavor.Placeholders(len(cols), 1),
 	)
 
-	result, err := r.DB.ExecContext(ctx, insertQuery, vals...)
+	result, err := r.Executor.ExecContext(ctx, insertQuery, vals...)
 	if err != nil {
 		return entity, err
 	}
@@ -100,7 +126,7 @@ func (r *BaseCRUD[T, ID]) createWithLastInsertID(ctx context.Context, entity T) 
 	)
 
 	dests := r.Meta.ScanDest(&entity)
-	err = r.DB.QueryRowContext(ctx, selectQuery, lastID).Scan(dests...)
+	err = r.Executor.QueryRowContext(ctx, selectQuery, lastID).Scan(dests...)
 	if err != nil {
 		return entity, err
 	}
@@ -151,7 +177,7 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 	var totalCount int64
 	if prep.IsPaginated {
 		countQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s%s%s", r.Meta.TableName, joinSQL, whereSQL)
-		err := r.DB.QueryRowContext(ctx, countQuery, whereArgs...).Scan(&totalCount)
+		err := r.Executor.QueryRowContext(ctx, countQuery, whereArgs...).Scan(&totalCount)
 		if err != nil {
 			return nil, 0, err
 		}
@@ -191,7 +217,7 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		limitSQL,
 	)
 
-	rows, err := r.DB.QueryContext(ctx, selectQuery, whereArgs...)
+	rows, err := r.Executor.QueryContext(ctx, selectQuery, whereArgs...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -214,7 +240,7 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 
 	// Run preloads if any are requested and the model has relations
 	if len(prep.Query.Preloads) > 0 && len(r.Meta.Relations) > 0 {
-		if err := RunPreloads(ctx, r.DB, &r.Meta, r.Flavor, &entities, prep.Query.Preloads); err != nil {
+		if err := RunPreloads(ctx, r.Executor, &r.Meta, r.Flavor, &entities, prep.Query.Preloads); err != nil {
 			return nil, 0, fmt.Errorf("preload failed: %w", err)
 		}
 	}
@@ -246,7 +272,7 @@ func (r *BaseCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 	)
 
 	dests := r.Meta.ScanDestForColumns(&entity, selectedCols)
-	err := r.DB.QueryRowContext(ctx, query, id).Scan(dests...)
+	err := r.Executor.QueryRowContext(ctx, query, id).Scan(dests...)
 	if err != nil {
 		return entity, err
 	}
@@ -254,7 +280,7 @@ func (r *BaseCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 	// Run preloads if any are requested and the model has relations
 	if len(q.Preloads) > 0 && len(r.Meta.Relations) > 0 {
 		entities := []T{entity}
-		if err := RunPreloads(ctx, r.DB, &r.Meta, r.Flavor, &entities, q.Preloads); err != nil {
+		if err := RunPreloads(ctx, r.Executor, &r.Meta, r.Flavor, &entities, q.Preloads); err != nil {
 			return entity, fmt.Errorf("preload failed: %w", err)
 		}
 		entity = entities[0]
@@ -277,7 +303,7 @@ func (r *BaseCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	)
 
 	args := append(vals, pkVal) //nolint: gocritic // intentional append to new slice
-	_, err := r.DB.ExecContext(ctx, query, args...)
+	_, err := r.Executor.ExecContext(ctx, query, args...)
 	if err != nil {
 		return entity, err
 	}
@@ -311,7 +337,7 @@ func (r *BaseCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields)
 
 	args := append(vals, pkVal) //nolint: gocritic // intentional append to new slice
 	dests := r.Meta.ScanDest(&entity)
-	err = r.DB.QueryRowContext(ctx, query, args...).Scan(dests...)
+	err = r.Executor.QueryRowContext(ctx, query, args...).Scan(dests...)
 	if err != nil {
 		return entity, err
 	}
@@ -331,7 +357,7 @@ func (r *BaseCRUD[T, ID]) patchWithoutRETURNING(ctx context.Context, entity T, c
 	)
 
 	args := append(vals, pkVal) //nolint: gocritic // intentional append to new slice
-	_, err := r.DB.ExecContext(ctx, updateQuery, args...)
+	_, err := r.Executor.ExecContext(ctx, updateQuery, args...)
 	if err != nil {
 		return entity, err
 	}
@@ -345,7 +371,7 @@ func (r *BaseCRUD[T, ID]) patchWithoutRETURNING(ctx context.Context, entity T, c
 	)
 
 	dests := r.Meta.ScanDest(&entity)
-	err = r.DB.QueryRowContext(ctx, selectQuery, pkVal).Scan(dests...)
+	err = r.Executor.QueryRowContext(ctx, selectQuery, pkVal).Scan(dests...)
 	if err != nil {
 		return entity, err
 	}
@@ -376,7 +402,7 @@ func (r *BaseCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 		)
 	}
 
-	_, err := r.DB.ExecContext(ctx, query, id)
+	_, err := r.Executor.ExecContext(ctx, query, id)
 	return err
 }
 

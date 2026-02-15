@@ -23,7 +23,8 @@
 //   - Nullable columns require pointer types (e.g. *string, *int64) in the model struct.
 //   - The r3 SQL dialect produces `?` placeholders; this driver converts them to
 //     PostgreSQL-style `$1, $2, ...` numbered placeholders internally.
-//   - For advanced use cases (transactions, CTEs, etc.), use Raw().DB to access
+//   - Transactions are supported via the r3.Transactor interface (BeginTx).
+//   - For advanced use cases (CTEs, etc.), use Raw().DB to access
 //     the underlying *sql.DB directly.
 package r3pgx
 
@@ -55,4 +56,4 @@ func NewPgxCRUD[T any, ID comparable](db *sql.DB) *PgxCRUD[T, ID] {
 func (r *PgxCRUD[T, ID]) Raw() *sqlbase.BaseRaw[T, ID] { return r.BaseCRUD.Raw }
 
 // DB returns the underlying *sql.DB for advanced usage.
-func (r *PgxCRUD[T, ID]) DB() *sql.DB { return r.BaseCRUD.DB }
+func (r *PgxCRUD[T, ID]) DB() *sql.DB { return r.BaseCRUD.SqlDB() }

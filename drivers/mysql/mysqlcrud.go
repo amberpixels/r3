@@ -24,7 +24,8 @@
 //     column collation; default utf8mb4_0900_ai_ci is case-insensitive).
 //   - NULLS FIRST/LAST is not natively supported by MySQL.
 //   - DSN must include `parseTime=true` for time.Time scanning to work correctly.
-//   - For advanced use cases (transactions, CTEs, etc.), use Raw().DB to access
+//   - Transactions are supported via the r3.Transactor interface (BeginTx).
+//   - For advanced use cases (CTEs, etc.), use Raw().DB to access
 //     the underlying *sql.DB directly.
 package r3mysql
 
@@ -58,4 +59,4 @@ func NewMysqlCRUD[T any, ID comparable](db *sql.DB) *MysqlCRUD[T, ID] {
 func (r *MysqlCRUD[T, ID]) Raw() *sqlbase.BaseRaw[T, ID] { return r.BaseCRUD.Raw }
 
 // DB returns the underlying *sql.DB for advanced usage.
-func (r *MysqlCRUD[T, ID]) DB() *sql.DB { return r.BaseCRUD.DB }
+func (r *MysqlCRUD[T, ID]) DB() *sql.DB { return r.BaseCRUD.SqlDB() }

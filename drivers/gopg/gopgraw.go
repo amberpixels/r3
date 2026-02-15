@@ -5,19 +5,18 @@ import (
 	"reflect"
 
 	"github.com/amberpixels/r3/sqlbase"
-	"github.com/go-pg/pg/v10"
 	"github.com/go-pg/pg/v10/orm"
 )
 
 // GoPgRaw is a go-pg wrapper that allows calling any go-pg query.
 // Is considered to be embedded in GoPgCRUD.
 type GoPgRaw[T any, ID any] struct {
-	db        *pg.DB
+	db        orm.DB
 	tableName string
 }
 
 // NewGoPgRaw creates a new GoPgRaw instance.
-func NewGoPgRaw[T any, ID comparable](db *pg.DB) *GoPgRaw[T, ID] {
+func NewGoPgRaw[T any, ID comparable](db orm.DB) *GoPgRaw[T, ID] {
 	return &GoPgRaw[T, ID]{
 		db:        db,
 		tableName: getTableName[T](),

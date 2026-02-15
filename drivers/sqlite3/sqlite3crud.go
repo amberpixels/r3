@@ -21,7 +21,8 @@
 //   - ILIKE is not supported by SQLite; use LIKE instead (SQLite LIKE is case-insensitive
 //     for ASCII characters by default).
 //   - RETURNING clause requires SQLite 3.35+ (supported by go-sqlite3).
-//   - For advanced use cases (transactions, CTEs, etc.), use Raw().DB to access
+//   - Transactions are supported via the r3.Transactor interface (BeginTx).
+//   - For advanced use cases (CTEs, etc.), use Raw().DB to access
 //     the underlying *sql.DB directly.
 package r3sqlite3
 
@@ -53,4 +54,4 @@ func NewSqlite3CRUD[T any, ID comparable](db *sql.DB) *Sqlite3CRUD[T, ID] {
 func (r *Sqlite3CRUD[T, ID]) Raw() *sqlbase.BaseRaw[T, ID] { return r.BaseCRUD.Raw }
 
 // DB returns the underlying *sql.DB for advanced usage.
-func (r *Sqlite3CRUD[T, ID]) DB() *sql.DB { return r.BaseCRUD.DB }
+func (r *Sqlite3CRUD[T, ID]) DB() *sql.DB { return r.BaseCRUD.SqlDB() }

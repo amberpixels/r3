@@ -38,4 +38,4 @@ func (r *Sqlite3Raw[T, ID]) Exec(ctx context.Context, query string, args ...any)
 }
 
 // DB returns the underlying *sql.DB for fully custom usage.
-func (r *Sqlite3Raw[T, ID]) DB() *sql.DB { return r.BaseRaw.DB }
+func (r *Sqlite3Raw[T, ID]) DB() *sql.DB { return r.BaseRaw.Executor.(*sql.DB) }

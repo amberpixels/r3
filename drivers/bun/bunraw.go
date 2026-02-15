@@ -9,11 +9,11 @@ import (
 // BunRaw is a Bun wrapper that allows calling any Bun query.
 // Is considered to be embedded in BunCRUD.
 type BunRaw[T any, ID any] struct {
-	db *bun.DB
+	db bun.IDB
 }
 
 // NewBunRaw creates a new BunRaw instance.
-func NewBunRaw[T any, ID comparable](db *bun.DB) *BunRaw[T, ID] {
+func NewBunRaw[T any, ID comparable](db bun.IDB) *BunRaw[T, ID] {
 	return &BunRaw[T, ID]{
 		db: db,
 	}

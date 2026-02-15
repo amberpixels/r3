@@ -34,9 +34,10 @@ import (
 )
 
 // GoPgCRUD is a CRUD repository based on go-pg's *pg.DB.
+// Internally it uses orm.DB so that it can operate within transactions as well.
 type GoPgCRUD[T any, ID comparable] struct {
-	db *pg.DB
-
+	db   orm.DB
+	pgDB *pg.DB // original *pg.DB, nil when inside a transaction
 	sqlbase.DefaultsManager
 
 	raw *GoPgRaw[T, ID]
@@ -48,9 +49,19 @@ var _ r3.CRUD[any, any] = &GoPgCRUD[any, any]{}
 func NewGoPgCRUD[T any, ID comparable](db *pg.DB) *GoPgCRUD[T, ID] {
 	return &GoPgCRUD[T, ID]{
 		db:              db,
+		pgDB:            db,
 		DefaultsManager: sqlbase.NewDefaultsManager(),
 		raw:             NewGoPgRaw[T, ID](db),
 	}
+}
+
+// PgDB returns the underlying *pg.DB for advanced usage.
+// Panics if GoPgCRUD is operating inside a transaction.
+func (r *GoPgCRUD[T, ID]) PgDB() *pg.DB {
+	if r.pgDB == nil {
+		panic("r3/gopg: PgDB() called on a transactional GoPgCRUD (use the transaction's CRUD instead)")
+	}
+	return r.pgDB
 }
 
 func (r *GoPgCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {

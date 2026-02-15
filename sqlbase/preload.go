@@ -2,7 +2,6 @@ package sqlbase
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"reflect"
 
@@ -22,7 +21,7 @@ import (
 // entities in place by setting their relation fields.
 func RunPreloads(
 	ctx context.Context,
-	db *sql.DB,
+	executor SQLExecutor,
 	meta *StructMeta,
 	flavor Flavor,
 	entitiesPtr any,
@@ -52,11 +51,11 @@ func RunPreloads(
 
 		switch rel.Kind {
 		case RelHasMany:
-			if err := preloadHasMany(ctx, db, flavor, sliceVal, meta, rel); err != nil {
+			if err := preloadHasMany(ctx, executor, flavor, sliceVal, meta, rel); err != nil {
 				return fmt.Errorf("preload %s: %w", rel.FieldName, err)
 			}
 		case RelBelongsTo:
-			if err := preloadBelongsTo(ctx, db, flavor, sliceVal, meta, rel); err != nil {
+			if err := preloadBelongsTo(ctx, executor, flavor, sliceVal, meta, rel); err != nil {
 				return fmt.Errorf("preload %s: %w", rel.FieldName, err)
 			}
 		}
@@ -69,7 +68,7 @@ func RunPreloads(
 // Parent PK -> Child FK (e.g. City.ID -> CityTranslation.CityID).
 func preloadHasMany(
 	ctx context.Context,
-	db *sql.DB,
+	executor SQLExecutor,
 	flavor Flavor,
 	sliceVal reflect.Value,
 	parentMeta *StructMeta,
@@ -107,7 +106,7 @@ func preloadHasMany(
 		placeholders,
 	)
 
-	rows, err := db.QueryContext(ctx, query, pkValues...)
+	rows, err := executor.QueryContext(ctx, query, pkValues...)
 	if err != nil {
 		return err
 	}
@@ -167,7 +166,7 @@ func preloadHasMany(
 // Child FK -> Parent PK (e.g. Location.CityID -> City.ID).
 func preloadBelongsTo(
 	ctx context.Context,
-	db *sql.DB,
+	executor SQLExecutor,
 	flavor Flavor,
 	sliceVal reflect.Value,
 	parentMeta *StructMeta,
@@ -217,7 +216,7 @@ func preloadBelongsTo(
 		placeholders,
 	)
 
-	rows, err := db.QueryContext(ctx, query, fkValues...)
+	rows, err := executor.QueryContext(ctx, query, fkValues...)
 	if err != nil {
 		return err
 	}
