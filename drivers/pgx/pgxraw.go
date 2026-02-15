@@ -4,22 +4,22 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/amberpixels/r3/sqlbase"
+	enginesql "github.com/amberpixels/r3/engine/sql"
 )
 
-// PgxRaw is a thin wrapper around sqlbase.BaseRaw for backward compatibility.
+// PgxRaw is a thin wrapper around enginesql.BaseRaw for backward compatibility.
 // It provides the same Query/QueryRow/Exec methods.
 //
-// Deprecated: Use sqlbase.BaseRaw directly via PgxCRUD.Raw().
+// Deprecated: Use enginesql.BaseRaw directly via PgxCRUD.Raw().
 type PgxRaw[T any, ID any] struct {
-	*sqlbase.BaseRaw[T, ID]
+	*enginesql.BaseRaw[T, ID]
 }
 
 // NewPgxRaw creates a new PgxRaw instance.
 func NewPgxRaw[T any, ID comparable](db *sql.DB) *PgxRaw[T, ID] {
-	meta := sqlbase.GetStructMeta[T]()
+	meta := enginesql.GetStructMeta[T]()
 	return &PgxRaw[T, ID]{
-		BaseRaw: sqlbase.NewBaseRaw[T, ID](db, meta),
+		BaseRaw: enginesql.NewBaseRaw[T, ID](db, meta),
 	}
 }
 

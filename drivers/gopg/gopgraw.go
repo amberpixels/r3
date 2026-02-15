@@ -4,7 +4,7 @@ import (
 	"context"
 	"reflect"
 
-	"github.com/amberpixels/r3/internal/utils"
+	r3utils "github.com/amberpixels/r3/internal/utils"
 	"github.com/go-pg/pg/v10/orm"
 )
 

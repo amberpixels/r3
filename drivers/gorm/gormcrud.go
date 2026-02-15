@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/amberpixels/r3"
-	"github.com/amberpixels/r3/sqlbase"
+	enginesql "github.com/amberpixels/r3/engine/sql"
 	"gorm.io/gorm"
 )
 
@@ -12,7 +12,7 @@ import (
 type GormCRUD[T any, ID comparable] struct {
 	db *gorm.DB
 
-	sqlbase.DefaultsManager
+	enginesql.DefaultsManager
 
 	raw *GormRaw[T, ID]
 }
@@ -23,7 +23,7 @@ var _ r3.CRUD[any, any] = &GormCRUD[any, any]{}
 func NewGormCRUD[T any, ID comparable](db *gorm.DB) *GormCRUD[T, ID] {
 	return &GormCRUD[T, ID]{
 		db:              db,
-		DefaultsManager: sqlbase.NewDefaultsManager(),
+		DefaultsManager: enginesql.NewDefaultsManager(),
 		raw:             NewGormRaw[T, ID](db),
 	}
 }
@@ -36,7 +36,7 @@ func (r *GormCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 }
 
 func (r *GormCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, error) {
-	prep, err := sqlbase.PrepareListQuery(&r.DefaultsManager, qarg...)
+	prep, err := enginesql.PrepareListQuery(&r.DefaultsManager, qarg...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -45,7 +45,7 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 	query := r.db.WithContext(ctx).Model(&entity)
 
 	// Apply fields selection
-	if fieldCols := sqlbase.FieldsToColumns(prep.Query.Fields); len(fieldCols) > 0 {
+	if fieldCols := enginesql.FieldsToColumns(prep.Query.Fields); len(fieldCols) > 0 {
 		query = query.Select(fieldCols)
 	}
 
@@ -91,7 +91,7 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		return nil, 0, err
 	}
 
-	entities, totalCount = sqlbase.FinalizeCount(entities, totalCount, prep.IsPaginated)
+	entities, totalCount = enginesql.FinalizeCount(entities, totalCount, prep.IsPaginated)
 	return entities, totalCount, nil
 }
 
@@ -103,7 +103,7 @@ func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 	query := r.db.WithContext(ctx)
 
 	// Apply fields selection
-	if fieldCols := sqlbase.FieldsToColumns(q.Fields); len(fieldCols) > 0 {
+	if fieldCols := enginesql.FieldsToColumns(q.Fields); len(fieldCols) > 0 {
 		query = query.Select(fieldCols)
 	}
 
@@ -131,9 +131,9 @@ func (r *GormCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 }
 
 func (r *GormCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields) (T, error) {
-	cols := sqlbase.FieldsToColumns(fields)
+	cols := enginesql.FieldsToColumns(fields)
 
-	meta := sqlbase.GetStructMeta[T]()
+	meta := enginesql.GetStructMeta[T]()
 	cols, err := meta.ValidatePatchColumns(cols)
 	if err != nil {
 		return entity, err

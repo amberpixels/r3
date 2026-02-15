@@ -67,15 +67,15 @@ func InTx[T any, ID comparable](
 	ctx context.Context,
 	repo CRUD[T, ID],
 	fn func(tx CRUD[T, ID]) error,
-) (err error) {
+) error {
 	txr, ok := repo.(Transactor[T, ID])
 	if !ok {
 		return ErrTransactionsNotSupported
 	}
 
-	txCrud, err := txr.BeginTx(ctx)
-	if err != nil {
-		return err
+	txCrud, txErr := txr.BeginTx(ctx)
+	if txErr != nil {
+		return txErr
 	}
 
 	defer func() {
@@ -83,13 +83,11 @@ func InTx[T any, ID comparable](
 			_ = txCrud.Rollback()
 			panic(p) // re-panic after rollback
 		}
-		if err != nil {
-			_ = txCrud.Rollback()
-		}
 	}()
 
-	if err = fn(txCrud); err != nil {
-		return err
+	if txErr = fn(txCrud); txErr != nil {
+		_ = txCrud.Rollback()
+		return txErr
 	}
 
 	return txCrud.Commit()

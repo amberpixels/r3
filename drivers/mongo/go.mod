@@ -4,7 +4,7 @@ go 1.25
 
 require (
 	github.com/amberpixels/r3 v0.0.0
-	github.com/amberpixels/r3/mongobase v0.0.0
+	github.com/amberpixels/r3/engine/mongo v0.0.0
 	go.mongodb.org/mongo-driver/v2 v2.5.0
 )
 
@@ -25,5 +25,5 @@ require (
 replace (
 	github.com/amberpixels/r3 => ../..
 	github.com/amberpixels/r3/dialects/bson => ../../dialects/bson
-	github.com/amberpixels/r3/mongobase => ../../mongobase
+	github.com/amberpixels/r3/engine/mongo => ../../engine/mongo
 )

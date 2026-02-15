@@ -87,6 +87,7 @@ func JSONToFilters(jfs JSONFilters) (r3.Filters, error) {
 }
 
 // JSONFiltersToFilters is an alias for JSONToFilters for backward compatibility.
+//
 // Deprecated: Use JSONToFilters instead.
 func JSONFiltersToFilters(inboundFilters JSONFilters) (r3.Filters, error) {
 	return JSONToFilters(inboundFilters)

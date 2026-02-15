@@ -4,21 +4,21 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/amberpixels/r3/sqlbase"
+	enginesql "github.com/amberpixels/r3/engine/sql"
 )
 
-// Sqlite3Raw is a thin wrapper around sqlbase.BaseRaw for backward compatibility.
+// Sqlite3Raw is a thin wrapper around enginesql.BaseRaw for backward compatibility.
 //
-// Deprecated: Use sqlbase.BaseRaw directly via Sqlite3CRUD.Raw().
+// Deprecated: Use enginesql.BaseRaw directly via Sqlite3CRUD.Raw().
 type Sqlite3Raw[T any, ID any] struct {
-	*sqlbase.BaseRaw[T, ID]
+	*enginesql.BaseRaw[T, ID]
 }
 
 // NewSqlite3Raw creates a new Sqlite3Raw instance.
 func NewSqlite3Raw[T any, ID comparable](db *sql.DB) *Sqlite3Raw[T, ID] {
-	meta := sqlbase.GetStructMeta[T]()
+	meta := enginesql.GetStructMeta[T]()
 	return &Sqlite3Raw[T, ID]{
-		BaseRaw: sqlbase.NewBaseRaw[T, ID](db, meta),
+		BaseRaw: enginesql.NewBaseRaw[T, ID](db, meta),
 	}
 }
 

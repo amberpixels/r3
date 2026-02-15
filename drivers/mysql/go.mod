@@ -4,7 +4,6 @@ go 1.25
 
 require (
 	github.com/amberpixels/r3 v0.0.0
-	github.com/amberpixels/r3/sqlbase v0.0.0
 	github.com/go-sql-driver/mysql v1.9.3
 	github.com/pressly/goose v2.7.0+incompatible
 	github.com/stretchr/testify v1.11.1
@@ -17,7 +16,6 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20210617225240-d185dfc1b5a1 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
 	github.com/amberpixels/k1 v0.1.4 // indirect
-	github.com/amberpixels/r3/dialects/sql v0.0.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
@@ -72,8 +70,4 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
-replace (
-	github.com/amberpixels/r3 => ../..
-	github.com/amberpixels/r3/dialects/sql => ../../dialects/sql
-	github.com/amberpixels/r3/sqlbase => ../../sqlbase
-)
+replace github.com/amberpixels/r3 => ../..

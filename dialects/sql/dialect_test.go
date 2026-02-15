@@ -739,7 +739,7 @@ func BenchmarkFilterToSQL(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		_, err := r3sql.FilterToSQL(filter)
 		if err != nil {
 			b.Fatal(err)

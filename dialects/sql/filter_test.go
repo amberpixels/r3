@@ -563,7 +563,7 @@ func BenchmarkSQLClause_Joins(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		clauses.Joins()
 	}
 }

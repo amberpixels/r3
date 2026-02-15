@@ -1,26 +1,3 @@
-// Package r3gopg provides an r3.CRUD[T, ID] driver backed by go-pg v10,
-// a PostgreSQL ORM with a focus on PostgreSQL-specific features.
-//
-// Driver: github.com/go-pg/pg/v10
-// Source: https://github.com/go-pg/pg
-//
-// Supported r3 features:
-//   - Full CRUD (Create, Get, List, Update, Delete)
-//   - Filters, Sorts, Pagination via the r3 SQL dialect
-//   - Preloads via go-pg's Relation() (has-one, has-many, many-to-many)
-//   - IncludeTrashed via go-pg's AllWithDeleted() (requires pg:",soft_delete" tag)
-//   - Thread-safe default queries (SetDefaultListQuery, SetDefaultGetQuery)
-//   - Raw escape hatch (GoPgRaw) for custom go-pg orm.Query usage
-//
-// Limitations / notes:
-//   - go-pg is in maintenance mode; the authors recommend migrating to Bun.
-//     See: https://github.com/go-pg/pg#bun
-//   - go-pg does NOT wrap database/sql; it uses its own connection pool (*pg.DB).
-//     If you need a *sql.DB (e.g. for goose migrations), open a separate connection.
-//   - Model structs must use `pg` struct tags (e.g. `pg:"column_name"`).
-//     Table name is set via tableName struct field: `tableName struct{} \`pg:"table_name"\"
-//   - Aggregate / custom-shape queries should use Raw().Scan() into a dedicated struct,
-//     since Raw().Find() scans into []T and go-pg rejects unknown columns.
 package r3gopg
 
 import (
@@ -28,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/amberpixels/r3"
-	"github.com/amberpixels/r3/sqlbase"
+	enginesql "github.com/amberpixels/r3/engine/sql"
 	"github.com/go-pg/pg/v10"
 	"github.com/go-pg/pg/v10/orm"
 )
@@ -38,7 +15,7 @@ import (
 type GoPgCRUD[T any, ID comparable] struct {
 	db   orm.DB
 	pgDB *pg.DB // original *pg.DB, nil when inside a transaction
-	sqlbase.DefaultsManager
+	enginesql.DefaultsManager
 
 	raw *GoPgRaw[T, ID]
 }
@@ -50,7 +27,7 @@ func NewGoPgCRUD[T any, ID comparable](db *pg.DB) *GoPgCRUD[T, ID] {
 	return &GoPgCRUD[T, ID]{
 		db:              db,
 		pgDB:            db,
-		DefaultsManager: sqlbase.NewDefaultsManager(),
+		DefaultsManager: enginesql.NewDefaultsManager(),
 		raw:             NewGoPgRaw[T, ID](db),
 	}
 }
@@ -73,7 +50,7 @@ func (r *GoPgCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 }
 
 func (r *GoPgCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, error) {
-	prep, err := sqlbase.PrepareListQuery(&r.DefaultsManager, qarg...)
+	prep, err := enginesql.PrepareListQuery(&r.DefaultsManager, qarg...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -82,7 +59,7 @@ func (r *GoPgCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 	query := r.db.ModelContext(ctx, &entities)
 
 	// Apply fields selection
-	if fieldCols := sqlbase.FieldsToColumns(prep.Query.Fields); len(fieldCols) > 0 {
+	if fieldCols := enginesql.FieldsToColumns(prep.Query.Fields); len(fieldCols) > 0 {
 		query = query.Column(fieldCols...)
 	}
 
@@ -129,7 +106,7 @@ func (r *GoPgCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		return nil, 0, err
 	}
 
-	entities, totalCount = sqlbase.FinalizeCount(entities, totalCount, prep.IsPaginated)
+	entities, totalCount = enginesql.FinalizeCount(entities, totalCount, prep.IsPaginated)
 	return entities, totalCount, nil
 }
 
@@ -141,7 +118,7 @@ func (r *GoPgCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 	query := r.db.ModelContext(ctx, &entity).Where("id = ?", id)
 
 	// Apply fields selection
-	if fieldCols := sqlbase.FieldsToColumns(q.Fields); len(fieldCols) > 0 {
+	if fieldCols := enginesql.FieldsToColumns(q.Fields); len(fieldCols) > 0 {
 		query = query.Column(fieldCols...)
 	}
 
@@ -170,9 +147,9 @@ func (r *GoPgCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 }
 
 func (r *GoPgCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields) (T, error) {
-	cols := sqlbase.FieldsToColumns(fields)
+	cols := enginesql.FieldsToColumns(fields)
 
-	meta := sqlbase.GetStructMeta[T]()
+	meta := enginesql.GetStructMeta[T]()
 	cols, err := meta.ValidatePatchColumns(cols)
 	if err != nil {
 		return entity, err

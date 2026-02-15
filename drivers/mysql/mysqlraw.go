@@ -4,21 +4,21 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/amberpixels/r3/sqlbase"
+	enginesql "github.com/amberpixels/r3/engine/sql"
 )
 
-// MysqlRaw is a thin wrapper around sqlbase.BaseRaw for backward compatibility.
+// MysqlRaw is a thin wrapper around enginesql.BaseRaw for backward compatibility.
 //
-// Deprecated: Use sqlbase.BaseRaw directly via MysqlCRUD.Raw().
+// Deprecated: Use enginesql.BaseRaw directly via MysqlCRUD.Raw().
 type MysqlRaw[T any, ID any] struct {
-	*sqlbase.BaseRaw[T, ID]
+	*enginesql.BaseRaw[T, ID]
 }
 
 // NewMysqlRaw creates a new MysqlRaw instance.
 func NewMysqlRaw[T any, ID comparable](db *sql.DB) *MysqlRaw[T, ID] {
-	meta := sqlbase.GetStructMeta[T]()
+	meta := enginesql.GetStructMeta[T]()
 	return &MysqlRaw[T, ID]{
-		BaseRaw: sqlbase.NewBaseRaw[T, ID](db, meta),
+		BaseRaw: enginesql.NewBaseRaw[T, ID](db, meta),
 	}
 }
 

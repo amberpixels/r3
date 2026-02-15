@@ -1,25 +1,3 @@
-// Package r3bun provides an r3.CRUD[T, ID] driver backed by Bun,
-// a SQL-first Go ORM for PostgreSQL, MySQL, MSSQL, and SQLite.
-//
-// Driver: github.com/uptrace/bun
-// Source: https://github.com/uptrace/bun
-//
-// Supported r3 features:
-//   - Full CRUD (Create, Get, List, Update, Delete)
-//   - Filters, Sorts, Pagination via the r3 SQL dialect
-//   - Preloads via Bun's Relation() (belongs-to, has-one, has-many, many-to-many)
-//   - IncludeTrashed via Bun's WhereAllWithDeleted() (requires soft-delete model setup)
-//   - Thread-safe default queries (SetDefaultListQuery, SetDefaultGetQuery)
-//   - Raw escape hatch (BunRaw) for custom bun.SelectQuery usage
-//
-// Limitations / notes:
-//   - Bun wraps database/sql natively; use db.DB (the underlying *sql.DB) for goose
-//     migrations or any raw database/sql usage.
-//   - Model structs must embed bun.BaseModel with a table tag and use `bun` struct tags.
-//     Example: `bun.BaseModel \`bun:"table:cities"\"
-//   - Aggregate / custom-shape queries should use Raw().Scan() into a dedicated struct,
-//     since Raw().Find() scans into []T and Bun rejects unknown columns.
-//   - Bun is the recommended successor to go-pg by the same authors.
 package r3bun
 
 import (
@@ -27,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/amberpixels/r3"
-	"github.com/amberpixels/r3/sqlbase"
+	enginesql "github.com/amberpixels/r3/engine/sql"
 	"github.com/uptrace/bun"
 )
 
@@ -37,7 +15,7 @@ type BunCRUD[T any, ID comparable] struct {
 	db    bun.IDB
 	sqlDB *bun.DB // original *bun.DB, nil when inside a transaction
 
-	sqlbase.DefaultsManager
+	enginesql.DefaultsManager
 
 	raw *BunRaw[T, ID]
 }
@@ -49,7 +27,7 @@ func NewBunCRUD[T any, ID comparable](db *bun.DB) *BunCRUD[T, ID] {
 	return &BunCRUD[T, ID]{
 		db:              db,
 		sqlDB:           db,
-		DefaultsManager: sqlbase.NewDefaultsManager(),
+		DefaultsManager: enginesql.NewDefaultsManager(),
 		raw:             NewBunRaw[T, ID](db),
 	}
 }
@@ -72,7 +50,7 @@ func (r *BunCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 }
 
 func (r *BunCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, error) {
-	prep, err := sqlbase.PrepareListQuery(&r.DefaultsManager, qarg...)
+	prep, err := enginesql.PrepareListQuery(&r.DefaultsManager, qarg...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -81,7 +59,7 @@ func (r *BunCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64
 	query := r.db.NewSelect().Model(&entities)
 
 	// Apply fields selection
-	if fieldCols := sqlbase.FieldsToColumns(prep.Query.Fields); len(fieldCols) > 0 {
+	if fieldCols := enginesql.FieldsToColumns(prep.Query.Fields); len(fieldCols) > 0 {
 		query = query.Column(fieldCols...)
 	}
 
@@ -128,7 +106,7 @@ func (r *BunCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64
 		return nil, 0, err
 	}
 
-	entities, totalCount = sqlbase.FinalizeCount(entities, totalCount, prep.IsPaginated)
+	entities, totalCount = enginesql.FinalizeCount(entities, totalCount, prep.IsPaginated)
 	return entities, totalCount, nil
 }
 
@@ -140,7 +118,7 @@ func (r *BunCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, e
 	query := r.db.NewSelect().Model(&entity).Where("id = ?", id)
 
 	// Apply fields selection
-	if fieldCols := sqlbase.FieldsToColumns(q.Fields); len(fieldCols) > 0 {
+	if fieldCols := enginesql.FieldsToColumns(q.Fields); len(fieldCols) > 0 {
 		query = query.Column(fieldCols...)
 	}
 
@@ -169,9 +147,9 @@ func (r *BunCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 }
 
 func (r *BunCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields) (T, error) {
-	cols := sqlbase.FieldsToColumns(fields)
+	cols := enginesql.FieldsToColumns(fields)
 
-	meta := sqlbase.GetStructMeta[T]()
+	meta := enginesql.GetStructMeta[T]()
 	cols, err := meta.ValidatePatchColumns(cols)
 	if err != nil {
 		return entity, err

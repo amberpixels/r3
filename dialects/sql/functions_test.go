@@ -724,7 +724,7 @@ func BenchmarkFiltersToSQLClauses(b *testing.B) {
 	}
 
 	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		_, err := r3sql.FiltersToSQLClauses(filters)
 		if err != nil {
 			b.Fatal(err)

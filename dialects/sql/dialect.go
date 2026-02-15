@@ -220,6 +220,7 @@ func FiltersToSQL(filters r3.Filters) (SQLClauses, error) {
 }
 
 // FiltersToSQLClauses is an alias for FiltersToSQL for backward compatibility.
+//
 // Deprecated: Use FiltersToSQL instead.
 func FiltersToSQLClauses(filters r3.Filters) (SQLClauses, error) {
 	return FiltersToSQL(filters)

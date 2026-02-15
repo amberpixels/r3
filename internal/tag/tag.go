@@ -22,7 +22,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/amberpixels/r3/internal/utils"
+	r3utils "github.com/amberpixels/r3/internal/utils"
 )
 
 // ColumnTag holds parsed column-level tag info for a single struct field.

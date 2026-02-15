@@ -1,5 +1,5 @@
-# All module directories (order matters: dependencies first)
-modules := ". ./dialects/bson ./dialects/json ./dialects/sql ./mongobase ./sqlbase ./drivers/bun ./drivers/gopg ./drivers/gorm ./drivers/mongo ./drivers/mysql ./drivers/pgx ./drivers/pq ./drivers/sqlite3 ./examples"
+# All module directories, discovered from go.mod files (root "." sorts first)
+modules := `find . -name 'go.mod' -not -path '*/vendor/*' -exec dirname {} \; | sort | tr '\n' ' '`
 
 # Default recipe
 default: tidy
@@ -47,6 +47,14 @@ mod-tidy:
         echo "=> mod tidy $dir"; \
         (cd $dir && go mod tidy) || exit 1; \
     done
+
+# Generate go.work for local development (not committed to git)
+go-work:
+    go work init
+    for dir in {{ modules }}; do \
+        go work use $dir; \
+    done
+    @echo "go.work generated — your IDE can now resolve all modules locally"
 
 # Run the pet store example (starts PostgreSQL in Docker + the Go server)
 example:
