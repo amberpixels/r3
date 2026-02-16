@@ -1,15 +1,15 @@
 # All module directories, discovered from go.mod files (root "." sorts first)
 modules := `find . -name 'go.mod' -not -path '*/vendor/*' -exec dirname {} \; | sort | tr '\n' ' '`
 
+# Helper script for running a command across all modules with pretty output
+run := "bash scripts/foreach-module.sh"
+
 # Default recipe
 default: tidy
 
 # Tidy: format, vet, and tidy all modules
 tidy:
-    for dir in {{ modules }}; do \
-        echo "=> tidy $dir"; \
-        (cd $dir && go fmt ./... && go vet ./... && go mod tidy) || exit 1; \
-    done
+    @{{ run }} "tidy" "fmt + vet + mod tidy across all modules" {{ modules }} -- bash -c 'go fmt ./... && go vet ./... && go mod tidy'
 
 # Install golangci-lint if not already installed
 lint-install:
@@ -22,31 +22,19 @@ lint: lint-install
 
 # Test all modules
 test:
-    for dir in {{ modules }}; do \
-        echo "=> test $dir"; \
-        (cd $dir && go test ./...) || exit 1; \
-    done
+    @{{ run }} "test" "go test across all modules" {{ modules }} -- go test ./...
 
 # Test only short tests (skip integration tests requiring Docker)
 test-short:
-    for dir in {{ modules }}; do \
-        echo "=> test-short $dir"; \
-        (cd $dir && go test -short ./...) || exit 1; \
-    done
+    @{{ run }} "test-short" "go test -short across all modules" {{ modules }} -- go test -short ./...
 
 # Vet all modules
 vet:
-    for dir in {{ modules }}; do \
-        echo "=> vet $dir"; \
-        (cd $dir && go vet ./...) || exit 1; \
-    done
+    @{{ run }} "vet" "go vet across all modules" {{ modules }} -- go vet ./...
 
 # Run go mod tidy on all modules
 mod-tidy:
-    for dir in {{ modules }}; do \
-        echo "=> mod tidy $dir"; \
-        (cd $dir && go mod tidy) || exit 1; \
-    done
+    @{{ run }} "mod-tidy" "go mod tidy across all modules" {{ modules }} -- go mod tidy
 
 # Generate go.work for local development (not committed to git)
 go-work:
