@@ -9,6 +9,7 @@
 //   - Filters, Sorts, Pagination via the r3 SQL dialect
 //   - Preloads via Bun's Relation() (belongs-to, has-one, has-many, many-to-many)
 //   - IncludeTrashed via Bun's WhereAllWithDeleted() (requires soft-delete model setup)
+//   - Restore and HardDelete via the features/softdelete SoftDeleter interface
 //   - Thread-safe default queries (SetDefaultListQuery, SetDefaultGetQuery)
 //   - Raw escape hatch (BunRaw) for custom bun.SelectQuery usage
 //

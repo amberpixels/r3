@@ -14,7 +14,7 @@
 //   - No ORM layer: this driver builds raw SQL and uses reflection-based struct scanning.
 //     Model structs must use `db` struct tags (e.g. `db:"column_name,pk"`).
 //   - No preload support. Relations (joins, eager loading) must be done via Raw().
-//   - No soft-delete support. IncludeTrashed is ignored.
+//   - No soft-delete support. IncludeTrashed is ignored. Restore/HardDelete not available.
 //   - Table names are derived automatically from struct name (CamelCase -> snake_case + plural).
 //   - Nullable columns require pointer types (e.g. *string, *int64) in the model struct.
 //   - The r3 SQL dialect produces `?` placeholders; this driver converts them to

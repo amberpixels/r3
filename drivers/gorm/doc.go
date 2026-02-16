@@ -8,6 +8,7 @@
 //   - Filters, Sorts, Pagination via the r3 SQL dialect
 //   - Preloads via GORM's Preload()
 //   - Soft-delete via GORM's Unscoped()
+//   - Restore and HardDelete via the features/softdelete SoftDeleter interface
 //   - Transactions via the r3.Transactor interface
 //   - Thread-safe default queries (SetDefaultListQuery, SetDefaultGetQuery)
 //   - Raw escape hatch (GormRaw) for custom gorm.DB usage

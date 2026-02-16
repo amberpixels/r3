@@ -168,6 +168,21 @@ func (r *GoPgCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 	return err
 }
 
+// Restore un-deletes a soft-deleted record by clearing its deleted_at field.
+func (r *GoPgCRUD[T, ID]) Restore(ctx context.Context, id ID) error {
+	_, err := r.db.ModelContext(ctx, (*T)(nil)).
+		Set("deleted_at = NULL").Where("id = ?", id).
+		AllWithDeleted().Update()
+	return err
+}
+
+// HardDelete permanently removes a record, bypassing go-pg's soft-delete.
+func (r *GoPgCRUD[T, ID]) HardDelete(ctx context.Context, id ID) error {
+	_, err := r.db.ModelContext(ctx, (*T)(nil)).
+		Where("id = ?", id).AllWithDeleted().ForceDelete()
+	return err
+}
+
 // Raw returns the GoPgRaw escape hatch for custom queries.
 func (r *GoPgCRUD[T, ID]) Raw() *GoPgRaw[T, ID] { return r.raw }
 

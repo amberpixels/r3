@@ -260,6 +260,33 @@ func (r *BaseCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 	return nil
 }
 
+// Restore un-deletes a soft-deleted document by unsetting its soft-delete field.
+// Returns an error if the model has no soft-delete field.
+func (r *BaseCRUD[T, ID]) Restore(ctx context.Context, id ID) error {
+	if r.Meta.SoftDeleteField == "" {
+		return fmt.Errorf("r3/engine/mongo: model has no soft-delete field")
+	}
+	filter := bson.D{{Key: r.Meta.IDField, Value: id}}
+	update := bson.D{{Key: "$unset", Value: bson.D{
+		{Key: r.Meta.SoftDeleteField, Value: ""},
+	}}}
+	_, err := r.Collection.UpdateOne(ctx, filter, update)
+	if err != nil {
+		return fmt.Errorf("mongo restore: %w", err)
+	}
+	return nil
+}
+
+// HardDelete permanently removes a document, bypassing soft-delete.
+func (r *BaseCRUD[T, ID]) HardDelete(ctx context.Context, id ID) error {
+	filter := bson.D{{Key: r.Meta.IDField, Value: id}}
+	_, err := r.Collection.DeleteOne(ctx, filter)
+	if err != nil {
+		return fmt.Errorf("mongo hard-delete: %w", err)
+	}
+	return nil
+}
+
 // r3FieldsToBSONProjection converts r3.Fields to a BSON projection document.
 func r3FieldsToBSONProjection(fields r3.Fields) bson.D {
 	if len(fields) == 0 {

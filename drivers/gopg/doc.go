@@ -9,6 +9,7 @@
 //   - Filters, Sorts, Pagination via the r3 SQL dialect
 //   - Preloads via go-pg's Relation() (has-one, has-many, many-to-many)
 //   - IncludeTrashed via go-pg's AllWithDeleted() (requires pg:",soft_delete" tag)
+//   - Restore and HardDelete via the features/softdelete SoftDeleter interface
 //   - Thread-safe default queries (SetDefaultListQuery, SetDefaultGetQuery)
 //   - Raw escape hatch (GoPgRaw) for custom go-pg orm.Query usage
 //

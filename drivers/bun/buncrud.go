@@ -168,5 +168,20 @@ func (r *BunCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 	return err
 }
 
+// Restore un-deletes a soft-deleted record by clearing its deleted_at field.
+func (r *BunCRUD[T, ID]) Restore(ctx context.Context, id ID) error {
+	_, err := r.db.NewUpdate().Model((*T)(nil)).
+		Set("deleted_at = NULL").Where("id = ?", id).
+		WhereAllWithDeleted().Exec(ctx)
+	return err
+}
+
+// HardDelete permanently removes a record, bypassing Bun's soft-delete.
+func (r *BunCRUD[T, ID]) HardDelete(ctx context.Context, id ID) error {
+	_, err := r.db.NewDelete().Model((*T)(nil)).
+		Where("id = ?", id).ForceDelete().Exec(ctx)
+	return err
+}
+
 // Raw returns the BunRaw escape hatch for custom queries.
 func (r *BunCRUD[T, ID]) Raw() *BunRaw[T, ID] { return r.raw }

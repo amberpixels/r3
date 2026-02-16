@@ -3,6 +3,7 @@ package enginesql
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -402,6 +403,33 @@ func (r *BaseCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 		)
 	}
 
+	_, err := r.Executor.ExecContext(ctx, query, id)
+	return err
+}
+
+// Restore clears the soft-delete column, un-deleting a soft-deleted record.
+// Returns an error if the model has no soft-delete column.
+func (r *BaseCRUD[T, ID]) Restore(ctx context.Context, id ID) error {
+	if r.Meta.SoftDeleteColumn == "" {
+		return errors.New("r3/engine/sql: model has no soft-delete column")
+	}
+	query := fmt.Sprintf(
+		"UPDATE %s SET %s = NULL WHERE %s",
+		r.Meta.TableName,
+		r.Meta.SoftDeleteColumn,
+		r.Flavor.WhereEq(r.Meta.PKColumn, 1),
+	)
+	_, err := r.Executor.ExecContext(ctx, query, id)
+	return err
+}
+
+// HardDelete permanently removes a record, ignoring soft-delete.
+func (r *BaseCRUD[T, ID]) HardDelete(ctx context.Context, id ID) error {
+	query := fmt.Sprintf(
+		"DELETE FROM %s WHERE %s",
+		r.Meta.TableName,
+		r.Flavor.WhereEq(r.Meta.PKColumn, 1),
+	)
 	_, err := r.Executor.ExecContext(ctx, query, id)
 	return err
 }

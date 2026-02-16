@@ -152,6 +152,17 @@ func (r *GormCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 	return nil
 }
 
+// Restore un-deletes a soft-deleted record by clearing its deleted_at field.
+func (r *GormCRUD[T, ID]) Restore(ctx context.Context, id ID) error {
+	return r.db.WithContext(ctx).Unscoped().Model(new(T)).Where("id = ?", id).
+		Update("deleted_at", nil).Error
+}
+
+// HardDelete permanently removes a record, bypassing GORM's soft-delete.
+func (r *GormCRUD[T, ID]) HardDelete(ctx context.Context, id ID) error {
+	return r.db.WithContext(ctx).Unscoped().Delete(new(T), id).Error
+}
+
 // Raw returns the GormRaw escape hatch for custom queries.
 func (r *GormCRUD[T, ID]) Raw() *GormRaw[T, ID] { return r.raw }
 

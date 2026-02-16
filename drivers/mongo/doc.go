@@ -9,6 +9,7 @@
 //   - Field selection (projection)
 //   - Thread-safe default queries (SetDefaultListQuery, SetDefaultGetQuery)
 //   - Soft-delete support (via r3:"soft_delete" struct tag)
+//   - Restore and HardDelete via the features/softdelete SoftDeleter interface
 //   - Relation preloading (has-many, belongs-to) via separate queries
 //   - Raw escape hatch (BaseRaw) for arbitrary MongoDB operations
 //
