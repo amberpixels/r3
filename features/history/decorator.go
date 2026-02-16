@@ -4,30 +4,34 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strconv"
 	"time"
 
 	"github.com/amberpixels/r3"
 )
 
 // CRUD is a decorator that wraps any r3.CRUD[T, ID] and records every
-// mutation as a ChangeRecord in the configured Store.
+// mutation as a ChangeRecord in the configured history store.
 //
 // It transparently satisfies the r3.CRUD[T, ID] interface, so it can be used
 // as a drop-in replacement for any CRUD repository. Read operations (Get, List)
 // are delegated directly to the inner CRUD without recording anything.
 //
+// The history store is any r3.CRUD[ChangeRecord, string] — the same CRUD
+// abstraction used everywhere in r3. "Everything is a R3po."
+//
 // Usage:
 //
 //	repo := r3history.WithHistory[Order, int64](
 //	    gormOrderCRUD,
-//	    historyStore,
+//	    historyStore,  // any r3.CRUD[ChangeRecord, string]
 //	    r3history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
 //	    r3history.WithMetadataFunc[Order, int64](metadataFromCtx),
 //	)
 //	// repo satisfies r3.CRUD[Order, int64]
 type CRUD[T any, ID comparable] struct {
 	inner r3.CRUD[T, ID]
-	store Store
+	store r3.CRUD[ChangeRecord, string]
 	opts  Options[T, ID]
 }
 
@@ -38,6 +42,9 @@ var _ r3.CRUD[any, any] = &CRUD[any, any]{}
 // The IDFunc option is required — the decorator must know how to extract
 // the primary key from an entity.
 //
+// The store parameter is any r3.CRUD[ChangeRecord, string] — use the same
+// CRUD implementation you use for everything else (SQL, GORM, MongoDB, etc.).
+//
 // Example:
 //
 //	repo := r3history.WithHistory[Order, int64](
@@ -46,7 +53,7 @@ var _ r3.CRUD[any, any] = &CRUD[any, any]{}
 //	)
 func WithHistory[T any, ID comparable](
 	inner r3.CRUD[T, ID],
-	store Store,
+	store r3.CRUD[ChangeRecord, string],
 	optFns ...Option[T, ID],
 ) *CRUD[T, ID] {
 	var opts Options[T, ID]
@@ -68,8 +75,10 @@ func (h *CRUD[T, ID]) Inner() r3.CRUD[T, ID] {
 	return h.inner
 }
 
-// History returns the Store for querying change records directly.
-func (h *CRUD[T, ID]) History() Store {
+// History returns the change record CRUD for querying history directly.
+// Use it with the query builders (QueryForRecord, QueryForType, etc.)
+// to retrieve change records.
+func (h *CRUD[T, ID]) History() r3.CRUD[ChangeRecord, string] {
 	return h.store
 }
 
@@ -202,7 +211,7 @@ type recordInfo[T any] struct {
 // in a background goroutine. Errors during async recording are logged.
 //
 // After recording, snapshot rules are evaluated — snapshots are stored
-// separately via each rule's SnapshotStore.
+// separately via each rule's snapshot CRUD.
 func (h *CRUD[T, ID]) record(ctx context.Context, info recordInfo[T], diffFn func() []FieldChange) {
 	buildRecord := func() ChangeRecord {
 		recordID := ""
@@ -214,13 +223,13 @@ func (h *CRUD[T, ID]) record(ctx context.Context, info recordInfo[T], diffFn fun
 			RecordType: h.opts.RecordType,
 			RecordID:   recordID,
 			Action:     info.action,
-			Changes:    diffFn(),
+			Changes:    r3.NewJSONColumn(diffFn()),
 			CreatedAt:  time.Now(),
 		}
 
 		// Metadata
 		if h.opts.MetadataFunc != nil {
-			record.Metadata = h.opts.MetadataFunc(ctx)
+			record.Metadata = r3.NewJSONColumn(h.opts.MetadataFunc(ctx))
 		}
 
 		// Parent reference
@@ -235,11 +244,11 @@ func (h *CRUD[T, ID]) record(ctx context.Context, info recordInfo[T], diffFn fun
 	if h.opts.Async {
 		go func() {
 			record := buildRecord()
-			// Get next version (best-effort in async mode)
-			if v, err := h.store.NextVersion(context.Background(), record.RecordType, record.RecordID); err == nil {
-				record.Version = v
-			}
-			if err := h.store.Record(context.Background(), record); err != nil {
+			// Compute next version internally
+			record.Version = nextVersion(context.Background(), h.store, record.RecordType, record.RecordID)
+			record.ID = generateID()
+
+			if _, err := h.store.Create(context.Background(), record); err != nil {
 				slog.ErrorContext(
 					context.Background(),
 					"r3history: async record failed",
@@ -262,7 +271,7 @@ func (h *CRUD[T, ID]) record(ctx context.Context, info recordInfo[T], diffFn fun
 					info.action,
 					info.old,
 					info.entity,
-					record.Metadata,
+					record.Metadata.Val,
 				)
 			}
 		}()
@@ -270,11 +279,11 @@ func (h *CRUD[T, ID]) record(ctx context.Context, info recordInfo[T], diffFn fun
 	}
 
 	record := buildRecord()
-	// Get next version
-	if v, err := h.store.NextVersion(ctx, record.RecordType, record.RecordID); err == nil {
-		record.Version = v
-	}
-	if err := h.store.Record(ctx, record); err != nil {
+	// Compute next version internally
+	record.Version = nextVersion(ctx, h.store, record.RecordType, record.RecordID)
+	record.ID = generateID()
+
+	if _, err := h.store.Create(ctx, record); err != nil {
 		slog.ErrorContext(
 			ctx,
 			"r3history: record failed",
@@ -298,7 +307,23 @@ func (h *CRUD[T, ID]) record(ctx context.Context, info recordInfo[T], diffFn fun
 			info.action,
 			info.old,
 			info.entity,
-			record.Metadata,
+			record.Metadata.Val,
 		)
 	}
+}
+
+// nextVersion computes the next version number for a (recordType, recordID) pair
+// by querying the latest version and incrementing it.
+func nextVersion(ctx context.Context, store r3.CRUD[ChangeRecord, string], recordType, recordID string) int64 {
+	q := QueryLatestVersion(recordType, recordID)
+	records, _, err := store.List(ctx, q)
+	if err != nil || len(records) == 0 {
+		return 1
+	}
+	return records[0].Version + 1
+}
+
+// generateID creates a unique ID for a change record.
+func generateID() string {
+	return strconv.FormatInt(time.Now().UnixNano(), 10)
 }

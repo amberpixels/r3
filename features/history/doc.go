@@ -4,15 +4,17 @@
 // Create, Update, Patch, and Delete as a ChangeRecord. The decorator is transparent:
 // the wrapped repository still satisfies r3.CRUD[T, ID].
 //
-// Change records are stored via the Store interface, which is backend-agnostic.
-// You can store history in the same database as your entities, in a separate database,
-// or even in a completely different storage system (e.g. entities in PostgreSQL,
-// history in MongoDB).
+// "Everything is a R3po" — change records and snapshots are themselves r3 entities,
+// stored via any r3.CRUD[ChangeRecord, string] and r3.CRUD[Snapshot, string].
+// The history feature has zero knowledge of storage backends. You can use the
+// exact same driver (SQL, GORM, MongoDB, etc.) that you use for your entities,
+// or a completely different one (e.g. entities in PostgreSQL, history in MongoDB).
 //
 // Key features:
 //   - Field-level diffs (what changed, old value, new value)
-//   - Full entity snapshots for instant revert to any version
+//   - Opt-in full entity snapshots via configurable SnapshotRules
 //   - Tree/nested queries (e.g. Campaign + its Adsets + their Creatives)
-//   - Revert to any historical version
+//   - Revert to any historical version (purely diff-based reconstruction)
 //   - Context-based metadata (actor, source, request ID, etc.)
+//   - Convenience query builders (QueryForRecord, QueryForType, QueryForTree, etc.)
 package history

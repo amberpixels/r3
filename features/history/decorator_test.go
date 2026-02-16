@@ -13,7 +13,7 @@ import (
 	"github.com/amberpixels/r3/features/history"
 )
 
-// ── In-Memory CRUD (mock) ────────────────────────────────────────────────
+// ── In-Memory CRUD (mock for entity) ─────────────────────────────────────
 
 type Order struct {
 	ID     int64  `db:"id,pk"  json:"id"`
@@ -102,217 +102,360 @@ func (m *memoryCRUD) Delete(_ context.Context, id int64) error {
 	return nil
 }
 
-// ── In-Memory Store (mock) ────────────────────────────────────────────────
+// ── In-Memory CRUD for ChangeRecord ──────────────────────────────────────
+//
+// This implements r3.CRUD[history.ChangeRecord, string] and replaces the
+// old history.Store interface. The in-memory implementation interprets
+// r3.Query filters to support the query builders from queries.go.
 
-type memoryStore struct {
+type memoryChangeRecordCRUD struct {
 	mu      sync.Mutex
 	records []history.ChangeRecord
 }
 
-func newMemoryStore() *memoryStore {
-	return &memoryStore{}
+func newMemoryChangeRecordCRUD() *memoryChangeRecordCRUD {
+	return &memoryChangeRecordCRUD{}
 }
 
-func (s *memoryStore) Record(_ context.Context, record history.ChangeRecord) error {
+func (s *memoryChangeRecordCRUD) Create(_ context.Context, record history.ChangeRecord) (history.ChangeRecord, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.records = append(s.records, record)
-	return nil
+	return record, nil
 }
 
-func (s *memoryStore) ForRecord(
-	_ context.Context,
-	recordType string,
-	recordID string,
-	_ ...r3.Query,
-) ([]history.ChangeRecord, int64, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	var result []history.ChangeRecord
-	for _, r := range s.records {
-		if r.RecordType == recordType && r.RecordID == recordID {
-			result = append(result, r)
-		}
-	}
-	sort.Slice(result, func(i, j int) bool { return result[i].Version < result[j].Version })
-	return result, int64(len(result)), nil
-}
-
-func (s *memoryStore) ForType(
-	_ context.Context,
-	recordType string,
-	_ ...r3.Query,
-) ([]history.ChangeRecord, int64, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	var result []history.ChangeRecord
-	for _, r := range s.records {
-		if r.RecordType == recordType {
-			result = append(result, r)
-		}
-	}
-	return result, int64(len(result)), nil
-}
-
-func (s *memoryStore) ForTree(
-	_ context.Context,
-	scopes []history.TreeScope,
-	_ ...r3.Query,
-) ([]history.ChangeRecord, int64, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	var result []history.ChangeRecord
-	for _, r := range s.records {
-		for _, scope := range scopes {
-			if r.RecordType == scope.RecordType {
-				match := true
-				if scope.RecordID != "" && r.RecordID != scope.RecordID {
-					match = false
-				}
-				if scope.ParentType != "" && r.ParentType != scope.ParentType {
-					match = false
-				}
-				if scope.ParentID != "" && r.ParentID != scope.ParentID {
-					match = false
-				}
-				if match {
-					result = append(result, r)
-					break
-				}
-			}
-		}
-	}
-	return result, int64(len(result)), nil
-}
-
-func (s *memoryStore) NextVersion(_ context.Context, recordType string, recordID string) (int64, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	var maxVersion int64
-	for _, r := range s.records {
-		if r.RecordType == recordType && r.RecordID == recordID {
-			if r.Version > maxVersion {
-				maxVersion = r.Version
-			}
-		}
-	}
-	return maxVersion + 1, nil
-}
-
-func (s *memoryStore) GetVersion(
-	_ context.Context,
-	recordType string,
-	recordID string,
-	version int64,
-) (history.ChangeRecord, error) {
+func (s *memoryChangeRecordCRUD) Get(_ context.Context, id string, _ ...r3.Query) (history.ChangeRecord, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, r := range s.records {
-		if r.RecordType == recordType && r.RecordID == recordID && r.Version == version {
+		if r.ID == id {
 			return r, nil
 		}
 	}
-	return history.ChangeRecord{}, history.ErrVersionNotFound
+	return history.ChangeRecord{}, history.ErrRecordNotFound
 }
 
-func (s *memoryStore) LatestVersion(
-	_ context.Context,
-	recordType string,
-	recordID string,
-) (history.ChangeRecord, error) {
+func (s *memoryChangeRecordCRUD) List(_ context.Context, qargs ...r3.Query) ([]history.ChangeRecord, int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var latest *history.ChangeRecord
-	for i, r := range s.records {
-		if r.RecordType == recordType && r.RecordID == recordID {
-			if latest == nil || r.Version > latest.Version {
-				latest = &s.records[i]
+
+	result := make([]history.ChangeRecord, len(s.records))
+	copy(result, s.records)
+
+	// Apply filters
+	if len(qargs) > 0 {
+		q := qargs[0]
+		result = filterChangeRecords(result, q.Filters)
+
+		// Apply sorts
+		for _, ss := range q.Sorts {
+			col := ss.Column.String()
+			switch col {
+			case "version":
+				if ss.Direction == r3.SortDirectionAsc {
+					sort.Slice(result, func(i, j int) bool { return result[i].Version < result[j].Version })
+				} else {
+					sort.Slice(result, func(i, j int) bool { return result[i].Version > result[j].Version })
+				}
+			case "created_at":
+				if ss.Direction == r3.SortDirectionAsc {
+					sort.Slice(result, func(i, j int) bool { return result[i].CreatedAt.Before(result[j].CreatedAt) })
+				} else {
+					sort.Slice(result, func(i, j int) bool { return result[i].CreatedAt.After(result[j].CreatedAt) })
+				}
+			}
+		}
+
+		// Apply pagination (limit)
+		if q.Pagination != nil && q.Pagination.PageSize.Some() {
+			limit := q.Pagination.PageSize.Unwrap()
+			if limit > 0 && limit < len(result) {
+				result = result[:limit]
 			}
 		}
 	}
-	if latest == nil {
-		return history.ChangeRecord{}, history.ErrNoHistory
-	}
-	return *latest, nil
+
+	return result, int64(len(result)), nil
 }
 
-// ── In-Memory SnapshotStore (mock) ──────────────────────────────────────
+func (s *memoryChangeRecordCRUD) Update(_ context.Context, record history.ChangeRecord) (history.ChangeRecord, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, r := range s.records {
+		if r.ID == record.ID {
+			s.records[i] = record
+			return record, nil
+		}
+	}
+	return record, history.ErrRecordNotFound
+}
 
-type memorySnapshotStore struct {
+func (s *memoryChangeRecordCRUD) Patch(
+	_ context.Context,
+	record history.ChangeRecord,
+	_ r3.Fields,
+) (history.ChangeRecord, error) {
+	return record, nil
+}
+
+func (s *memoryChangeRecordCRUD) Delete(_ context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for i, r := range s.records {
+		if r.ID == id {
+			s.records = append(s.records[:i], s.records[i+1:]...)
+			return nil
+		}
+	}
+	return history.ErrRecordNotFound
+}
+
+// filterChangeRecords applies r3 filters to a slice of ChangeRecords.
+// Supports the filter patterns used by the query builders.
+func filterChangeRecords(records []history.ChangeRecord, filters r3.Filters) []history.ChangeRecord {
+	if len(filters) == 0 {
+		return records
+	}
+
+	var result []history.ChangeRecord
+	for _, rec := range records {
+		if matchesFilters(rec, filters) {
+			result = append(result, rec)
+		}
+	}
+	return result
+}
+
+func matchesFilters(rec history.ChangeRecord, filters r3.Filters) bool {
+	for _, f := range filters {
+		if !matchesFilter(rec, f) {
+			return false
+		}
+	}
+	return true
+}
+
+func matchesFilter(rec history.ChangeRecord, f *r3.FilterSpec) bool {
+	// AND group
+	if len(f.And) > 0 {
+		for _, child := range f.And {
+			if !matchesFilter(rec, child) {
+				return false
+			}
+		}
+		return true
+	}
+
+	// OR group
+	if len(f.Or) > 0 {
+		for _, child := range f.Or {
+			if matchesFilter(rec, child) {
+				return true
+			}
+		}
+		return false
+	}
+
+	// Leaf filter (Eq)
+	if f.Field == nil {
+		return true
+	}
+	fieldName := f.Field.String()
+	val := f.Value
+
+	switch fieldName {
+	case "record_type":
+		return rec.RecordType == fmt.Sprint(val)
+	case "record_id":
+		return rec.RecordID == fmt.Sprint(val)
+	case "version":
+		// Handle int64 comparison.
+		switch v := val.(type) {
+		case int64:
+			return rec.Version == v
+		case int:
+			return rec.Version == int64(v)
+		default:
+			return strconv.FormatInt(rec.Version, 10) == fmt.Sprint(val)
+		}
+	case "parent_type":
+		return rec.ParentType == fmt.Sprint(val)
+	case "parent_id":
+		return rec.ParentID == fmt.Sprint(val)
+	default:
+		return false
+	}
+}
+
+// listForRecord queries records for a specific entity.
+func listForRecord(
+	ctx context.Context,
+	store r3.CRUD[history.ChangeRecord, string],
+	recordType, recordID string,
+) ([]history.ChangeRecord, int64, error) {
+	q := history.QueryForRecord(recordType, recordID)
+	return store.List(ctx, q)
+}
+
+// ── In-Memory CRUD for Snapshot ──────────────────────────────────────────
+
+type memorySnapshotCRUD struct {
 	mu        sync.Mutex
 	snapshots []history.Snapshot
 }
 
-func newMemorySnapshotStore() *memorySnapshotStore {
-	return &memorySnapshotStore{}
+func newMemorySnapshotCRUD() *memorySnapshotCRUD {
+	return &memorySnapshotCRUD{}
 }
 
-func (s *memorySnapshotStore) SaveSnapshot(_ context.Context, snapshot history.Snapshot) error {
+func (s *memorySnapshotCRUD) Create(_ context.Context, snapshot history.Snapshot) (history.Snapshot, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.snapshots = append(s.snapshots, snapshot)
-	return nil
+	return snapshot, nil
 }
 
-func (s *memorySnapshotStore) GetSnapshot(
-	_ context.Context,
-	recordType string,
-	recordID string,
-	version int64,
-) (history.Snapshot, error) {
+func (s *memorySnapshotCRUD) Get(_ context.Context, id string, _ ...r3.Query) (history.Snapshot, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, snap := range s.snapshots {
-		if snap.RecordType == recordType && snap.RecordID == recordID && snap.Version == version {
+		if snap.ID == id {
 			return snap, nil
 		}
 	}
 	return history.Snapshot{}, errors.New("snapshot not found")
 }
 
-func (s *memorySnapshotStore) ListSnapshots(
-	_ context.Context,
-	recordType string,
-	recordID string,
-) ([]history.Snapshot, error) {
+func (s *memorySnapshotCRUD) List(_ context.Context, qargs ...r3.Query) ([]history.Snapshot, int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	var result []history.Snapshot
-	for _, snap := range s.snapshots {
-		if snap.RecordType == recordType && snap.RecordID == recordID {
-			result = append(result, snap)
-		}
-	}
-	sort.Slice(result, func(i, j int) bool { return result[i].Version > result[j].Version })
-	return result, nil
-}
 
-func (s *memorySnapshotStore) LatestSnapshot(
-	_ context.Context,
-	recordType string,
-	recordID string,
-) (history.Snapshot, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	var latest *history.Snapshot
-	for i, snap := range s.snapshots {
-		if snap.RecordType == recordType && snap.RecordID == recordID {
-			if latest == nil || snap.Version > latest.Version {
-				latest = &s.snapshots[i]
+	result := make([]history.Snapshot, len(s.snapshots))
+	copy(result, s.snapshots)
+
+	// Apply filters
+	if len(qargs) > 0 {
+		q := qargs[0]
+		result = filterSnapshots(result, q.Filters)
+
+		// Apply sorts
+		for _, ss := range q.Sorts {
+			col := ss.Column.String()
+			if col == "version" {
+				if ss.Direction == r3.SortDirectionDesc {
+					sort.Slice(result, func(i, j int) bool { return result[i].Version > result[j].Version })
+				} else {
+					sort.Slice(result, func(i, j int) bool { return result[i].Version < result[j].Version })
+				}
+			}
+		}
+
+		// Apply pagination
+		if q.Pagination != nil && q.Pagination.PageSize.Some() {
+			limit := q.Pagination.PageSize.Unwrap()
+			if limit > 0 && limit < len(result) {
+				result = result[:limit]
 			}
 		}
 	}
-	if latest == nil {
-		return history.Snapshot{}, errors.New("no snapshots")
+
+	return result, int64(len(result)), nil
+}
+
+func (s *memorySnapshotCRUD) Update(_ context.Context, snapshot history.Snapshot) (history.Snapshot, error) {
+	return snapshot, nil
+}
+
+func (s *memorySnapshotCRUD) Patch(
+	_ context.Context,
+	snapshot history.Snapshot,
+	_ r3.Fields,
+) (history.Snapshot, error) {
+	return snapshot, nil
+}
+
+func (s *memorySnapshotCRUD) Delete(_ context.Context, _ string) error {
+	return nil
+}
+
+func filterSnapshots(snapshots []history.Snapshot, filters r3.Filters) []history.Snapshot {
+	if len(filters) == 0 {
+		return snapshots
 	}
-	return *latest, nil
+	var result []history.Snapshot
+	for _, snap := range snapshots {
+		if matchesSnapshotFilters(snap, filters) {
+			result = append(result, snap)
+		}
+	}
+	return result
+}
+
+func matchesSnapshotFilters(snap history.Snapshot, filters r3.Filters) bool {
+	for _, f := range filters {
+		if !matchesSnapshotFilter(snap, f) {
+			return false
+		}
+	}
+	return true
+}
+
+func matchesSnapshotFilter(snap history.Snapshot, f *r3.FilterSpec) bool {
+	if len(f.And) > 0 {
+		for _, child := range f.And {
+			if !matchesSnapshotFilter(snap, child) {
+				return false
+			}
+		}
+		return true
+	}
+	if len(f.Or) > 0 {
+		for _, child := range f.Or {
+			if matchesSnapshotFilter(snap, child) {
+				return true
+			}
+		}
+		return false
+	}
+	if f.Field == nil {
+		return true
+	}
+	fieldName := f.Field.String()
+	val := f.Value
+	switch fieldName {
+	case "record_type":
+		return snap.RecordType == fmt.Sprint(val)
+	case "record_id":
+		return snap.RecordID == fmt.Sprint(val)
+	case "version":
+		switch v := val.(type) {
+		case int64:
+			return snap.Version == v
+		case int:
+			return snap.Version == int64(v)
+		default:
+			return strconv.FormatInt(snap.Version, 10) == fmt.Sprint(val)
+		}
+	default:
+		return false
+	}
+}
+
+// listSnapshots is a helper that queries all snapshots for an entity by recordID.
+func listSnapshots(
+	ctx context.Context,
+	store r3.CRUD[history.Snapshot, string],
+	recordID string,
+) ([]history.Snapshot, int64, error) {
+	q := history.QueryListSnapshots("orders", recordID)
+	return store.List(ctx, q)
 }
 
 // ── Tests ────────────────────────────────────────────────────────────────
 
 func TestCRUD_CreateRecordsHistory(t *testing.T) {
 	crud := newMemoryCRUD()
-	store := newMemoryStore()
+	store := newMemoryChangeRecordCRUD()
 
 	repo := history.WithHistory[Order, int64](crud, store,
 		history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
@@ -329,9 +472,9 @@ func TestCRUD_CreateRecordsHistory(t *testing.T) {
 	}
 
 	// Check history was recorded
-	records, count, err := store.ForRecord(ctx, "orders", strconv.FormatInt(order.ID, 10))
+	records, count, err := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
 	if err != nil {
-		t.Fatalf("ForRecord failed: %v", err)
+		t.Fatalf("List failed: %v", err)
 	}
 
 	if count != 1 {
@@ -345,12 +488,12 @@ func TestCRUD_CreateRecordsHistory(t *testing.T) {
 	if rec.Version != 1 {
 		t.Errorf("expected version 1, got %d", rec.Version)
 	}
-	if len(rec.Changes) == 0 {
+	if len(rec.Changes.Val) == 0 {
 		t.Error("expected non-empty changes for create")
 	}
 
 	// Verify create changes contain all fields with nil OldValue
-	for _, c := range rec.Changes {
+	for _, c := range rec.Changes.Val {
 		if c.OldValue != nil {
 			t.Errorf("create change for %s should have nil OldValue, got %v", c.Field, c.OldValue)
 		}
@@ -359,7 +502,7 @@ func TestCRUD_CreateRecordsHistory(t *testing.T) {
 
 func TestCRUD_UpdateRecordsDiff(t *testing.T) {
 	crud := newMemoryCRUD()
-	store := newMemoryStore()
+	store := newMemoryChangeRecordCRUD()
 
 	repo := history.WithHistory[Order, int64](crud, store,
 		history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
@@ -381,7 +524,7 @@ func TestCRUD_UpdateRecordsDiff(t *testing.T) {
 	}
 
 	// Check history
-	records, count, _ := store.ForRecord(ctx, "orders", strconv.FormatInt(order.ID, 10))
+	records, count, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
 	if count != 2 {
 		t.Fatalf("expected 2 records, got %d", count)
 	}
@@ -396,7 +539,7 @@ func TestCRUD_UpdateRecordsDiff(t *testing.T) {
 
 	// Check that changes include the diff
 	changeMap := make(map[string]history.FieldChange)
-	for _, c := range updateRec.Changes {
+	for _, c := range updateRec.Changes.Val {
 		changeMap[c.Field] = c
 	}
 
@@ -410,7 +553,7 @@ func TestCRUD_UpdateRecordsDiff(t *testing.T) {
 
 func TestCRUD_PatchRecordsDiff(t *testing.T) {
 	crud := newMemoryCRUD()
-	store := newMemoryStore()
+	store := newMemoryChangeRecordCRUD()
 
 	repo := history.WithHistory[Order, int64](crud, store,
 		history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
@@ -426,7 +569,7 @@ func TestCRUD_PatchRecordsDiff(t *testing.T) {
 		t.Fatalf("Patch failed: %v", err)
 	}
 
-	records, count, _ := store.ForRecord(ctx, "orders", strconv.FormatInt(order.ID, 10))
+	records, count, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
 	if count != 2 {
 		t.Fatalf("expected 2 records, got %d", count)
 	}
@@ -437,17 +580,17 @@ func TestCRUD_PatchRecordsDiff(t *testing.T) {
 	}
 
 	// Patch should only record changes for the patched fields
-	if len(patchRec.Changes) != 1 {
-		t.Fatalf("expected 1 change for patch, got %d: %v", len(patchRec.Changes), patchRec.Changes)
+	if len(patchRec.Changes.Val) != 1 {
+		t.Fatalf("expected 1 change for patch, got %d: %v", len(patchRec.Changes.Val), patchRec.Changes.Val)
 	}
-	if patchRec.Changes[0].Field != "status" {
-		t.Errorf("expected field 'status', got %q", patchRec.Changes[0].Field)
+	if patchRec.Changes.Val[0].Field != "status" {
+		t.Errorf("expected field 'status', got %q", patchRec.Changes.Val[0].Field)
 	}
 }
 
 func TestCRUD_DeleteRecordsHistory(t *testing.T) {
 	crud := newMemoryCRUD()
-	store := newMemoryStore()
+	store := newMemoryChangeRecordCRUD()
 
 	repo := history.WithHistory[Order, int64](crud, store,
 		history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
@@ -461,7 +604,7 @@ func TestCRUD_DeleteRecordsHistory(t *testing.T) {
 		t.Fatalf("Delete failed: %v", err)
 	}
 
-	records, count, _ := store.ForRecord(ctx, "orders", strconv.FormatInt(order.ID, 10))
+	records, count, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
 	if count != 2 {
 		t.Fatalf("expected 2 records, got %d", count)
 	}
@@ -471,10 +614,10 @@ func TestCRUD_DeleteRecordsHistory(t *testing.T) {
 		t.Errorf("expected action 'delete', got %q", deleteRec.Action)
 	}
 	// Delete should have changes with nil NewValue for each field
-	if len(deleteRec.Changes) == 0 {
+	if len(deleteRec.Changes.Val) == 0 {
 		t.Error("expected non-empty changes for delete")
 	}
-	for _, c := range deleteRec.Changes {
+	for _, c := range deleteRec.Changes.Val {
 		if c.NewValue != nil {
 			t.Errorf("delete change for %s should have nil NewValue, got %v", c.Field, c.NewValue)
 		}
@@ -483,7 +626,7 @@ func TestCRUD_DeleteRecordsHistory(t *testing.T) {
 
 func TestCRUD_ReadsDontRecordHistory(t *testing.T) {
 	crud := newMemoryCRUD()
-	store := newMemoryStore()
+	store := newMemoryChangeRecordCRUD()
 
 	repo := history.WithHistory[Order, int64](crud, store,
 		history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
@@ -496,7 +639,7 @@ func TestCRUD_ReadsDontRecordHistory(t *testing.T) {
 	_, _ = repo.Get(ctx, order.ID)
 	_, _, _ = repo.List(ctx)
 
-	records, count, _ := store.ForRecord(ctx, "orders", strconv.FormatInt(order.ID, 10))
+	records, count, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
 	if count != 1 {
 		t.Fatalf("expected 1 record (only create), got %d: %v", count, records)
 	}
@@ -504,7 +647,7 @@ func TestCRUD_ReadsDontRecordHistory(t *testing.T) {
 
 func TestCRUD_MetadataFunc(t *testing.T) {
 	crud := newMemoryCRUD()
-	store := newMemoryStore()
+	store := newMemoryChangeRecordCRUD()
 
 	repo := history.WithHistory[Order, int64](crud, store,
 		history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
@@ -520,12 +663,12 @@ func TestCRUD_MetadataFunc(t *testing.T) {
 	ctx := context.Background()
 	order, _ := repo.Create(ctx, Order{Name: "Test", Total: 100, Status: "ok"})
 
-	records, _, _ := store.ForRecord(ctx, "orders", strconv.FormatInt(order.ID, 10))
+	records, _, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
 	if len(records) == 0 {
 		t.Fatal("expected at least 1 record")
 	}
 
-	meta := records[0].Metadata
+	meta := records[0].Metadata.Val
 	if meta.ActorID != "user_42" {
 		t.Errorf("expected ActorID 'user_42', got %q", meta.ActorID)
 	}
@@ -536,7 +679,7 @@ func TestCRUD_MetadataFunc(t *testing.T) {
 
 func TestCRUD_ChangesOnlyNoSnapshots(t *testing.T) {
 	crud := newMemoryCRUD()
-	store := newMemoryStore()
+	store := newMemoryChangeRecordCRUD()
 
 	// Default mode: changes only, no snapshots on ChangeRecord
 	repo := history.WithHistory[Order, int64](crud, store,
@@ -547,8 +690,8 @@ func TestCRUD_ChangesOnlyNoSnapshots(t *testing.T) {
 	order, _ := repo.Create(ctx, Order{Name: "Test", Total: 100, Status: "ok"})
 
 	// Create should have changes (every field with nil OldValue)
-	records, _, _ := store.ForRecord(ctx, "orders", strconv.FormatInt(order.ID, 10))
-	if len(records[0].Changes) == 0 {
+	records, _, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
+	if len(records[0].Changes.Val) == 0 {
 		t.Error("create should have non-empty changes (all fields)")
 	}
 
@@ -556,9 +699,9 @@ func TestCRUD_ChangesOnlyNoSnapshots(t *testing.T) {
 	order.Total = 200
 	order, _ = repo.Update(ctx, order)
 
-	records, _, _ = store.ForRecord(ctx, "orders", strconv.FormatInt(order.ID, 10))
+	records, _, _ = listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
 	updateRec := records[1]
-	if len(updateRec.Changes) == 0 {
+	if len(updateRec.Changes.Val) == 0 {
 		t.Error("update should have non-empty changes")
 	}
 }
@@ -574,7 +717,7 @@ func TestCRUD_ParentRef(t *testing.T) {
 		data:   make(map[int64]Adset),
 		nextID: 1,
 	}
-	store := newMemoryStore()
+	store := newMemoryChangeRecordCRUD()
 
 	repo := history.WithHistory[Adset, int64](crud, store,
 		history.WithIDFunc[Adset, int64](func(a Adset) int64 { return a.ID }),
@@ -585,7 +728,7 @@ func TestCRUD_ParentRef(t *testing.T) {
 	ctx := context.Background()
 	adset, _ := repo.Create(ctx, Adset{CampaignID: 5, Name: "Test Adset"})
 
-	records, _, _ := store.ForRecord(ctx, "adsets", strconv.FormatInt(adset.ID, 10))
+	records, _, _ := listForRecord(ctx, store, "adsets", strconv.FormatInt(adset.ID, 10))
 	if len(records) == 0 {
 		t.Fatal("expected at least 1 record")
 	}
@@ -598,11 +741,12 @@ func TestCRUD_ParentRef(t *testing.T) {
 		t.Errorf("expected ParentID '5', got %q", rec.ParentID)
 	}
 
-	// Now test ForTree
-	treeRecords, count, _ := store.ForTree(ctx, []history.TreeScope{
+	// Now test ForTree query
+	treeQuery := history.QueryForTree([]history.TreeScope{
 		{RecordType: "campaigns", RecordID: "5"},
 		{RecordType: "adsets", ParentType: "campaigns", ParentID: "5"},
 	})
+	treeRecords, count, _ := store.List(ctx, treeQuery)
 	if count != 1 {
 		t.Fatalf("expected 1 tree record, got %d: %v", count, treeRecords)
 	}
@@ -610,7 +754,7 @@ func TestCRUD_ParentRef(t *testing.T) {
 
 func TestReverter_RevertTo(t *testing.T) {
 	crud := newMemoryCRUD()
-	store := newMemoryStore()
+	store := newMemoryChangeRecordCRUD()
 
 	// Pure diff-based revert: no snapshots, reconstruct from v1 forward
 	repo := history.WithHistory[Order, int64](crud, store,
@@ -641,7 +785,7 @@ func TestReverter_RevertTo(t *testing.T) {
 	}
 
 	// Check that the revert itself was recorded
-	records, count, _ := store.ForRecord(ctx, "orders", strconv.FormatInt(order.ID, 10))
+	records, count, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
 	if count != 3 {
 		t.Fatalf("expected 3 records (create + update + revert), got %d", count)
 	}
@@ -654,7 +798,7 @@ func TestReverter_RevertTo(t *testing.T) {
 
 func TestReverter_RevertTo_ViaChangeReplay(t *testing.T) {
 	crud := newMemoryCRUD()
-	store := newMemoryStore()
+	store := newMemoryChangeRecordCRUD()
 
 	// Pure diff replay: v1 create provides all fields, replay v2 changes on top
 	repo := history.WithHistory[Order, int64](crud, store,
@@ -695,7 +839,7 @@ func TestReverter_RevertTo_ViaChangeReplay(t *testing.T) {
 
 func TestReverter_Reconstruct(t *testing.T) {
 	crud := newMemoryCRUD()
-	store := newMemoryStore()
+	store := newMemoryChangeRecordCRUD()
 
 	repo := history.WithHistory[Order, int64](crud, store,
 		history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
@@ -757,7 +901,7 @@ func TestReverter_Reconstruct(t *testing.T) {
 
 func TestReverter_RevertLast(t *testing.T) {
 	crud := newMemoryCRUD()
-	store := newMemoryStore()
+	store := newMemoryChangeRecordCRUD()
 
 	repo := history.WithHistory[Order, int64](crud, store,
 		history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
@@ -788,7 +932,7 @@ func TestReverter_RevertLast(t *testing.T) {
 
 func TestCRUD_DeriveRecordType(t *testing.T) {
 	crud := newMemoryCRUD()
-	store := newMemoryStore()
+	store := newMemoryChangeRecordCRUD()
 
 	// Don't set RecordType — should auto-derive from Order -> "orders"
 	repo := history.WithHistory[Order, int64](crud, store,
@@ -798,7 +942,7 @@ func TestCRUD_DeriveRecordType(t *testing.T) {
 	ctx := context.Background()
 	order, _ := repo.Create(ctx, Order{Name: "Test", Total: 1, Status: "ok"})
 
-	records, _, _ := store.ForRecord(ctx, "orders", strconv.FormatInt(order.ID, 10))
+	records, _, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
 	if len(records) == 0 {
 		t.Fatal("expected at least 1 record")
 	}
@@ -809,8 +953,8 @@ func TestCRUD_DeriveRecordType(t *testing.T) {
 
 func TestCRUD_SnapshotRules(t *testing.T) {
 	crud := newMemoryCRUD()
-	store := newMemoryStore()
-	snapStore := newMemorySnapshotStore()
+	store := newMemoryChangeRecordCRUD()
+	snapStore := newMemorySnapshotCRUD()
 
 	// Snapshot rule: take a snapshot when status changes to "published"
 	rule := history.SnapshotRule[Order]{
@@ -831,7 +975,7 @@ func TestCRUD_SnapshotRules(t *testing.T) {
 	// Create with status "draft" — should NOT trigger snapshot
 	order, _ := repo.Create(ctx, Order{Name: "Test", Total: 100, Status: "draft"})
 
-	snaps, _ := snapStore.ListSnapshots(ctx, "orders", strconv.FormatInt(order.ID, 10))
+	snaps, _, _ := listSnapshots(ctx, snapStore, strconv.FormatInt(order.ID, 10))
 	if len(snaps) != 0 {
 		t.Fatalf("expected 0 snapshots after create with draft status, got %d", len(snaps))
 	}
@@ -840,7 +984,7 @@ func TestCRUD_SnapshotRules(t *testing.T) {
 	order.Status = "published"
 	order, _ = repo.Update(ctx, order)
 
-	snaps, _ = snapStore.ListSnapshots(ctx, "orders", strconv.FormatInt(order.ID, 10))
+	snaps, _, _ = listSnapshots(ctx, snapStore, strconv.FormatInt(order.ID, 10))
 	if len(snaps) != 1 {
 		t.Fatalf("expected 1 snapshot after publish, got %d", len(snaps))
 	}
@@ -869,7 +1013,7 @@ func TestCRUD_SnapshotRules(t *testing.T) {
 	order.Total = 200
 	order, _ = repo.Update(ctx, order)
 
-	snaps, _ = snapStore.ListSnapshots(ctx, "orders", strconv.FormatInt(order.ID, 10))
+	snaps, _, _ = listSnapshots(ctx, snapStore, strconv.FormatInt(order.ID, 10))
 	if len(snaps) != 1 {
 		t.Fatalf("expected still 1 snapshot after non-publish update, got %d", len(snaps))
 	}
@@ -877,9 +1021,9 @@ func TestCRUD_SnapshotRules(t *testing.T) {
 
 func TestCRUD_SnapshotRules_MultipleRules(t *testing.T) {
 	crud := newMemoryCRUD()
-	store := newMemoryStore()
-	snapStore1 := newMemorySnapshotStore()
-	snapStore2 := newMemorySnapshotStore()
+	store := newMemoryChangeRecordCRUD()
+	snapStore1 := newMemorySnapshotCRUD()
+	snapStore2 := newMemorySnapshotCRUD()
 
 	// Rule 1: snapshot on publish
 	rule1 := history.SnapshotRule[Order]{
@@ -910,8 +1054,8 @@ func TestCRUD_SnapshotRules_MultipleRules(t *testing.T) {
 	order, _ := repo.Create(ctx, Order{Name: "Big Order", Total: 5000, Status: "draft"})
 
 	// Rule 1 should NOT fire (not published), Rule 2 SHOULD fire (high value create)
-	snaps1, _ := snapStore1.ListSnapshots(ctx, "orders", strconv.FormatInt(order.ID, 10))
-	snaps2, _ := snapStore2.ListSnapshots(ctx, "orders", strconv.FormatInt(order.ID, 10))
+	snaps1, _, _ := listSnapshots(ctx, snapStore1, strconv.FormatInt(order.ID, 10))
+	snaps2, _, _ := listSnapshots(ctx, snapStore2, strconv.FormatInt(order.ID, 10))
 
 	if len(snaps1) != 0 {
 		t.Errorf("expected 0 publish snapshots, got %d", len(snaps1))
@@ -924,14 +1068,66 @@ func TestCRUD_SnapshotRules_MultipleRules(t *testing.T) {
 	order.Status = "published"
 	order, _ = repo.Update(ctx, order)
 
-	snaps1, _ = snapStore1.ListSnapshots(ctx, "orders", strconv.FormatInt(order.ID, 10))
-	snaps2, _ = snapStore2.ListSnapshots(ctx, "orders", strconv.FormatInt(order.ID, 10))
+	snaps1, _, _ = listSnapshots(ctx, snapStore1, strconv.FormatInt(order.ID, 10))
+	snaps2, _, _ = listSnapshots(ctx, snapStore2, strconv.FormatInt(order.ID, 10))
 
 	if len(snaps1) != 1 {
 		t.Errorf("expected 1 publish snapshot, got %d", len(snaps1))
 	}
 	if len(snaps2) != 1 {
 		t.Errorf("expected still 1 high-value snapshot, got %d", len(snaps2))
+	}
+}
+
+// TestHistory_QueryBuilders tests that the query builders return correct results
+// when used with the in-memory CRUD.
+func TestHistory_QueryBuilders(t *testing.T) {
+	crud := newMemoryCRUD()
+	store := newMemoryChangeRecordCRUD()
+
+	repo := history.WithHistory[Order, int64](crud, store,
+		history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
+	)
+
+	ctx := context.Background()
+	order, _ := repo.Create(ctx, Order{Name: "Test", Total: 100, Status: "ok"})
+	order.Total = 200
+	order, _ = repo.Update(ctx, order)
+
+	recordID := strconv.FormatInt(order.ID, 10)
+
+	// QueryForRecord
+	records, _, err := store.List(ctx, history.QueryForRecord("orders", recordID))
+	if err != nil {
+		t.Fatalf("QueryForRecord failed: %v", err)
+	}
+	if len(records) != 2 {
+		t.Errorf("expected 2 records, got %d", len(records))
+	}
+	// Should be sorted by version ascending
+	if records[0].Version > records[1].Version {
+		t.Error("expected records sorted by version ASC")
+	}
+
+	// QueryForType
+	records, _, err = store.List(ctx, history.QueryForType("orders"))
+	if err != nil {
+		t.Fatalf("QueryForType failed: %v", err)
+	}
+	if len(records) != 2 {
+		t.Errorf("expected 2 records for type, got %d", len(records))
+	}
+
+	// QueryLatestVersion
+	records, _, err = store.List(ctx, history.QueryLatestVersion("orders", recordID))
+	if err != nil {
+		t.Fatalf("QueryLatestVersion failed: %v", err)
+	}
+	if len(records) != 1 {
+		t.Fatalf("expected 1 latest record, got %d", len(records))
+	}
+	if records[0].Version != 2 {
+		t.Errorf("expected latest version 2, got %d", records[0].Version)
 	}
 }
 

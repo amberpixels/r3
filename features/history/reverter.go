@@ -29,7 +29,7 @@ import (
 //   - No snapshots are needed — this is purely diff-based.
 type Reverter[T any, ID comparable] struct {
 	crud  r3.CRUD[T, ID]
-	store Store
+	store r3.CRUD[ChangeRecord, string]
 	opts  Options[T, ID]
 }
 
@@ -72,24 +72,26 @@ func (r *Reverter[T, ID]) RevertTo(ctx context.Context, id ID, version int64) (T
 	}
 
 	record := ChangeRecord{
+		ID:         generateID(),
 		RecordType: r.opts.RecordType,
 		RecordID:   recordID,
 		Action:     ActionRevert,
-		Changes:    diffFn(current, result),
+		Changes:    r3.NewJSONColumn(diffFn(current, result)),
 		CreatedAt:  time.Now(),
 	}
 
 	if r.opts.MetadataFunc != nil {
-		record.Metadata = r.opts.MetadataFunc(ctx)
-		record.Metadata.Extra = mergeExtra(record.Metadata.Extra, map[string]string{
+		meta := r.opts.MetadataFunc(ctx)
+		meta.Extra = mergeExtra(meta.Extra, map[string]string{
 			"reverted_to_version": strconv.FormatInt(version, 10),
 		})
+		record.Metadata = r3.NewJSONColumn(meta)
 	} else {
-		record.Metadata = Metadata{
+		record.Metadata = r3.NewJSONColumn(Metadata{
 			Extra: map[string]string{
 				"reverted_to_version": strconv.FormatInt(version, 10),
 			},
-		}
+		})
 	}
 
 	if r.opts.ParentRef != nil {
@@ -97,11 +99,9 @@ func (r *Reverter[T, ID]) RevertTo(ctx context.Context, id ID, version int64) (T
 		record.ParentID = extractFieldByName(result, r.opts.ParentRef.FKField)
 	}
 
-	if v, err := r.store.NextVersion(ctx, record.RecordType, record.RecordID); err == nil {
-		record.Version = v
-	}
+	record.Version = nextVersion(ctx, r.store, record.RecordType, record.RecordID)
 
-	if err := r.store.Record(ctx, record); err != nil {
+	if _, err := r.store.Create(ctx, record); err != nil {
 		slog.ErrorContext(
 			ctx,
 			"r3history: failed to record revert",
@@ -116,7 +116,6 @@ func (r *Reverter[T, ID]) RevertTo(ctx context.Context, id ID, version int64) (T
 
 	// Evaluate snapshot rules after revert
 	if len(r.opts.SnapshotRules) > 0 {
-		meta := record.Metadata
 		evaluateSnapshotRules(
 			ctx,
 			r.opts.SnapshotRules,
@@ -126,7 +125,7 @@ func (r *Reverter[T, ID]) RevertTo(ctx context.Context, id ID, version int64) (T
 			ActionRevert,
 			current,
 			result,
-			meta,
+			record.Metadata.Val,
 		)
 	}
 
@@ -143,11 +142,17 @@ func (r *Reverter[T, ID]) RevertLast(ctx context.Context, id ID) (T, error) {
 
 	recordID := fmt.Sprint(id)
 
-	latest, err := r.store.LatestVersion(ctx, r.opts.RecordType, recordID)
+	// Query the latest version via List
+	q := QueryLatestVersion(r.opts.RecordType, recordID)
+	records, _, err := r.store.List(ctx, q)
 	if err != nil {
 		return zero, fmt.Errorf("r3history: failed to get latest version: %w", err)
 	}
+	if len(records) == 0 {
+		return zero, ErrNoHistory
+	}
 
+	latest := records[0]
 	if latest.Version <= 1 {
 		return zero, errors.New("r3history: cannot revert past the initial create (version 1)")
 	}
@@ -170,8 +175,9 @@ func (r *Reverter[T, ID]) RevertLast(ctx context.Context, id ID) (T, error) {
 func (r *Reverter[T, ID]) Reconstruct(ctx context.Context, recordID string, version int64) (T, error) {
 	var zero T
 
-	// Fetch all records up to the target version
-	records, _, err := r.store.ForRecord(ctx, r.opts.RecordType, recordID)
+	// Fetch all records for this entity using query builders
+	q := QueryForRecord(r.opts.RecordType, recordID)
+	records, _, err := r.store.List(ctx, q)
 	if err != nil {
 		return zero, fmt.Errorf("failed to fetch history: %w", err)
 	}
@@ -189,7 +195,7 @@ func (r *Reverter[T, ID]) Reconstruct(ctx context.Context, recordID string, vers
 			break
 		}
 		var err error
-		entity, err = applyChanges(entity, rec.Changes)
+		entity, err = applyChanges(entity, rec.Changes.Val)
 		if err != nil {
 			return zero, fmt.Errorf("failed to apply changes from version %d: %w", rec.Version, err)
 		}

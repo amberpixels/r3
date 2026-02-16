@@ -8,6 +8,8 @@ import (
 	"log/slog"
 	"strconv"
 	"time"
+
+	"github.com/amberpixels/r3"
 )
 
 // Snapshot represents a full point-in-time capture of an entity.
@@ -17,54 +19,36 @@ import (
 //
 // Unlike change records (which are always created on every mutation),
 // snapshots are opt-in and only taken when a SnapshotRule's condition is met.
+//
+// Snapshot is a first-class r3 entity: it can be stored via any
+// r3.CRUD[Snapshot, string] implementation.
 type Snapshot struct {
 	// ID is the unique identifier for this snapshot.
-	ID string `json:"id"`
+	ID string `json:"id" db:"id,pk" bson:"_id"`
 
 	// RecordType is the type name of the entity (e.g. "benefit_sheets").
-	RecordType string `json:"record_type"`
+	RecordType string `json:"record_type" db:"record_type" bson:"record_type"`
 
 	// RecordID is the primary key of the entity, stringified.
-	RecordID string `json:"record_id"`
+	RecordID string `json:"record_id" db:"record_id" bson:"record_id"`
 
 	// Version is the change record version that triggered this snapshot.
-	Version int64 `json:"version"`
+	Version int64 `json:"version" db:"version" bson:"version"`
 
 	// RuleName identifies which SnapshotRule triggered this snapshot.
 	// Useful when multiple rules exist for the same entity type.
-	RuleName string `json:"rule_name,omitempty"`
+	RuleName string `json:"rule_name,omitempty" db:"rule_name" bson:"rule_name,omitempty"`
 
 	// Data is the full serialized state of the entity at snapshot time.
 	// Stored as JSON bytes for portability across storage backends.
-	Data json.RawMessage `json:"data"`
+	Data json.RawMessage `json:"data" db:"data" bson:"data"`
 
 	// Metadata carries contextual information (same as on the change record).
-	Metadata Metadata `json:"metadata"`
+	// Stored as a JSON blob in SQL databases via JSONColumn.
+	Metadata r3.JSONColumn[Metadata] `json:"metadata" db:"metadata" bson:"metadata"`
 
 	// CreatedAt is the timestamp when the snapshot was taken.
-	CreatedAt time.Time `json:"created_at"`
-}
-
-// SnapshotStore is the backend-agnostic interface for persisting and querying snapshots.
-// Implementations are separate from the change record Store — snapshots can live
-// in a completely different database, table, or collection.
-//
-// Example storage layouts:
-//   - SQL: "original_benefit_sheets" table alongside "benefit_sheets"
-//   - Mongo: "benefit_sheet_snapshots" collection
-//   - S3: one object per snapshot for large entities
-type SnapshotStore interface {
-	// SaveSnapshot persists a snapshot.
-	SaveSnapshot(ctx context.Context, snapshot Snapshot) error
-
-	// GetSnapshot retrieves the snapshot for a specific entity at a specific version.
-	GetSnapshot(ctx context.Context, recordType string, recordID string, version int64) (Snapshot, error)
-
-	// ListSnapshots returns all snapshots for a specific entity, ordered by version descending.
-	ListSnapshots(ctx context.Context, recordType string, recordID string) ([]Snapshot, error)
-
-	// LatestSnapshot returns the most recent snapshot for a specific entity.
-	LatestSnapshot(ctx context.Context, recordType string, recordID string) (Snapshot, error)
+	CreatedAt time.Time `json:"created_at" db:"created_at" bson:"created_at"`
 }
 
 // SnapshotConditionFunc evaluates whether a snapshot should be taken after a mutation.
@@ -81,11 +65,13 @@ type SnapshotConditionFunc[T any] func(action Action, old, cur T) bool
 // SnapshotRule defines when and where to take a snapshot for an entity type.
 // Multiple rules can exist per entity — each with its own condition and store.
 //
+// The Store field is any r3.CRUD[Snapshot, string] — "everything is a R3po."
+//
 // Example:
 //
 //	r3history.SnapshotRule[BenefitSheet]{
 //	    Name:  "on_publish",
-//	    Store: snapshotStore,
+//	    Store: snapshotCRUD,  // any r3.CRUD[Snapshot, string]
 //	    Condition: func(action Action, old, cur BenefitSheet) bool {
 //	        return old.Status == "draft" && cur.Status == "published"
 //	    },
@@ -95,7 +81,8 @@ type SnapshotRule[T any] struct {
 	Name string
 
 	// Store is where snapshots triggered by this rule are persisted.
-	Store SnapshotStore
+	// Any r3.CRUD[Snapshot, string] implementation.
+	Store r3.CRUD[Snapshot, string]
 
 	// Condition determines whether a snapshot should be taken.
 	// If nil, the rule never triggers (effectively disabled).
@@ -164,11 +151,11 @@ func evaluateSnapshotRules[T any](
 			Version:    version,
 			RuleName:   rule.Name,
 			Data:       MarshalSnapshot(entity),
-			Metadata:   meta,
+			Metadata:   r3.NewJSONColumn(meta),
 			CreatedAt:  time.Now(),
 		}
 
-		if err := rule.Store.SaveSnapshot(ctx, snapshot); err != nil {
+		if _, err := rule.Store.Create(ctx, snapshot); err != nil {
 			// Log but don't fail the mutation — snapshots are best-effort add-ons.
 			// In async mode the caller already doesn't see errors.
 			slog.ErrorContext(
