@@ -11,16 +11,16 @@ import (
 func ExampleJSONFilters() {
 	jsonRaw := `[{"f":"Country.name","op":"eq","v":"United States"}, {"f":"popularity","op":"gt","v":50}]`
 
-	var inboundFilters r3json.JSONFilters
-	err := json.Unmarshal([]byte(jsonRaw), &inboundFilters)
+	var jsonFilters r3json.JSONFilters
+	err := json.Unmarshal([]byte(jsonRaw), &jsonFilters)
 	if err != nil {
 		fmt.Println(err)
 		panic(err)
 	}
 
-	fmt.Println(inboundFilters)
+	fmt.Println(jsonFilters)
 
-	filters, err := r3json.JSONFiltersToFilters(inboundFilters)
+	filters, err := r3json.JSONToFilters(jsonFilters)
 	if err != nil {
 		fmt.Println(err)
 		panic(err)
@@ -28,7 +28,7 @@ func ExampleJSONFilters() {
 
 	fmt.Println(filters)
 
-	clauses, err := r3sql.FiltersToSQLClauses(filters)
+	clauses, err := r3sql.FiltersToSQL(filters)
 
 	fmt.Println(err)
 	for i, clause := range clauses {

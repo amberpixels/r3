@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/amberpixels/r3"
+	"github.com/amberpixels/r3/dialects/canonical"
 )
 
 // FieldToJSON converts a FieldSpec to a JSONField.
@@ -124,42 +125,14 @@ func JSONToPagination(jp *JSONPagination) (*r3.PaginationSpec, error) {
 
 // r3ToJSONOperator converts r3 operators to JSON operators.
 func r3ToJSONOperator(op r3.FilterOperatorSpec) (JSONFilterOperator, error) {
-	switch op {
-	case r3.OperatorEq:
-		return OperatorEq, nil
-	case r3.OperatorNe:
-		return OperatorNe, nil
-	case r3.OperatorExists:
-		return OperatorExists, nil
-	case r3.OperatorGt:
-		return OperatorGt, nil
-	case r3.OperatorGte:
-		return OperatorGte, nil
-	case r3.OperatorLt:
-		return OperatorLt, nil
-	case r3.OperatorLte:
-		return OperatorLte, nil
-	case r3.OperatorBetween:
-		return OperatorBetween, nil
-	case r3.OperatorBetweenEx:
-		return OperatorBetweenEx, nil
-	case r3.OperatorBetweenExInc:
-		return OperatorBetweenExInc, nil
-	case r3.OperatorBetweenIncEx:
-		return OperatorBetweenIncEx, nil
-	case r3.OperatorIn:
-		return OperatorIn, nil
-	case r3.OperatorNotIn:
-		return OperatorNotIn, nil
-	case r3.OperatorLike:
-		return OperatorLike, nil
-	case r3.OperatorNotLike:
-		return OperatorNotLike, nil
-	case r3.OperatorILike:
-		return OperatorILike, nil
-	case r3.OperatorUnspecified:
-		fallthrough
-	default:
+	name := canonical.FormatFilterOperator(op)
+	if name == "" {
 		return OperatorUnspecified, fmt.Errorf("unsupported r3 filter operator: %v", op)
 	}
+
+	jsonOp, ok := FilterOperatorValues[name]
+	if !ok {
+		return OperatorUnspecified, fmt.Errorf("unsupported r3 filter operator: %v", op)
+	}
+	return jsonOp, nil
 }

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/amberpixels/r3"
+	"github.com/amberpixels/r3/dialects/canonical"
 )
 
 // JSONSort represents a sort criteria in JSON format.
@@ -63,58 +64,22 @@ func (js *JSONSort) ToSortSpec() (*r3.SortSpec, error) {
 
 // ToR3SortDirection converts JSONSortDirection to r3.SortDirection.
 func (jsd JSONSortDirection) ToR3SortDirection() r3.SortDirection {
-	switch jsd {
-	case JSONSortDirectionAsc:
-		return r3.SortDirectionAsc
-	case JSONSortDirectionDesc:
-		return r3.SortDirectionDesc
-	case JSONSortDirectionUnspecified:
-		fallthrough
-	default:
-		return r3.SortDirectionUnspecified
-	}
+	return canonical.ParseSortDirection(string(jsd))
 }
 
 // ToR3NullsPosition converts JSONNullsPosition to r3.SortNullsPosition.
 func (jnp JSONNullsPosition) ToR3NullsPosition() r3.SortNullsPosition {
-	switch jnp {
-	case JSONNullsPositionFirst:
-		return r3.NullsPositionFirst
-	case JSONNullsPositionLast:
-		return r3.NullsPositionLast
-	case JSONNullsPositionUnspecified:
-		fallthrough
-	default:
-		return r3.NullsPositionNotSpecified
-	}
+	return canonical.ParseNullsPosition(string(jnp))
 }
 
 // Helper functions for dialect.go
 
 // jsonSortDirectionFromR3 converts r3.SortDirection to JSONSortDirection.
 func jsonSortDirectionFromR3(direction r3.SortDirection) JSONSortDirection {
-	switch direction {
-	case r3.SortDirectionAsc:
-		return JSONSortDirectionAsc
-	case r3.SortDirectionDesc:
-		return JSONSortDirectionDesc
-	case r3.SortDirectionUnspecified:
-		fallthrough
-	default:
-		return JSONSortDirectionUnspecified
-	}
+	return JSONSortDirection(canonical.FormatSortDirection(direction))
 }
 
 // jsonNullsPositionFromR3 converts r3.SortNullsPosition to JSONNullsPosition.
 func jsonNullsPositionFromR3(position r3.SortNullsPosition) JSONNullsPosition {
-	switch position {
-	case r3.NullsPositionFirst:
-		return JSONNullsPositionFirst
-	case r3.NullsPositionLast:
-		return JSONNullsPositionLast
-	case r3.NullsPositionNotSpecified:
-		fallthrough
-	default:
-		return JSONNullsPositionUnspecified
-	}
+	return JSONNullsPosition(canonical.FormatNullsPosition(position))
 }
