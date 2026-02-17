@@ -80,19 +80,11 @@ func (r *Reverter[T, ID]) RevertTo(ctx context.Context, id ID, version int64) (T
 		CreatedAt:  time.Now(),
 	}
 
-	if r.opts.MetadataFunc != nil {
-		meta := r.opts.MetadataFunc(ctx)
-		meta.Extra = mergeExtra(meta.Extra, map[string]string{
-			"reverted_to_version": strconv.FormatInt(version, 10),
-		})
-		record.Metadata = r3.NewJSONColumn(meta)
-	} else {
-		record.Metadata = r3.NewJSONColumn(Metadata{
-			Extra: map[string]string{
-				"reverted_to_version": strconv.FormatInt(version, 10),
-			},
-		})
-	}
+	meta := buildMetadata(ctx, r.opts.MetadataFunc)
+	meta.Extra = mergeExtra(meta.Extra, map[string]string{
+		"reverted_to_version": strconv.FormatInt(version, 10),
+	})
+	record.Metadata = r3.NewJSONColumn(meta)
 
 	if r.opts.ParentRef != nil {
 		record.ParentType = r.opts.ParentRef.ParentType

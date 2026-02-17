@@ -411,3 +411,6 @@ linters:
           - wrapcheck
       - path: "internal/testing"
         linters: ["testpackage"]
+      - text: "avoid package names that conflict with Go standard library package names"
+        path: "features/metrics"
+        linters: [revive]

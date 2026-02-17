@@ -51,7 +51,9 @@ type Options[T any, ID comparable] struct {
 	RecordType string
 
 	// MetadataFunc extracts actor/context metadata from the request context.
-	// If nil, change records will have empty metadata.
+	// If nil, the history decorator still populates ActorID and ActorType
+	// from r3.GetActor(ctx) automatically. If MetadataFunc is set but
+	// leaves ActorID/ActorType empty, those are filled from the Actor context.
 	MetadataFunc MetadataFunc
 
 	// DiffFunc provides a custom diff implementation.

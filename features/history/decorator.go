@@ -227,10 +227,8 @@ func (h *CRUD[T, ID]) record(ctx context.Context, info recordInfo[T], diffFn fun
 			CreatedAt:  time.Now(),
 		}
 
-		// Metadata
-		if h.opts.MetadataFunc != nil {
-			record.Metadata = r3.NewJSONColumn(h.opts.MetadataFunc(ctx))
-		}
+		// Metadata: merge user-provided metadata with Actor from context.
+		record.Metadata = r3.NewJSONColumn(buildMetadata(ctx, h.opts.MetadataFunc))
 
 		// Parent reference
 		if h.opts.ParentRef != nil {
@@ -310,6 +308,33 @@ func (h *CRUD[T, ID]) record(ctx context.Context, info recordInfo[T], diffFn fun
 			record.Metadata.Val,
 		)
 	}
+}
+
+// buildMetadata constructs a Metadata value by combining the user-provided
+// MetadataFunc (if any) with the r3.Actor from the context. The Actor's ID
+// and Type are used as fallback defaults — if the MetadataFunc already sets
+// ActorID or ActorType, those values take precedence.
+//
+// This ensures that r3.WithActor(ctx, actor) automatically populates history
+// metadata without requiring an explicit MetadataFunc.
+func buildMetadata(ctx context.Context, metadataFunc MetadataFunc) Metadata {
+	var meta Metadata
+	if metadataFunc != nil {
+		meta = metadataFunc(ctx)
+	}
+
+	// Fill ActorID/ActorType from context if not already set by MetadataFunc.
+	if meta.ActorID == "" || meta.ActorType == "" {
+		actor := r3.GetActor(ctx)
+		if meta.ActorID == "" {
+			meta.ActorID = actor.ID
+		}
+		if meta.ActorType == "" {
+			meta.ActorType = actor.Type
+		}
+	}
+
+	return meta
 }
 
 // nextVersion computes the next version number for a (recordType, recordID) pair

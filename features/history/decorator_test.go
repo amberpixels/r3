@@ -8,6 +8,7 @@ import (
 	"strconv"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/features/history"
@@ -677,6 +678,173 @@ func TestCRUD_MetadataFunc(t *testing.T) {
 	}
 }
 
+func TestCRUD_ActorContext_AutoPopulate(t *testing.T) {
+	crud := newMemoryCRUD()
+	store := newMemoryChangeRecordCRUD()
+
+	// No MetadataFunc — Actor should be auto-populated from context.
+	repo := history.WithHistory[Order, int64](crud, store,
+		history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
+	)
+
+	ctx := r3.WithActor(context.Background(), r3.Actor{ID: "42", Type: "user"})
+	order, _ := repo.Create(ctx, Order{Name: "Test", Total: 100, Status: "ok"})
+
+	records, _, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
+	if len(records) == 0 {
+		t.Fatal("expected at least 1 record")
+	}
+
+	meta := records[0].Metadata.Val
+	if meta.ActorID != "42" {
+		t.Errorf("expected ActorID '42', got %q", meta.ActorID)
+	}
+	if meta.ActorType != "user" {
+		t.Errorf("expected ActorType 'user', got %q", meta.ActorType)
+	}
+}
+
+func TestCRUD_ActorContext_SystemDefault(t *testing.T) {
+	crud := newMemoryCRUD()
+	store := newMemoryChangeRecordCRUD()
+
+	// No MetadataFunc, no Actor in context — should get SystemActor defaults.
+	repo := history.WithHistory[Order, int64](crud, store,
+		history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
+	)
+
+	ctx := context.Background()
+	order, _ := repo.Create(ctx, Order{Name: "Test", Total: 100, Status: "ok"})
+
+	records, _, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
+	if len(records) == 0 {
+		t.Fatal("expected at least 1 record")
+	}
+
+	meta := records[0].Metadata.Val
+	if meta.ActorID != "" {
+		t.Errorf("expected empty ActorID for SystemActor, got %q", meta.ActorID)
+	}
+	if meta.ActorType != "system" {
+		t.Errorf("expected ActorType 'system', got %q", meta.ActorType)
+	}
+}
+
+func TestCRUD_ActorContext_MetadataFuncTakesPrecedence(t *testing.T) {
+	crud := newMemoryCRUD()
+	store := newMemoryChangeRecordCRUD()
+
+	// MetadataFunc explicitly sets ActorID/ActorType — these should win over context.
+	repo := history.WithHistory[Order, int64](crud, store,
+		history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
+		history.WithMetadataFunc[Order, int64](func(_ context.Context) history.Metadata {
+			return history.Metadata{
+				ActorID:   "api_key_99",
+				ActorType: "api_key",
+				Source:    "api",
+			}
+		}),
+	)
+
+	// Context has a different actor — should be overridden by MetadataFunc.
+	ctx := r3.WithActor(context.Background(), r3.Actor{ID: "42", Type: "user"})
+	order, _ := repo.Create(ctx, Order{Name: "Test", Total: 100, Status: "ok"})
+
+	records, _, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
+	if len(records) == 0 {
+		t.Fatal("expected at least 1 record")
+	}
+
+	meta := records[0].Metadata.Val
+	if meta.ActorID != "api_key_99" {
+		t.Errorf("expected ActorID 'api_key_99', got %q", meta.ActorID)
+	}
+	if meta.ActorType != "api_key" {
+		t.Errorf("expected ActorType 'api_key', got %q", meta.ActorType)
+	}
+	if meta.Source != "api" {
+		t.Errorf("expected Source 'api', got %q", meta.Source)
+	}
+}
+
+func TestCRUD_ActorContext_MetadataFuncPartialFillFromContext(t *testing.T) {
+	crud := newMemoryCRUD()
+	store := newMemoryChangeRecordCRUD()
+
+	// MetadataFunc sets Source but leaves ActorID/ActorType empty — should be filled from context.
+	repo := history.WithHistory[Order, int64](crud, store,
+		history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
+		history.WithMetadataFunc[Order, int64](func(_ context.Context) history.Metadata {
+			return history.Metadata{
+				Source: "admin_ui",
+			}
+		}),
+	)
+
+	ctx := r3.WithActor(context.Background(), r3.Actor{ID: "7", Type: "admin"})
+	order, _ := repo.Create(ctx, Order{Name: "Test", Total: 100, Status: "ok"})
+
+	records, _, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
+	if len(records) == 0 {
+		t.Fatal("expected at least 1 record")
+	}
+
+	meta := records[0].Metadata.Val
+	if meta.ActorID != "7" {
+		t.Errorf("expected ActorID '7' from context, got %q", meta.ActorID)
+	}
+	if meta.ActorType != "admin" {
+		t.Errorf("expected ActorType 'admin' from context, got %q", meta.ActorType)
+	}
+	if meta.Source != "admin_ui" {
+		t.Errorf("expected Source 'admin_ui' from MetadataFunc, got %q", meta.Source)
+	}
+}
+
+func TestReverter_ActorContext(t *testing.T) {
+	crud := newMemoryCRUD()
+	store := newMemoryChangeRecordCRUD()
+
+	// No MetadataFunc — Actor from context should be used for revert records too.
+	repo := history.WithHistory[Order, int64](crud, store,
+		history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
+	)
+
+	ctx := r3.WithActor(context.Background(), r3.Actor{ID: "admin_1", Type: "admin"})
+	order, _ := repo.Create(ctx, Order{Name: "V1", Total: 100, Status: "a"})
+	order.Name = "V2"
+	order, _ = repo.Update(ctx, order)
+
+	// Revert to v1
+	_, err := repo.Reverter().RevertTo(ctx, order.ID, 1)
+	if err != nil {
+		t.Fatalf("RevertTo failed: %v", err)
+	}
+
+	records, _, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
+	// Should have 3 records: create + update + revert.
+	if len(records) != 3 {
+		t.Fatalf("expected 3 records, got %d", len(records))
+	}
+
+	// All records should have the Actor info.
+	for _, rec := range records {
+		meta := rec.Metadata.Val
+		if meta.ActorID != "admin_1" {
+			t.Errorf("record %s: expected ActorID 'admin_1', got %q", rec.Action, meta.ActorID)
+		}
+		if meta.ActorType != "admin" {
+			t.Errorf("record %s: expected ActorType 'admin', got %q", rec.Action, meta.ActorType)
+		}
+	}
+
+	// The revert record should also have extra metadata.
+	revertRec := records[2]
+	if revertRec.Metadata.Val.Extra["reverted_to_version"] != "1" {
+		t.Errorf("expected reverted_to_version '1', got %q", revertRec.Metadata.Val.Extra["reverted_to_version"])
+	}
+}
+
 func TestCRUD_ChangesOnlyNoSnapshots(t *testing.T) {
 	crud := newMemoryCRUD()
 	store := newMemoryChangeRecordCRUD()
@@ -1128,6 +1296,86 @@ func TestHistory_QueryBuilders(t *testing.T) {
 	}
 	if records[0].Version != 2 {
 		t.Errorf("expected latest version 2, got %d", records[0].Version)
+	}
+}
+
+// ── Retention Tests ──────────────────────────────────────────────────────
+
+func TestRetentionEnforcer_MaxAge(t *testing.T) {
+	crud := newMemoryCRUD()
+	store := newMemoryChangeRecordCRUD()
+
+	repo := history.WithHistory[Order, int64](crud, store,
+		history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
+	)
+
+	ctx := context.Background()
+
+	// Create several changes over "time" (we fake timestamps via direct store access).
+	order, _ := repo.Create(ctx, Order{Name: "Test", Total: 100, Status: "a"})
+	order.Total = 200
+	order, _ = repo.Update(ctx, order)
+	order.Total = 300
+	order, _ = repo.Update(ctx, order)
+
+	recordID := strconv.FormatInt(order.ID, 10)
+
+	// Verify we have 3 records.
+	records, _, _ := listForRecord(ctx, store, "orders", recordID)
+	if len(records) != 3 {
+		t.Fatalf("expected 3 records, got %d", len(records))
+	}
+
+	// The enforcer with a very short MaxAge should delete nothing since records are fresh.
+	enforcer := history.NewRetentionEnforcer(store, history.RetentionPolicy{
+		MaxAge: 24 * time.Hour,
+	})
+	deleted := enforcer.Enforce(ctx, "orders")
+	if deleted != 0 {
+		t.Errorf("expected 0 deleted (all fresh), got %d", deleted)
+	}
+}
+
+func TestRetentionEnforcer_MaxVersions(t *testing.T) {
+	crud := newMemoryCRUD()
+	store := newMemoryChangeRecordCRUD()
+
+	repo := history.WithHistory[Order, int64](crud, store,
+		history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
+	)
+
+	ctx := context.Background()
+
+	// Create 5 versions.
+	order, _ := repo.Create(ctx, Order{Name: "V1", Total: 100, Status: "a"})
+	for i := range 4 {
+		order.Name = fmt.Sprintf("V%d", i+2)
+		order, _ = repo.Update(ctx, order)
+	}
+
+	recordID := strconv.FormatInt(order.ID, 10)
+	records, _, _ := listForRecord(ctx, store, "orders", recordID)
+	if len(records) != 5 {
+		t.Fatalf("expected 5 records, got %d", len(records))
+	}
+
+	// Keep only 3 versions.
+	enforcer := history.NewRetentionEnforcer(store, history.RetentionPolicy{
+		MaxVersions: 3,
+	})
+	deleted := enforcer.Enforce(ctx, "orders")
+	if deleted != 2 {
+		t.Errorf("expected 2 deleted, got %d", deleted)
+	}
+
+	// Remaining should be the latest 3.
+	remaining, _, _ := listForRecord(ctx, store, "orders", recordID)
+	if len(remaining) != 3 {
+		t.Fatalf("expected 3 remaining records, got %d", len(remaining))
+	}
+	// Oldest remaining should be version 3.
+	if remaining[0].Version != 3 {
+		t.Errorf("expected oldest remaining version 3, got %d", remaining[0].Version)
 	}
 }
 
