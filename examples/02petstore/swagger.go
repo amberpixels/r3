@@ -5,13 +5,13 @@ import "net/http"
 // handleSwaggerUI serves the Swagger UI page with an inline OpenAPI 3.0 spec.
 func (s *Server) handleSwaggerUI(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write([]byte(swaggerHTML)) //nolint: errcheck
+	w.Write([]byte(swaggerHTML)) //nolint:errcheck,gosec // response write errors are not actionable
 }
 
 // handleOpenAPISpec serves the raw OpenAPI JSON spec.
 func (s *Server) handleOpenAPISpec(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
-	w.Write([]byte(openAPISpec)) //nolint: errcheck
+	w.Write([]byte(openAPISpec)) //nolint:errcheck,gosec // response write errors are not actionable
 }
 
 const openAPISpec = `{

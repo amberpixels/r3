@@ -1,7 +1,7 @@
 package r3yaml
 
 import (
-	"fmt"
+	"errors"
 
 	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/dialects/canonical"
@@ -17,11 +17,11 @@ type YAMLSort struct {
 // ToSortSpec converts a YAMLSort to an r3.SortSpec.
 func (ys *YAMLSort) ToSortSpec() (*r3.SortSpec, error) {
 	if ys == nil {
-		return nil, newError(fmt.Errorf("nil YAML sort"))
+		return nil, newError(errors.New("nil YAML sort"))
 	}
 
 	if ys.Field == "" {
-		return nil, newError(fmt.Errorf("empty field in YAML sort"))
+		return nil, newError(errors.New("empty field in YAML sort"))
 	}
 
 	return &r3.SortSpec{

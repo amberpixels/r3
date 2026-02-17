@@ -336,7 +336,7 @@ func TestPetStoreAPI(t *testing.T) {
 		require.NoError(t, json.NewDecoder(resp.Body).Decode(&pet))
 		assert.Equal(t, "Charlie Updated", pet.Name)
 		assert.Equal(t, "pending", pet.Status)
-		assert.Equal(t, 650.0, pet.Price)
+		assert.InDelta(t, 650.0, pet.Price, 0.01)
 	})
 
 	// ---------------------------------------------------

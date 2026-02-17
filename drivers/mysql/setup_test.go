@@ -3,6 +3,7 @@ package r3mysql_test
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -89,7 +90,7 @@ func setupMySQLContainer() (testcontainers.Container, *sql.DB, error) {
 
 	// MySQL may take a moment to accept connections after port is open.
 	// Retry ping with backoff.
-	for i := 0; i < 30; i++ {
+	for range 30 {
 		if err := db.PingContext(ctx); err == nil {
 			return container, db, nil
 		}
@@ -97,5 +98,5 @@ func setupMySQLContainer() (testcontainers.Container, *sql.DB, error) {
 	}
 
 	_ = container.Terminate(ctx)
-	return nil, nil, fmt.Errorf("failed to ping MySQL after retries")
+	return nil, nil, errors.New("failed to ping MySQL after retries")
 }

@@ -1,6 +1,7 @@
 package r3yaml
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/amberpixels/r3"
@@ -23,7 +24,7 @@ type YAMLFilters []*YAMLFilter
 // ToFilterSpec converts a YAMLFilter to an r3.FilterSpec.
 func (yf *YAMLFilter) ToFilterSpec() (*r3.FilterSpec, error) {
 	if yf == nil {
-		return nil, newError(fmt.Errorf("nil YAML filter"))
+		return nil, newError(errors.New("nil YAML filter"))
 	}
 
 	// Convert AND children
@@ -62,7 +63,7 @@ func (yf *YAMLFilter) ToFilterSpec() (*r3.FilterSpec, error) {
 
 	// For simple filters, parse field and operator
 	if yf.Field == "" {
-		return nil, newError(fmt.Errorf("empty field in YAML filter"))
+		return nil, newError(errors.New("empty field in YAML filter"))
 	}
 
 	op, err := canonical.ParseFilterOperator(yf.Operator)

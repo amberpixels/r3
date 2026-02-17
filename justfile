@@ -17,8 +17,7 @@ lint-install:
 
 # Lint the code using golangci-lint
 lint: lint-install
-    golangci-lint fmt
-    golangci-lint run
+    @{{ run }} "lint" "golangci-lint across all modules" {{ modules }} -- bash -c 'golangci-lint fmt && golangci-lint run'
 
 # Test all modules
 test:

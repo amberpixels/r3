@@ -1,6 +1,7 @@
 package r3toml
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/amberpixels/r3"
@@ -23,7 +24,7 @@ type TOMLFilters []*TOMLFilter
 // ToFilterSpec converts a TOMLFilter to an r3.FilterSpec.
 func (tf *TOMLFilter) ToFilterSpec() (*r3.FilterSpec, error) {
 	if tf == nil {
-		return nil, newError(fmt.Errorf("nil TOML filter"))
+		return nil, newError(errors.New("nil TOML filter"))
 	}
 
 	// Convert AND children
@@ -62,7 +63,7 @@ func (tf *TOMLFilter) ToFilterSpec() (*r3.FilterSpec, error) {
 
 	// For simple filters, parse field and operator
 	if tf.Field == "" {
-		return nil, newError(fmt.Errorf("empty field in TOML filter"))
+		return nil, newError(errors.New("empty field in TOML filter"))
 	}
 
 	op, err := canonical.ParseFilterOperator(tf.Operator)

@@ -20,7 +20,7 @@ func NewServer(db *gorm.DB) *Server {
 	petRepo := r3gorm.NewGormCRUD[Pet, int64](db)
 	petRepo.SetDefaultListQuery(r3.Query{
 		Sorts:      r3.Sorts{r3.NewSortDescSpec(r3.NewFieldSpec("created_at"))},
-		Pagination: r3.NewPaginationSpecWithSize(20),
+		Pagination: r3.NewPaginationSpecWithSize(20), //nolint:mnd // default page size
 	})
 
 	speciesRepo := r3gorm.NewGormCRUD[Species, int64](db)

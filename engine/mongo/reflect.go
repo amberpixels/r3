@@ -18,6 +18,9 @@ const (
 	RelHasMany = r3tag.RelHasMany
 	// RelBelongsTo represents a many-to-one relationship.
 	RelBelongsTo = r3tag.RelBelongsTo
+
+	// bsonIDField is the standard MongoDB primary key field name.
+	bsonIDField = "_id"
 )
 
 // RelationMeta holds metadata about a struct field that represents a relation.
@@ -72,7 +75,7 @@ func getStructMetaForType(typ reflect.Type) StructMeta {
 func buildStructMeta(typ reflect.Type, parseRelations bool) StructMeta {
 	meta := StructMeta{
 		CollectionName: r3utils.ToSnakeCasePlural(typ.Name()),
-		IDField:        "_id",
+		IDField:        bsonIDField,
 		IDFieldIdx:     -1,
 	}
 
@@ -102,7 +105,7 @@ func buildStructMeta(typ reflect.Type, parseRelations bool) StructMeta {
 		meta.Fields = append(meta.Fields, bsonName)
 		meta.FieldIndices = append(meta.FieldIndices, i)
 
-		if isPK || bsonName == "_id" {
+		if isPK || bsonName == bsonIDField {
 			meta.IDField = bsonName
 			meta.IDFieldIdx = len(meta.FieldIndices) - 1
 		}
@@ -160,7 +163,7 @@ func parseMongoFieldTag(field reflect.StructField) (string, bool, bool, bool) {
 
 	// Map "id" to "_id" for MongoDB convention
 	if bsonName == "id" && isPK {
-		bsonName = "_id"
+		bsonName = bsonIDField
 	}
 
 	return bsonName, isPK, isSoftDelete, false
@@ -168,8 +171,7 @@ func parseMongoFieldTag(field reflect.StructField) (string, bool, bool, bool) {
 
 // isR3OnlyFlags returns true if the r3 tag only contains known flags (no column name).
 func isR3OnlyFlags(raw string) bool {
-	parts := strings.Split(raw, ",")
-	for _, p := range parts {
+	for p := range strings.SplitSeq(raw, ",") {
 		p = strings.TrimSpace(p)
 		switch p {
 		case "pk", "soft_delete":

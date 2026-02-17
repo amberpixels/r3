@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log/slog"
+	"net"
 	"os"
 	"time"
 
@@ -75,7 +76,7 @@ func setupPostgresContainer() (testcontainers.Container, *sql.DB, error) {
 	}
 
 	// Build the PostgreSQL DSN (pgx prefers URL-style connection strings)
-	dsn := fmt.Sprintf("postgres://test:test@%s:%s/testdb?sslmode=disable", host, port.Port())
+	dsn := fmt.Sprintf("postgres://test:test@%s/testdb?sslmode=disable", net.JoinHostPort(host, port.Port()))
 
 	slog.Info("PostgreSQL DSN: ", "dsn", dsn)
 

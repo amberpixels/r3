@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/amberpixels/r3"
-	enginesql "github.com/amberpixels/r3/engine/sql"
 	"github.com/go-pg/pg/v10"
 )
 
@@ -37,7 +36,7 @@ func (r *GoPgCRUD[T, ID]) BeginTx(ctx context.Context) (r3.TxCRUD[T, ID], error)
 		db:   tx,
 		pgDB: nil, // signal that this is a tx-mode GoPgCRUD
 	}
-	txCrud.DefaultsManager = enginesql.NewDefaultsManager()
+	txCrud.DefaultsManager = r3.NewDefaultsManager()
 	txCrud.SetDefaultListQuery(r.GetDefaultListQuery())
 	txCrud.SetDefaultGetQuery(r.GetDefaultGetQuery())
 

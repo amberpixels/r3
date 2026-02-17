@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/amberpixels/r3"
-	enginesql "github.com/amberpixels/r3/engine/sql"
 	"gorm.io/gorm"
 )
 
@@ -34,7 +33,7 @@ func (r *GormCRUD[T, ID]) BeginTx(ctx context.Context) (r3.TxCRUD[T, ID], error)
 		raw: NewGormRaw[T, ID](tx),
 	}
 	// Initialize a fresh DefaultsManager and snapshot the current defaults.
-	txCrud.DefaultsManager = enginesql.NewDefaultsManager()
+	txCrud.DefaultsManager = r3.NewDefaultsManager()
 	txCrud.SetDefaultListQuery(r.GetDefaultListQuery())
 	txCrud.SetDefaultGetQuery(r.GetDefaultGetQuery())
 

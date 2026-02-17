@@ -5,7 +5,6 @@ import (
 	"database/sql"
 
 	"github.com/amberpixels/r3"
-	enginesql "github.com/amberpixels/r3/engine/sql"
 	"github.com/uptrace/bun"
 )
 
@@ -38,7 +37,7 @@ func (r *BunCRUD[T, ID]) BeginTx(ctx context.Context) (r3.TxCRUD[T, ID], error) 
 		db:    tx,
 		sqlDB: nil, // signal that this is a tx-mode BunCRUD
 	}
-	txCrud.DefaultsManager = enginesql.NewDefaultsManager()
+	txCrud.DefaultsManager = r3.NewDefaultsManager()
 	txCrud.SetDefaultListQuery(r.GetDefaultListQuery())
 	txCrud.SetDefaultGetQuery(r.GetDefaultGetQuery())
 

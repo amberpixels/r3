@@ -138,7 +138,7 @@ func (r *BaseRaw[T, ID]) FindOneAndDelete(
 }
 
 // BSONFilter creates a simple bson.D filter from key-value pairs.
-// Usage: BSONFilter("status", "active", "age", bson.D{{"$gt", 18}})
+// Usage: BSONFilter("status", "active", "age", bson.D{{"$gt", 18}}).
 func BSONFilter(kv ...any) bson.D {
 	if len(kv)%2 != 0 {
 		panic("BSONFilter requires an even number of arguments (key-value pairs)")

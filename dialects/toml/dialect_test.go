@@ -82,7 +82,7 @@ func TestFilterToTOML_NilValue(t *testing.T) {
 
 	_, err := r3toml.FilterToTOML(filter)
 	require.Error(t, err)
-	assert.ErrorIs(t, err, r3toml.ErrTOMLNullValue)
+	require.ErrorIs(t, err, r3toml.ErrTOMLNullValue)
 	assert.True(t, r3toml.IsErrDialectorFailure(err))
 }
 

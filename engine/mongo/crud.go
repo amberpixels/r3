@@ -2,6 +2,7 @@ package enginemongo
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -264,7 +265,7 @@ func (r *BaseCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 // Returns an error if the model has no soft-delete field.
 func (r *BaseCRUD[T, ID]) Restore(ctx context.Context, id ID) error {
 	if r.Meta.SoftDeleteField == "" {
-		return fmt.Errorf("r3/engine/mongo: model has no soft-delete field")
+		return errors.New("r3/engine/mongo: model has no soft-delete field")
 	}
 	filter := bson.D{{Key: r.Meta.IDField, Value: id}}
 	update := bson.D{{Key: "$unset", Value: bson.D{

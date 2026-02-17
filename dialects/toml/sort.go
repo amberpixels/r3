@@ -1,7 +1,7 @@
 package r3toml
 
 import (
-	"fmt"
+	"errors"
 
 	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/dialects/canonical"
@@ -17,11 +17,11 @@ type TOMLSort struct {
 // ToSortSpec converts a TOMLSort to an r3.SortSpec.
 func (ts *TOMLSort) ToSortSpec() (*r3.SortSpec, error) {
 	if ts == nil {
-		return nil, newError(fmt.Errorf("nil TOML sort"))
+		return nil, newError(errors.New("nil TOML sort"))
 	}
 
 	if ts.Field == "" {
-		return nil, newError(fmt.Errorf("empty field in TOML sort"))
+		return nil, newError(errors.New("empty field in TOML sort"))
 	}
 
 	return &r3.SortSpec{

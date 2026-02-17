@@ -20,7 +20,7 @@ import (
 
 // City represents a geographical city.
 type City struct {
-	tableName struct{} `pg:"cities"` //nolint: unused
+	tableName struct{} `pg:"cities"` //nolint:unused // required by go-pg
 
 	ID          int64  `pg:"id,pk"`
 	Name        string `pg:"name"`
@@ -32,7 +32,7 @@ type City struct {
 
 // CityTranslation stores the translated name for a City.
 type CityTranslation struct {
-	tableName struct{} `pg:"city_translations"` //nolint: unused
+	tableName struct{} `pg:"city_translations"` //nolint:unused // required by go-pg
 
 	ID     int64  `pg:"id,pk"`
 	Name   string `pg:"name"`
@@ -42,7 +42,7 @@ type CityTranslation struct {
 
 // Location represents a location that belongs to a city.
 type Location struct {
-	tableName struct{} `pg:"locations"` //nolint: unused
+	tableName struct{} `pg:"locations"` //nolint:unused // required by go-pg
 
 	ID         int64  `pg:"id,pk"`
 	Name       string `pg:"name"`
@@ -57,7 +57,7 @@ type Location struct {
 
 // LocationTranslation stores the translated name and slug for a Location.
 type LocationTranslation struct {
-	tableName struct{} `pg:"location_translations"` //nolint: unused
+	tableName struct{} `pg:"location_translations"` //nolint:unused // required by go-pg
 
 	ID         int64  `pg:"id,pk"`
 	Name       string `pg:"name"`
@@ -68,7 +68,7 @@ type LocationTranslation struct {
 
 // Event represents an event associated with a location.
 type Event struct {
-	tableName struct{} `pg:"events"` //nolint: unused
+	tableName struct{} `pg:"events"` //nolint:unused // required by go-pg
 
 	ID         int64     `pg:"id,pk"`
 	HappenedAt time.Time `pg:"happened_at"`
@@ -82,7 +82,7 @@ type Event struct {
 
 // EventTranslation stores the translated name for an Event.
 type EventTranslation struct {
-	tableName struct{} `pg:"event_translations"` //nolint: unused
+	tableName struct{} `pg:"event_translations"` //nolint:unused // required by go-pg
 
 	ID      int64  `pg:"id,pk"`
 	Name    string `pg:"name"`
@@ -92,7 +92,7 @@ type EventTranslation struct {
 
 // Artist represents a person who performs at events.
 type Artist struct {
-	tableName struct{} `pg:"artists"` //nolint: unused
+	tableName struct{} `pg:"artists"` //nolint:unused // required by go-pg
 
 	ID   int64  `pg:"id,pk"`
 	Name string `pg:"name"`
@@ -102,7 +102,7 @@ type Artist struct {
 
 // ArtistTranslation stores the translated name for an Artist.
 type ArtistTranslation struct {
-	tableName struct{} `pg:"artist_translations"` //nolint: unused
+	tableName struct{} `pg:"artist_translations"` //nolint:unused // required by go-pg
 
 	ID       int64  `pg:"id,pk"`
 	Name     string `pg:"name"`
@@ -112,7 +112,7 @@ type ArtistTranslation struct {
 
 // ArtistToEvent represents the many-to-many relationship between artists and events.
 type ArtistToEvent struct {
-	tableName struct{} `pg:"artist_to_events"` //nolint: unused
+	tableName struct{} `pg:"artist_to_events"` //nolint:unused // required by go-pg
 
 	ArtistID int64 `pg:"artist_id,pk"`
 	EventID  int   `pg:"event_id,pk"`
@@ -267,7 +267,7 @@ func TestGoPgRepository(t *testing.T) {
 		// Aggregate queries return a different shape than the model,
 		// so we use Scan into a dedicated struct.
 		type LocationAggregate struct {
-			tableName   struct{} `pg:"locations"` //nolint: unused
+			tableName   struct{} `pg:"locations"` //nolint:unused // required by go-pg
 			ID          int64    `pg:"id"`
 			Name        string   `pg:"name"`
 			TotalWeight int64    `pg:"total_weight"`

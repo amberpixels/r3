@@ -2,6 +2,7 @@ package petstore
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -226,13 +227,13 @@ func queryFromRequest(r *http.Request) (r3.Query, error) {
 	if pageStr := r.URL.Query().Get("page"); pageStr != "" {
 		page, err := strconv.Atoi(pageStr)
 		if err != nil || page < 1 {
-			return q, fmt.Errorf("invalid page number")
+			return q, errors.New("invalid page number")
 		}
 		perPage := 20
 		if ppStr := r.URL.Query().Get("per_page"); ppStr != "" {
 			perPage, err = strconv.Atoi(ppStr)
 			if err != nil || perPage < 1 {
-				return q, fmt.Errorf("invalid per_page value")
+				return q, errors.New("invalid per_page value")
 			}
 		}
 		q.Pagination = r3.NewPaginationSpec(page, perPage)

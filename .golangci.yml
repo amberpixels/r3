@@ -111,7 +111,6 @@ linters:
     - usetesting # reports uses of functions with replacement inside the testing package
     - wastedassign # finds wasted assignment statements
     - whitespace # detects leading and trailing whitespace
-
     ## you may want to enable
     #- decorder # checks declaration order and count of types, constants, variables and functions
     #- exhaustruct # [highly recommend to enable] checks if all structure fields are initialized
@@ -132,7 +131,6 @@ linters:
     #- contextcheck # [too many false positives] checks the function whether use a non-inherited context
     #- dogsled # checks assignments with too many blank identifiers (e.g. x, _, _, _, := f())
     #- dupword # [useless without config] checks for duplicate words in the source code
-    #- err113 # [too strict] checks the errors handling expressions
     #- errchkjson # [don't see profit + I'm against of omitting errors like in the first example https://github.com/breml/errchkjson] checks types passed to the json encoding functions. Reports unsupported types and optionally reports occasions, where the check for the returned error can be omitted
     #- forcetypeassert # [replaced by errcheck] finds forced type assertions
     #- gomodguard # [use more powerful depguard] allow and block lists linter for direct Go module dependencies
@@ -205,6 +203,11 @@ linters:
       # Such cases aren't reported by default.
       # Default: false
       check-type-assertions: true
+
+    gomoddirectives:
+      # Allow local replace directives needed for multi-module workspace development.
+      # Default: false
+      replace-local: true
 
     exhaustive:
       # Program elements to check for exhaustiveness.

@@ -27,7 +27,7 @@ func NewBunCRUD[T any, ID comparable](db *bun.DB) *BunCRUD[T, ID] {
 	return &BunCRUD[T, ID]{
 		db:              db,
 		sqlDB:           db,
-		DefaultsManager: enginesql.NewDefaultsManager(),
+		DefaultsManager: r3.NewDefaultsManager(),
 		raw:             NewBunRaw[T, ID](db),
 	}
 }
@@ -59,7 +59,7 @@ func (r *BunCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64
 	query := r.db.NewSelect().Model(&entities)
 
 	// Apply fields selection
-	if fieldCols := enginesql.FieldsToColumns(prep.Query.Fields); len(fieldCols) > 0 {
+	if fieldCols := r3.FieldsToStrings(prep.Query.Fields); len(fieldCols) > 0 {
 		query = query.Column(fieldCols...)
 	}
 
@@ -106,7 +106,7 @@ func (r *BunCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64
 		return nil, 0, err
 	}
 
-	entities, totalCount = enginesql.FinalizeCount(entities, totalCount, prep.IsPaginated)
+	entities, totalCount = r3.FinalizeCount(entities, totalCount, prep.IsPaginated)
 	return entities, totalCount, nil
 }
 
@@ -118,7 +118,7 @@ func (r *BunCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, e
 	query := r.db.NewSelect().Model(&entity).Where("id = ?", id)
 
 	// Apply fields selection
-	if fieldCols := enginesql.FieldsToColumns(q.Fields); len(fieldCols) > 0 {
+	if fieldCols := r3.FieldsToStrings(q.Fields); len(fieldCols) > 0 {
 		query = query.Column(fieldCols...)
 	}
 
@@ -147,7 +147,7 @@ func (r *BunCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 }
 
 func (r *BunCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields) (T, error) {
-	cols := enginesql.FieldsToColumns(fields)
+	cols := r3.FieldsToStrings(fields)
 
 	meta := enginesql.GetStructMeta[T]()
 	cols, err := meta.ValidatePatchColumns(cols)

@@ -1,6 +1,7 @@
 package r3bson
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/amberpixels/r3"
@@ -62,6 +63,7 @@ func FilterToBSON(f *r3.FilterSpec) (bson.D, error) {
 
 		// Nil value: $eq null / $ne null
 		if f.Value == nil {
+			//nolint:exhaustive // handled by default case
 			switch f.Operator {
 			case r3.OperatorEq:
 				return bson.D{{Key: fieldName, Value: bson.D{{Key: string(BSONOperatorEq), Value: nil}}}}, nil
@@ -166,7 +168,7 @@ func FiltersToBSON(filters r3.Filters) (bson.D, error) {
 // SortToBSON converts a SortSpec to a bson.E element (field: 1 or field: -1).
 func SortToBSON(s *r3.SortSpec) (bson.E, error) {
 	if s == nil {
-		return bson.E{}, fmt.Errorf("sort spec cannot be nil")
+		return bson.E{}, errors.New("sort spec cannot be nil")
 	}
 
 	fieldName := s.Column.String()
