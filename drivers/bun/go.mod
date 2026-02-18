@@ -1,6 +1,6 @@
 module github.com/amberpixels/r3/drivers/bun
 
-go 1.25
+go 1.26
 
 require (
 	github.com/amberpixels/r3 v0.0.0

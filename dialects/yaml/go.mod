@@ -1,6 +1,6 @@
 module github.com/amberpixels/r3/dialects/yaml
 
-go 1.25
+go 1.26
 
 replace github.com/amberpixels/r3 => ../..
 
