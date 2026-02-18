@@ -1,8 +1,9 @@
 // Package r3 provides a universal, database-agnostic CRUD repository abstraction for Go.
 //
 // The core interface is [CRUD], a generic interface parameterized by entity type T
-// and primary key type ID. It provides Create, Get, List, Update, Patch, and Delete
-// operations that work identically regardless of the underlying database.
+// and primary key type ID. It composes [Querier] (Get, List) and [Commander]
+// (Create, Update, Patch, Delete) — use the narrower sub-interfaces when full
+// CRUD access is not needed (e.g. read-only config stores only need [Querier]).
 //
 // Queries are built using composable types: [Filters], [Sorts], [PaginationSpec],
 // [Fields], and [Preloads], all combined into a single [Query] value.

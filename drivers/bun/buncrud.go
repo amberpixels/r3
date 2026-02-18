@@ -17,17 +17,22 @@ type BunCRUD[T any, ID comparable] struct {
 
 	enginesql.DefaultsManager
 
-	raw *BunRaw[T, ID]
+	Config r3.Config
+	raw    *BunRaw[T, ID]
 }
 
 var _ r3.CRUD[any, any] = &BunCRUD[any, any]{}
 
 // NewBunCRUD creates a new Bun-based CRUD repository.
-func NewBunCRUD[T any, ID comparable](db *bun.DB) *BunCRUD[T, ID] {
+//
+// Accepts optional [r3.Option] values for framework-level configuration.
+func NewBunCRUD[T any, ID comparable](db *bun.DB, opts ...r3.Option) *BunCRUD[T, ID] {
+	resolved := r3.ResolveOptions(opts...)
 	return &BunCRUD[T, ID]{
 		db:              db,
 		sqlDB:           db,
-		DefaultsManager: r3.NewDefaultsManager(),
+		DefaultsManager: r3.NewDefaultsManagerWithConfig(resolved.Config),
+		Config:          resolved.Config,
 		raw:             NewBunRaw[T, ID](db),
 	}
 }
@@ -181,6 +186,12 @@ func (r *BunCRUD[T, ID]) HardDelete(ctx context.Context, id ID) error {
 	_, err := r.db.NewDelete().Model((*T)(nil)).
 		Where("id = ?", id).ForceDelete().Exec(ctx)
 	return err
+}
+
+// NewBunQuerier creates a read-only Bun-based repository.
+// Returns [r3.Querier] — a compile-time guarantee of read-only access.
+func NewBunQuerier[T any, ID comparable](db *bun.DB, opts ...r3.Option) r3.Querier[T, ID] {
+	return NewBunCRUD[T, ID](db, opts...)
 }
 
 // Raw returns the BunRaw escape hatch for custom queries.

@@ -14,16 +14,21 @@ type GormCRUD[T any, ID comparable] struct {
 
 	enginesql.DefaultsManager
 
-	raw *GormRaw[T, ID]
+	Config r3.Config
+	raw    *GormRaw[T, ID]
 }
 
 var _ r3.CRUD[any, any] = &GormCRUD[any, any]{}
 
 // NewGormCRUD creates a new GORM-based CRUD repository.
-func NewGormCRUD[T any, ID comparable](db *gorm.DB) *GormCRUD[T, ID] {
+//
+// Accepts optional [r3.Option] values for framework-level configuration.
+func NewGormCRUD[T any, ID comparable](db *gorm.DB, opts ...r3.Option) *GormCRUD[T, ID] {
+	resolved := r3.ResolveOptions(opts...)
 	return &GormCRUD[T, ID]{
 		db:              db,
-		DefaultsManager: r3.NewDefaultsManager(),
+		DefaultsManager: r3.NewDefaultsManagerWithConfig(resolved.Config),
+		Config:          resolved.Config,
 		raw:             NewGormRaw[T, ID](db),
 	}
 }
@@ -161,6 +166,12 @@ func (r *GormCRUD[T, ID]) Restore(ctx context.Context, id ID) error {
 // HardDelete permanently removes a record, bypassing GORM's soft-delete.
 func (r *GormCRUD[T, ID]) HardDelete(ctx context.Context, id ID) error {
 	return r.db.WithContext(ctx).Unscoped().Delete(new(T), id).Error
+}
+
+// NewGormQuerier creates a read-only GORM-based repository.
+// Returns [r3.Querier] — a compile-time guarantee of read-only access.
+func NewGormQuerier[T any, ID comparable](db *gorm.DB, opts ...r3.Option) r3.Querier[T, ID] {
+	return NewGormCRUD[T, ID](db, opts...)
 }
 
 // Raw returns the GormRaw escape hatch for custom queries.

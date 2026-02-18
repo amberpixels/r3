@@ -18,10 +18,18 @@ var _ r3.CRUD[any, any] = &PqCRUD[any, any]{}
 // NewPqCRUD creates a new database/sql-based CRUD repository.
 // Models should use `db:"column_name"` struct tags for column mapping.
 // The primary key field should be tagged with `db:"id,pk"` (defaults to "id").
-func NewPqCRUD[T any, ID comparable](db *sql.DB) *PqCRUD[T, ID] {
+//
+// Accepts optional [r3.Option] values for framework-level configuration.
+func NewPqCRUD[T any, ID comparable](db *sql.DB, opts ...r3.Option) *PqCRUD[T, ID] {
 	return &PqCRUD[T, ID]{
-		BaseCRUD: enginesql.NewBaseCRUD[T, ID](db, enginesql.FlavorPostgres),
+		BaseCRUD: enginesql.NewBaseCRUD[T, ID](db, enginesql.FlavorPostgres, opts...),
 	}
+}
+
+// NewPqQuerier creates a read-only pq-based repository.
+// Returns [r3.Querier] — a compile-time guarantee of read-only access.
+func NewPqQuerier[T any, ID comparable](db *sql.DB, opts ...r3.Option) r3.Querier[T, ID] {
+	return NewPqCRUD[T, ID](db, opts...)
 }
 
 // Raw returns the BaseRaw escape hatch for custom queries.

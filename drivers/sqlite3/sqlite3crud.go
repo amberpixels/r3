@@ -18,10 +18,18 @@ var _ r3.CRUD[any, any] = &Sqlite3CRUD[any, any]{}
 // NewSqlite3CRUD creates a new SQLite-based CRUD repository.
 // Models should use `db:"column_name"` struct tags for column mapping.
 // The primary key field should be tagged with `db:"id,pk"` (defaults to "id").
-func NewSqlite3CRUD[T any, ID comparable](db *sql.DB) *Sqlite3CRUD[T, ID] {
+//
+// Accepts optional [r3.Option] values for framework-level configuration.
+func NewSqlite3CRUD[T any, ID comparable](db *sql.DB, opts ...r3.Option) *Sqlite3CRUD[T, ID] {
 	return &Sqlite3CRUD[T, ID]{
-		BaseCRUD: enginesql.NewBaseCRUD[T, ID](db, enginesql.FlavorSQLite),
+		BaseCRUD: enginesql.NewBaseCRUD[T, ID](db, enginesql.FlavorSQLite, opts...),
 	}
+}
+
+// NewSqlite3Querier creates a read-only SQLite-based repository.
+// Returns [r3.Querier] — a compile-time guarantee of read-only access.
+func NewSqlite3Querier[T any, ID comparable](db *sql.DB, opts ...r3.Option) r3.Querier[T, ID] {
+	return NewSqlite3CRUD[T, ID](db, opts...)
 }
 
 // Raw returns the BaseRaw escape hatch for custom queries.

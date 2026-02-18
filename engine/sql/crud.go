@@ -38,6 +38,7 @@ type BaseCRUD[T any, ID comparable] struct {
 
 	Meta   StructMeta
 	Flavor Flavor
+	Config r3.Config
 	Raw    *BaseRaw[T, ID]
 }
 
@@ -46,14 +47,19 @@ var _ r3.CRUD[any, any] = &BaseCRUD[any, any]{}
 // NewBaseCRUD creates a new BaseCRUD with the given database connection and flavor.
 // Models should use `db:"column_name"` struct tags for column mapping.
 // The primary key field should be tagged with `db:"id,pk"` (defaults to "id").
-func NewBaseCRUD[T any, ID comparable](db *sql.DB, flavor Flavor) *BaseCRUD[T, ID] {
+//
+// Accepts optional [r3.Option] values for framework-level configuration
+// (e.g. [r3.WithConfig] for custom naming conventions or default page size).
+func NewBaseCRUD[T any, ID comparable](db *sql.DB, flavor Flavor, opts ...r3.Option) *BaseCRUD[T, ID] {
+	resolved := r3.ResolveOptions(opts...)
 	meta := GetStructMeta[T]()
 	return &BaseCRUD[T, ID]{
 		Executor:        db,
 		sqlDB:           db,
-		DefaultsManager: NewDefaultsManager(),
+		DefaultsManager: r3.NewDefaultsManagerWithConfig(resolved.Config),
 		Meta:            meta,
 		Flavor:          flavor,
+		Config:          resolved.Config,
 		Raw:             NewBaseRaw[T, ID](db, meta),
 	}
 }

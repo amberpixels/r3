@@ -29,8 +29,9 @@ func (r *GormCRUD[T, ID]) BeginTx(ctx context.Context) (r3.TxCRUD[T, ID], error)
 	}
 
 	txCrud := &GormCRUD[T, ID]{
-		db:  tx,
-		raw: NewGormRaw[T, ID](tx),
+		db:     tx,
+		Config: r.Config,
+		raw:    NewGormRaw[T, ID](tx),
 	}
 	// Initialize a fresh DefaultsManager and snapshot the current defaults.
 	txCrud.DefaultsManager = r3.NewDefaultsManager()

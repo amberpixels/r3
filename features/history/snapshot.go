@@ -65,13 +65,13 @@ type SnapshotConditionFunc[T any] func(action Action, old, cur T) bool
 // SnapshotRule defines when and where to take a snapshot for an entity type.
 // Multiple rules can exist per entity — each with its own condition and store.
 //
-// The Store field is any r3.CRUD[Snapshot, string] — "everything is a R3po."
+// The Store field is any [r3.Commander] for Snapshot — only write access is needed.
 //
 // Example:
 //
 //	r3history.SnapshotRule[BenefitSheet]{
 //	    Name:  "on_publish",
-//	    Store: snapshotCRUD,  // any r3.CRUD[Snapshot, string]
+//	    Store: snapshotCRUD,  // any r3.Commander[Snapshot, string] (or r3.CRUD)
 //	    Condition: func(action Action, old, cur BenefitSheet) bool {
 //	        return old.Status == "draft" && cur.Status == "published"
 //	    },
@@ -81,8 +81,9 @@ type SnapshotRule[T any] struct {
 	Name string
 
 	// Store is where snapshots triggered by this rule are persisted.
-	// Any r3.CRUD[Snapshot, string] implementation.
-	Store r3.CRUD[Snapshot, string]
+	// Only [r3.Commander] is required — snapshots are only written, never read back
+	// through this interface. Any r3.CRUD also satisfies Commander.
+	Store r3.Commander[Snapshot, string]
 
 	// Condition determines whether a snapshot should be taken.
 	// If nil, the rule never triggers (effectively disabled).

@@ -18,11 +18,12 @@ var _ r3.CRUD[any, any] = (*BaseCRUD[any, any])(nil)
 type BaseCRUD[T any, ID comparable] struct {
 	r3.DefaultsManager
 
-	Meta  StructMeta
-	store storage
-	codec Codec
-	idGen IDGenerator[ID]
-	mu    sync.RWMutex
+	Meta   StructMeta
+	Config r3.Config
+	store  storage
+	codec  Codec
+	idGen  IDGenerator[ID]
+	mu     sync.RWMutex
 }
 
 // New creates a new file-based CRUD instance.
@@ -50,9 +51,11 @@ func New[T any, ID comparable](idGen IDGenerator[ID], opts ...Option) (*BaseCRUD
 		st = newSingleFileStorage(cfg.baseDir, meta.ResourceName, cfg.codec)
 	}
 
+	resolved := r3.ResolveOptions(cfg.r3Opts...)
 	crud := &BaseCRUD[T, ID]{
-		DefaultsManager: r3.NewDefaultsManager(),
+		DefaultsManager: r3.NewDefaultsManagerWithConfig(resolved.Config),
 		Meta:            meta,
+		Config:          resolved.Config,
 		store:           st,
 		codec:           cfg.codec,
 		idGen:           idGen,

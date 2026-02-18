@@ -602,7 +602,111 @@ func TestCustomCodec(t *testing.T) {
 }
 
 // --------------------------------------------------------------------------
-// Compile-time interface check
+// Config tests
+// --------------------------------------------------------------------------
+
+func TestConfig_CustomPageSize(t *testing.T) {
+	dir := tempDir(t)
+	cfg := r3.DefaultConfig()
+	cfg.Defaults.PageSize = 3
+
+	repo, err := enginefile.New[City, int](
+		enginefile.IncrementIDGen[int](),
+		enginefile.WithBaseDir(dir),
+		enginefile.WithCodec(enginefile.JSONCodec()),
+		enginefile.WithR3Options(r3.WithConfig(cfg)),
+	)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Create 5 cities
+	for i := range 5 {
+		_, err := repo.Create(ctx, City{Name: "City" + string(rune('A'+i)), Country: "X"})
+		require.NoError(t, err)
+	}
+
+	// List without explicit pagination — should use config's PageSize=3
+	entities, total, err := repo.List(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, int64(5), total) // total count is all 5
+	assert.Len(t, entities, 3)       // but only 3 returned (page size)
+}
+
+func TestConfig_DefaultPageSizeUnchanged(t *testing.T) {
+	dir := tempDir(t)
+
+	// No config override — default page size (50) applies
+	repo, err := enginefile.New[City, int](
+		enginefile.IncrementIDGen[int](),
+		enginefile.WithBaseDir(dir),
+		enginefile.WithCodec(enginefile.JSONCodec()),
+	)
+	require.NoError(t, err)
+
+	ctx := context.Background()
+
+	// Create 5 cities
+	for i := range 5 {
+		_, err := repo.Create(ctx, City{Name: "City" + string(rune('A'+i)), Country: "X"})
+		require.NoError(t, err)
+	}
+
+	// List without explicit pagination — default 50, no pagination needed for 5 items
+	entities, total, err := repo.List(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, int64(5), total)
+	assert.Len(t, entities, 5)
+}
+
+// --------------------------------------------------------------------------
+// Querier tests
+// --------------------------------------------------------------------------
+
+func TestNewQuerier_ReadOnly(t *testing.T) {
+	dir := tempDir(t)
+	ctx := context.Background()
+
+	// Create a full CRUD to seed data
+	repo, err := enginefile.New[City, int](
+		enginefile.IncrementIDGen[int](),
+		enginefile.WithBaseDir(dir),
+		enginefile.WithCodec(enginefile.JSONCodec()),
+	)
+	require.NoError(t, err)
+
+	_, err = repo.Create(ctx, City{Name: "Berlin", Country: "Germany"})
+	require.NoError(t, err)
+	_, err = repo.Create(ctx, City{Name: "Paris", Country: "France"})
+	require.NoError(t, err)
+
+	// Create a Querier pointing to the same data
+	querier, err := enginefile.NewQuerier[City, int](
+		enginefile.IncrementIDGen[int](),
+		enginefile.WithBaseDir(dir),
+		enginefile.WithCodec(enginefile.JSONCodec()),
+	)
+	require.NoError(t, err)
+
+	// Get works
+	city, err := querier.Get(ctx, 1)
+	require.NoError(t, err)
+	assert.Equal(t, "Berlin", city.Name)
+
+	// List works
+	cities, total, err := querier.List(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), total)
+	assert.Len(t, cities, 2)
+
+	// The querier variable is typed as r3.Querier — calling Create/Update/Patch/Delete
+	// on it is a compile error. This test verifies the runtime read path works.
+}
+
+// --------------------------------------------------------------------------
+// Compile-time interface checks
 // --------------------------------------------------------------------------
 
 var _ r3.CRUD[City, int] = (*enginefile.BaseCRUD[City, int])(nil)
+var _ r3.Querier[City, int] = (*enginefile.BaseCRUD[City, int])(nil)
+var _ r3.Commander[City, int] = (*enginefile.BaseCRUD[City, int])(nil)

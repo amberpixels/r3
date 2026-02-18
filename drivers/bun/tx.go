@@ -34,8 +34,9 @@ func (r *BunCRUD[T, ID]) BeginTx(ctx context.Context) (r3.TxCRUD[T, ID], error) 
 	}
 
 	txCrud := &BunCRUD[T, ID]{
-		db:    tx,
-		sqlDB: nil, // signal that this is a tx-mode BunCRUD
+		db:     tx,
+		sqlDB:  nil, // signal that this is a tx-mode BunCRUD
+		Config: r.Config,
 	}
 	txCrud.DefaultsManager = r3.NewDefaultsManager()
 	txCrud.SetDefaultListQuery(r.GetDefaultListQuery())

@@ -42,6 +42,7 @@ func (r *BaseCRUD[T, ID]) BeginTx(ctx context.Context) (r3.TxCRUD[T, ID], error)
 		sqlDB:    nil, // signal that this is a tx-mode BaseCRUD
 		Meta:     r.Meta,
 		Flavor:   r.Flavor,
+		Config:   r.Config,
 		Raw:      NewBaseRaw[T, ID](tx, r.Meta),
 	}
 	// Initialize a fresh DefaultsManager (can't copy because of sync.RWMutex)

@@ -20,20 +20,21 @@ type BucketValue struct {
 }
 
 // Aggregator provides convenience methods for querying and computing metric aggregations.
-// It works with any r3.CRUD[MetricRecord, string] backend.
+// It works with any [r3.Querier] for MetricRecord — only read access is needed.
 //
 // If the underlying store also implements AggregationPusher, the Aggregator
 // automatically delegates to server-side aggregation for much better performance
 // at scale. Otherwise, aggregation is done in-memory after fetching records.
 type Aggregator struct {
-	store  r3.CRUD[MetricRecord, string]
+	store  r3.Querier[MetricRecord, string]
 	pusher AggregationPusher // nil if store doesn't implement AggregationPusher.
 }
 
 // NewAggregator creates a new Aggregator using the given metric store.
+// Only [r3.Querier] is required — the Aggregator never writes to the store.
 // If the store also implements AggregationPusher, server-side aggregation
 // is automatically enabled.
-func NewAggregator(store r3.CRUD[MetricRecord, string]) *Aggregator {
+func NewAggregator(store r3.Querier[MetricRecord, string]) *Aggregator {
 	a := &Aggregator{store: store}
 	if p, ok := store.(AggregationPusher); ok {
 		a.pusher = p

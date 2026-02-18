@@ -1,5 +1,7 @@
 package enginefile
 
+import "github.com/amberpixels/r3"
+
 // Option configures a BaseCRUD instance.
 type Option func(*config)
 
@@ -9,6 +11,7 @@ type config struct {
 	codec         Codec
 	directoryMode bool
 	filePath      string // explicit path override
+	r3Opts        []r3.Option
 }
 
 // WithBaseDir sets the base directory for file storage.
@@ -41,5 +44,13 @@ func WithDirectoryMode() Option {
 func WithFilePath(path string) Option {
 	return func(c *config) {
 		c.filePath = path
+	}
+}
+
+// WithR3Options passes framework-level r3.Option values (e.g. [r3.WithConfig])
+// to the file-based CRUD constructor.
+func WithR3Options(opts ...r3.Option) Option {
+	return func(c *config) {
+		c.r3Opts = append(c.r3Opts, opts...)
 	}
 }

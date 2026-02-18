@@ -4,16 +4,24 @@ import (
 	"context"
 )
 
-// CRUD is main generic interface for CRUD repository operations.
-type CRUD[T any, ID comparable] interface {
-	// Create inserts a new record into the database.
-	Create(context.Context, T) (T, error)
-
+// Querier is the read-only subset of repository operations.
+// It provides methods for retrieving entities without modifying them.
+//
+// Use Querier when you need read-only access to a repository,
+// for example when reading configuration or building reports.
+type Querier[T any, ID comparable] interface {
 	// Get retrieves a record by its ID with optional parameters.
 	Get(context.Context, ID, ...Query) (T, error)
 
-	// List retrieves records based on the provided ListParams.
+	// List retrieves records based on the provided query parameters.
 	List(context.Context, ...Query) ([]T, int64, error)
+}
+
+// Commander is the write-only subset of repository operations.
+// It provides methods for creating, modifying, and deleting entities.
+type Commander[T any, ID comparable] interface {
+	// Create inserts a new record into the database.
+	Create(context.Context, T) (T, error)
 
 	// Update modifies an existing record in the database with optional parameters.
 	Update(context.Context, T) (T, error)
@@ -27,4 +35,11 @@ type CRUD[T any, ID comparable] interface {
 	// Delete removes a record by its ID.
 	// It can use soft delete (if it's turned on the repository level)
 	Delete(context.Context, ID) error
+}
+
+// CRUD is the full read+write repository interface.
+// It composes [Querier] (Get, List) and [Commander] (Create, Update, Patch, Delete).
+type CRUD[T any, ID comparable] interface {
+	Querier[T, ID]
+	Commander[T, ID]
 }

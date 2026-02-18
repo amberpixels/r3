@@ -34,6 +34,21 @@ func NewDefaultsManager() DefaultsManager {
 	}
 }
 
+// NewDefaultsManagerWithConfig creates a DefaultsManager that respects the given Config.
+// If Config.Defaults.PageSize differs from the global default, the default list query
+// is initialized with that page size.
+func NewDefaultsManagerWithConfig(cfg Config) DefaultsManager {
+	d := NewDefaults()
+	if cfg.Defaults.PageSize > 0 && cfg.Defaults.PageSize != PageSizeDefault {
+		q := DefaultQuery()
+		q.Pagination = NewPaginationSpecWithSize(cfg.Defaults.PageSize)
+		d.ListQuery = q
+	}
+	return DefaultsManager{
+		defaults: d,
+	}
+}
+
 // SetDefaultListQuery sets the default ListQuery (thread-safe).
 func (dm *DefaultsManager) SetDefaultListQuery(q Query) {
 	dm.mu.Lock()

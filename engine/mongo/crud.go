@@ -22,8 +22,9 @@ type BaseCRUD[T any, ID comparable] struct {
 
 	r3.DefaultsManager
 
-	Meta StructMeta
-	Raw  *BaseRaw[T, ID]
+	Meta   StructMeta
+	Config r3.Config
+	Raw    *BaseRaw[T, ID]
 }
 
 var _ r3.CRUD[any, any] = &BaseCRUD[any, any]{}
@@ -31,25 +32,33 @@ var _ r3.CRUD[any, any] = &BaseCRUD[any, any]{}
 // NewBaseCRUD creates a new BaseCRUD with the given MongoDB collection.
 // If collection is nil, it derives the collection name from the struct type T
 // and uses the provided database.
-func NewBaseCRUD[T any, ID comparable](coll *mongo.Collection) *BaseCRUD[T, ID] {
+//
+// Accepts optional [r3.Option] values for framework-level configuration.
+func NewBaseCRUD[T any, ID comparable](coll *mongo.Collection, opts ...r3.Option) *BaseCRUD[T, ID] {
+	resolved := r3.ResolveOptions(opts...)
 	meta := GetStructMeta[T]()
 	return &BaseCRUD[T, ID]{
 		Collection:      coll,
-		DefaultsManager: r3.NewDefaultsManager(),
+		DefaultsManager: r3.NewDefaultsManagerWithConfig(resolved.Config),
 		Meta:            meta,
+		Config:          resolved.Config,
 		Raw:             NewBaseRaw[T, ID](coll, meta),
 	}
 }
 
 // NewBaseCRUDFromDB creates a new BaseCRUD using a database, deriving the collection
 // name automatically from the struct type T.
-func NewBaseCRUDFromDB[T any, ID comparable](db *mongo.Database) *BaseCRUD[T, ID] {
+//
+// Accepts optional [r3.Option] values for framework-level configuration.
+func NewBaseCRUDFromDB[T any, ID comparable](db *mongo.Database, opts ...r3.Option) *BaseCRUD[T, ID] {
+	resolved := r3.ResolveOptions(opts...)
 	meta := GetStructMeta[T]()
 	coll := db.Collection(meta.CollectionName)
 	return &BaseCRUD[T, ID]{
 		Collection:      coll,
-		DefaultsManager: r3.NewDefaultsManager(),
+		DefaultsManager: r3.NewDefaultsManagerWithConfig(resolved.Config),
 		Meta:            meta,
+		Config:          resolved.Config,
 		Raw:             NewBaseRaw[T, ID](coll, meta),
 	}
 }

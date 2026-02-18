@@ -17,17 +17,22 @@ type GoPgCRUD[T any, ID comparable] struct {
 	pgDB *pg.DB // original *pg.DB, nil when inside a transaction
 	enginesql.DefaultsManager
 
-	raw *GoPgRaw[T, ID]
+	Config r3.Config
+	raw    *GoPgRaw[T, ID]
 }
 
 var _ r3.CRUD[any, any] = &GoPgCRUD[any, any]{}
 
 // NewGoPgCRUD creates a new go-pg-based CRUD repository.
-func NewGoPgCRUD[T any, ID comparable](db *pg.DB) *GoPgCRUD[T, ID] {
+//
+// Accepts optional [r3.Option] values for framework-level configuration.
+func NewGoPgCRUD[T any, ID comparable](db *pg.DB, opts ...r3.Option) *GoPgCRUD[T, ID] {
+	resolved := r3.ResolveOptions(opts...)
 	return &GoPgCRUD[T, ID]{
 		db:              db,
 		pgDB:            db,
-		DefaultsManager: r3.NewDefaultsManager(),
+		DefaultsManager: r3.NewDefaultsManagerWithConfig(resolved.Config),
+		Config:          resolved.Config,
 		raw:             NewGoPgRaw[T, ID](db),
 	}
 }
@@ -181,6 +186,12 @@ func (r *GoPgCRUD[T, ID]) HardDelete(ctx context.Context, id ID) error {
 	_, err := r.db.ModelContext(ctx, (*T)(nil)).
 		Where("id = ?", id).AllWithDeleted().ForceDelete()
 	return err
+}
+
+// NewGoPgQuerier creates a read-only go-pg-based repository.
+// Returns [r3.Querier] — a compile-time guarantee of read-only access.
+func NewGoPgQuerier[T any, ID comparable](db *pg.DB, opts ...r3.Option) r3.Querier[T, ID] {
+	return NewGoPgCRUD[T, ID](db, opts...)
 }
 
 // Raw returns the GoPgRaw escape hatch for custom queries.
