@@ -1,6 +1,6 @@
 module github.com/amberpixels/r3/engine/file
 
-go 1.25
+go 1.26
 
 require (
 	github.com/amberpixels/k1 v0.1.4

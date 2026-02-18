@@ -70,7 +70,7 @@ func FilterToBSON(f *r3.FilterSpec) (bson.D, error) {
 			case r3.OperatorNe:
 				return bson.D{{Key: fieldName, Value: bson.D{{Key: string(BSONOperatorNe), Value: nil}}}}, nil
 			default:
-				return nil, fmt.Errorf("unsupported operator %q for nil value", f.Operator)
+				return nil, fmt.Errorf("unsupported operator %v for nil value", f.Operator)
 			}
 		}
 

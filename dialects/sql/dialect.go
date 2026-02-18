@@ -149,7 +149,7 @@ func FilterToSQL(cf *r3.FilterSpec) (SQLClause, error) {
 				return SQLClause{Clause: clause, Args: nil, Joins: joins}, nil
 			}
 
-			return SQLClause{}, fmt.Errorf("unsupported operator %q for nil value", cf.Operator)
+			return SQLClause{}, fmt.Errorf("unsupported operator %v for nil value", cf.Operator)
 		}
 
 		// Simple case: Field is set and Value is non-nil.
