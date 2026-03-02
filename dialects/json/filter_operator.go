@@ -9,32 +9,36 @@ import (
 	"github.com/amberpixels/r3/dialects/canonical"
 )
 
+// ErrInvalidFilterOperator is returned when a filter operator string cannot be parsed.
 var ErrInvalidFilterOperator = errors.New("invalid filter operator")
 
+// JSONFilterOperator represents a filter operator in JSON format.
 type JSONFilterOperator int8
 
+// JSON filter operator constants.
 const (
-	OperatorUnspecified JSONFilterOperator = iota
-	OperatorEq
-	OperatorNe
-	OperatorExists
-	OperatorGt
-	OperatorGte
-	OperatorLt
-	OperatorLte
-	OperatorBetween
-	OperatorBetweenEx
-	OperatorBetweenExInc
-	OperatorBetweenIncEx
-	OperatorIn
-	OperatorNotIn
-	OperatorLike
-	OperatorNotLike
-	OperatorILike
+	OperatorUnspecified  JSONFilterOperator = iota
+	OperatorEq                              // eq, ==
+	OperatorNe                              // ne, !=
+	OperatorExists                          // exists
+	OperatorGt                              // gt, >
+	OperatorGte                             // gte, >=
+	OperatorLt                              // lt, <
+	OperatorLte                             // lte, <=
+	OperatorBetween                         // between (inclusive both)
+	OperatorBetweenEx                       // between_exc (exclusive both)
+	OperatorBetweenExInc                    // between_exc_inc
+	OperatorBetweenIncEx                    // between_inc_exc
+	OperatorIn                              // in
+	OperatorNotIn                           // nin
+	OperatorLike                            // like, *=
+	OperatorNotLike                         // notlike, !*=
+	OperatorILike                           // ilike, **=
 )
 
-// Enum value maps for Operator.
+// Enum value maps for JSONFilterOperator.
 var (
+	// FilterOperatorNames maps operator constants to their canonical string names.
 	FilterOperatorNames = map[JSONFilterOperator]string{
 		OperatorUnspecified:  "",
 		OperatorEq:           "eq",
@@ -54,6 +58,7 @@ var (
 		OperatorNotLike:      "notlike",
 		OperatorILike:        "ilike",
 	}
+	// FilterOperatorValues maps string representations (including aliases) to operator constants.
 	FilterOperatorValues = map[string]JSONFilterOperator{
 		"":                OperatorUnspecified,
 		"eq":              OperatorEq,
@@ -103,6 +108,7 @@ func (op *JSONFilterOperator) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// MarshalJSON implements the json.Marshaler interface.
 func (op JSONFilterOperator) MarshalJSON() ([]byte, error) {
 	return []byte(`"` + op.String() + `"`), nil
 }
@@ -125,6 +131,7 @@ func (op JSONFilterOperator) MarshalText() ([]byte, error) {
 	return []byte(op.String()), nil
 }
 
+// ToFilterOperatorSpec converts a JSONFilterOperator to an r3.FilterOperatorSpec.
 func (op JSONFilterOperator) ToFilterOperatorSpec() (r3.FilterOperatorSpec, error) {
 	name := FilterOperatorNames[op]
 	if name == "" {

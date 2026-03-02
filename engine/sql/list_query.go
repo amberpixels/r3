@@ -19,12 +19,23 @@ type PreparedListQuery struct {
 	// Sorts is the list of SQL ORDER BY expressions.
 	Sorts []r3sql.SQLSort
 
-	// IsPaginated indicates whether pagination is active.
+	// IsPaginated indicates whether offset-based pagination is active.
 	IsPaginated bool
 
 	// Limit and Offset are set when IsPaginated is true.
 	Limit  int
 	Offset int
+
+	// IsCursorPaginated indicates whether cursor/keyset pagination is active.
+	// When true, CursorClause contains the keyset WHERE condition and CursorLimit
+	// contains the LIMIT. No OFFSET or COUNT query should be used.
+	IsCursorPaginated bool
+
+	// CursorClause is the keyset WHERE clause (may be empty for the first page).
+	CursorClause r3sql.SQLClause
+
+	// CursorLimit is the maximum number of results for cursor pagination.
+	CursorLimit int
 
 	// Query is the merged r3.Query (defaults + user args) for access to
 	// Preloads, IncludeTrashed, and other fields that are driver-specific.
@@ -58,8 +69,28 @@ func PrepareListQuery(dm *DefaultsManager, qarg ...r3.Query) (PreparedListQuery,
 		p.Sorts = sorts
 	}
 
-	// Compute pagination
-	if q.Pagination != nil && q.Pagination.IsPaginated() {
+	// Compute pagination: cursor takes precedence over offset-based
+	if q.Cursor != nil {
+		if len(q.Sorts) == 0 {
+			return p, r3.ErrCursorRequiresSort
+		}
+
+		p.IsCursorPaginated = true
+		p.CursorLimit = q.Cursor.GetLimit()
+
+		token := q.Cursor.Token()
+		if token != "" {
+			values, err := r3.DecodeCursor(token)
+			if err != nil {
+				return p, fmt.Errorf("failed to decode cursor: %w", err)
+			}
+			cursorClause, err := r3sql.CursorToSQLClause(values, q.Sorts, q.Cursor.Direction())
+			if err != nil {
+				return p, fmt.Errorf("failed to build cursor clause: %w", err)
+			}
+			p.CursorClause = cursorClause
+		}
+	} else if q.Pagination != nil && q.Pagination.IsPaginated() {
 		p.IsPaginated = true
 		p.Limit, p.Offset = q.Pagination.ToLimitOffset()
 	}

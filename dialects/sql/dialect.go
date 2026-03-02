@@ -1,32 +1,10 @@
 package r3sql
 
-// TODO: Dialect Flavors
-//
-// Dialects can have flavors to handle database-specific SQL variations.
-// When a driver selects a dialect, it should also be able to select the
-// proper flavor of that dialect. For example:
-//
-//   - PostgreSQL flavor: supports ILIKE, uses $1/$2 placeholders, supports RETURNING
-//   - SQLite flavor: maps ILIKE -> LIKE (SQLite LIKE is case-insensitive for ASCII),
-//     uses ? placeholders, RETURNING requires SQLite 3.35+
-//   - MySQL flavor: maps ILIKE -> LIKE (with collation-dependent behavior),
-//     uses ? placeholders, no NULLS FIRST/LAST (needs CASE WHEN workaround)
-//
-// Proposed API:
-//
-//   type Flavor int
-//   const (
-//       FlavorPostgreSQL Flavor = iota
-//       FlavorSQLite
-//       FlavorMySQL
-//   )
-//
-//   // Option funcs for dialect conversion:
-//   FiltersToSQL(filters, WithFlavor(FlavorSQLite))
-//   SortsToSQL(sorts, WithFlavor(FlavorSQLite))
-//
-// This keeps the dialect package as the single SQL translation layer,
-// with drivers only needing to specify which flavor they require.
+// NOTE: Database-specific SQL variations (ILIKE behavior, placeholder style,
+// NULLS FIRST/LAST support) are handled at the engine layer via engine/sql.Flavor,
+// not at the dialect level. The dialect package generates generic SQL that works
+// across databases, while Flavor handles DB-specific placeholder conversion
+// and query construction.
 
 import (
 	"errors"
@@ -73,18 +51,20 @@ func OperatorToSQL(op r3.FilterOperatorSpec) (SQLClauseOperator, error) {
 	case r3.OperatorNotLike:
 		return SQLClauseOperatorNotLike, nil
 	case r3.OperatorILike:
-		// TODO: With dialect flavors, this should respect the selected flavor:
-		//   PostgreSQL -> ILIKE (native)
-		//   SQLite     -> LIKE  (SQLite LIKE is case-insensitive for ASCII)
-		//   MySQL      -> LIKE  (case sensitivity depends on column collation)
+		// Generates ILIKE which is PostgreSQL-native. For MySQL/SQLite compatibility,
+		// the engine/sql.Flavor layer handles any necessary conversion.
 		return SQLClauseOperatorILike, nil
+
+	case r3.OperatorExists:
+		// Exists is handled directly in FilterToSQL as IS NOT NULL.
+		return "", errors.New("exists operator must be handled via FilterToSQL, not OperatorToSQL")
 
 	case r3.OperatorBetween,
 		r3.OperatorBetweenEx,
 		r3.OperatorBetweenExInc,
-		r3.OperatorBetweenIncEx,
-		r3.OperatorExists:
-		return "", fmt.Errorf("not implemented: %s", &op)
+		r3.OperatorBetweenIncEx:
+		// Between operators are handled directly in FilterToSQL as compound conditions.
+		return "", errors.New("between operators must be handled via FilterToSQL, not OperatorToSQL")
 
 	case r3.OperatorUnspecified:
 		fallthrough
@@ -150,6 +130,17 @@ func FilterToSQL(cf *r3.FilterSpec) (SQLClause, error) {
 			}
 
 			return SQLClause{}, fmt.Errorf("unsupported operator %v for nil value", cf.Operator)
+		}
+
+		// Exists: translate to IS NOT NULL
+		if cf.Operator == r3.OperatorExists {
+			clause := fmt.Sprintf("%s %s", safeCol, sqlIsNotNull)
+			return SQLClause{Clause: clause, Args: nil, Joins: joins}, nil
+		}
+
+		// Between operators: value must be a 2-element slice [low, high].
+		if isBetweenOperator(cf.Operator) {
+			return betweenToSQL(safeCol, cf.Operator, cf.Value, joins)
 		}
 
 		// Simple case: Field is set and Value is non-nil.
@@ -383,4 +374,54 @@ func sqlNullsPositionString(position r3.SortNullsPosition) string {
 	default:
 		return ""
 	}
+}
+
+// isBetweenOperator returns true if the operator is any of the between variants.
+func isBetweenOperator(op r3.FilterOperatorSpec) bool {
+	//nolint:exhaustive // only checking between variants
+	switch op {
+	case r3.OperatorBetween,
+		r3.OperatorBetweenEx,
+		r3.OperatorBetweenExInc,
+		r3.OperatorBetweenIncEx:
+		return true
+	default:
+		return false
+	}
+}
+
+// betweenToSQL converts a between filter to a compound SQL condition.
+// Value must be a 2-element slice: [low, high].
+// Between variants:
+//   - Between (inclusive both):              col >= ? AND col <= ?
+//   - BetweenEx (exclusive both):            col > ? AND col < ?
+//   - BetweenExInc (excl low, incl high):    col > ? AND col <= ?
+//   - BetweenIncEx (incl low, excl high):    col >= ? AND col < ?
+func betweenToSQL(safeCol string, op r3.FilterOperatorSpec, value any, joins []SQLColumn) (SQLClause, error) {
+	low, high, err := r3.ExtractBetweenBounds(value)
+	if err != nil {
+		return SQLClause{}, err
+	}
+
+	var lowOp, highOp SQLClauseOperator
+	//nolint:exhaustive // only between variants reach here, guarded by isBetweenOperator
+	switch op {
+	case r3.OperatorBetween:
+		lowOp, highOp = SQLClauseOperatorGte, SQLClauseOperatorLte
+	case r3.OperatorBetweenEx:
+		lowOp, highOp = SQLClauseOperatorGt, SQLClauseOperatorLt
+	case r3.OperatorBetweenExInc:
+		lowOp, highOp = SQLClauseOperatorGt, SQLClauseOperatorLte
+	case r3.OperatorBetweenIncEx:
+		lowOp, highOp = SQLClauseOperatorGte, SQLClauseOperatorLt
+	default:
+		return SQLClause{}, fmt.Errorf("unexpected between operator: %v", op)
+	}
+
+	clause := fmt.Sprintf("(%s %s ? %s %s %s ?)", safeCol, lowOp, sqlAnd, safeCol, highOp)
+	return SQLClause{
+		Clause: clause,
+		Args:   []any{low, high},
+		Joins:  joins,
+	}, nil
 }

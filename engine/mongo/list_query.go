@@ -21,12 +21,23 @@ type PreparedListQuery struct {
 	// Projection is the BSON projection document (field selection).
 	Projection bson.D
 
-	// IsPaginated indicates whether pagination is active.
+	// IsPaginated indicates whether offset-based pagination is active.
 	IsPaginated bool
 
 	// Limit and Offset (skip) are set when IsPaginated is true.
 	Limit  int64
 	Offset int64
+
+	// IsCursorPaginated indicates whether cursor/keyset pagination is active.
+	// When true, CursorFilter contains the keyset filter and CursorLimit
+	// contains the LIMIT. No skip or count query should be used.
+	IsCursorPaginated bool
+
+	// CursorFilter is the keyset filter (may be empty for the first page).
+	CursorFilter bson.D
+
+	// CursorLimit is the maximum number of results for cursor pagination.
+	CursorLimit int64
 
 	// Query is the merged r3.Query (defaults + user args) for access to
 	// Preloads, IncludeTrashed, and other fields.
@@ -62,8 +73,28 @@ func PrepareListQuery(dm *r3.DefaultsManager, qarg ...r3.Query) (PreparedListQue
 		p.Projection = r3bson.FieldsToBSON(q.Fields)
 	}
 
-	// Compute pagination
-	if q.Pagination != nil && q.Pagination.IsPaginated() {
+	// Compute pagination: cursor takes precedence over offset-based
+	if q.Cursor != nil {
+		if len(q.Sorts) == 0 {
+			return p, r3.ErrCursorRequiresSort
+		}
+
+		p.IsCursorPaginated = true
+		p.CursorLimit = int64(q.Cursor.GetLimit())
+
+		token := q.Cursor.Token()
+		if token != "" {
+			values, err := r3.DecodeCursor(token)
+			if err != nil {
+				return p, fmt.Errorf("failed to decode cursor: %w", err)
+			}
+			cursorFilter, err := r3bson.CursorToBSON(values, q.Sorts, q.Cursor.Direction())
+			if err != nil {
+				return p, fmt.Errorf("failed to build cursor filter: %w", err)
+			}
+			p.CursorFilter = cursorFilter
+		}
+	} else if q.Pagination != nil && q.Pagination.IsPaginated() {
 		p.IsPaginated = true
 		limit, offset := q.Pagination.ToLimitOffset()
 		p.Limit = int64(limit)

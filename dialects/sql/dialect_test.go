@@ -269,6 +269,92 @@ func TestFilterToSQL(t *testing.T) {
 			},
 		},
 		{
+			name: "exists operator",
+			input: &r3.FilterSpec{
+				Field:    r3.NewFieldSpec("email"),
+				Operator: r3.OperatorExists,
+				Value:    true,
+			},
+			validate: func(t *testing.T, result r3sql.SQLClause) {
+				assert.Equal(t, `"email" IS NOT NULL`, result.Clause)
+				assert.Empty(t, result.Args)
+			},
+		},
+		{
+			name: "between inclusive",
+			input: &r3.FilterSpec{
+				Field:    r3.NewFieldSpec("age"),
+				Operator: r3.OperatorBetween,
+				Value:    []int{18, 65},
+			},
+			validate: func(t *testing.T, result r3sql.SQLClause) {
+				assert.Equal(t, `("age" >= ? AND "age" <= ?)`, result.Clause)
+				require.Len(t, result.Args, 2)
+				assert.Equal(t, 18, result.Args[0])
+				assert.Equal(t, 65, result.Args[1])
+			},
+		},
+		{
+			name: "between exclusive",
+			input: &r3.FilterSpec{
+				Field:    r3.NewFieldSpec("price"),
+				Operator: r3.OperatorBetweenEx,
+				Value:    []float64{9.99, 99.99},
+			},
+			validate: func(t *testing.T, result r3sql.SQLClause) {
+				assert.Equal(t, `("price" > ? AND "price" < ?)`, result.Clause)
+				require.Len(t, result.Args, 2)
+				assert.InDelta(t, 9.99, result.Args[0], 0.001)
+				assert.InDelta(t, 99.99, result.Args[1], 0.001)
+			},
+		},
+		{
+			name: "between exclusive-inclusive",
+			input: &r3.FilterSpec{
+				Field:    r3.NewFieldSpec("score"),
+				Operator: r3.OperatorBetweenExInc,
+				Value:    []int{0, 100},
+			},
+			validate: func(t *testing.T, result r3sql.SQLClause) {
+				assert.Equal(t, `("score" > ? AND "score" <= ?)`, result.Clause)
+				require.Len(t, result.Args, 2)
+				assert.Equal(t, 0, result.Args[0])
+				assert.Equal(t, 100, result.Args[1])
+			},
+		},
+		{
+			name: "between inclusive-exclusive",
+			input: &r3.FilterSpec{
+				Field:    r3.NewFieldSpec("weight"),
+				Operator: r3.OperatorBetweenIncEx,
+				Value:    []int{50, 200},
+			},
+			validate: func(t *testing.T, result r3sql.SQLClause) {
+				assert.Equal(t, `("weight" >= ? AND "weight" < ?)`, result.Clause)
+				require.Len(t, result.Args, 2)
+				assert.Equal(t, 50, result.Args[0])
+				assert.Equal(t, 200, result.Args[1])
+			},
+		},
+		{
+			name: "between with non-slice value",
+			input: &r3.FilterSpec{
+				Field:    r3.NewFieldSpec("age"),
+				Operator: r3.OperatorBetween,
+				Value:    42,
+			},
+			expectError: true,
+		},
+		{
+			name: "between with wrong element count",
+			input: &r3.FilterSpec{
+				Field:    r3.NewFieldSpec("age"),
+				Operator: r3.OperatorBetween,
+				Value:    []int{18},
+			},
+			expectError: true,
+		},
+		{
 			name: "unsupported operator for NULL",
 			input: &r3.FilterSpec{
 				Field:    r3.NewFieldSpec("field"),

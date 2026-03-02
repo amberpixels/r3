@@ -8,6 +8,10 @@ import (
 type Query struct {
 	Pagination *PaginationSpec
 
+	// Cursor enables keyset/cursor-based pagination as an alternative to offset-based.
+	// When set, Cursor takes precedence over Pagination. The two are mutually exclusive.
+	Cursor *CursorSpec
+
 	Fields   Fields   // Specific fields to retrieve.
 	Filters  Filters  // []*FilterSpec
 	Sorts    Sorts    // []*SortSpec
@@ -15,8 +19,6 @@ type Query struct {
 
 	// IncludeTrashed when true will still return trashed (soft-deleted) records.
 	IncludeTrashed maybe.Bool
-
-	// TODO(future): Flags to control Count, etc
 }
 
 // NewQuery returns an empty Query.
@@ -43,6 +45,15 @@ func (q Query) MergeWith(other Query) Query {
 		}
 	}
 
+	// For cursor merging
+	if other.Cursor != nil {
+		if result.Cursor != nil {
+			result.Cursor = result.Cursor.MergeWith(other.Cursor)
+		} else {
+			result.Cursor = other.Cursor.Clone()
+		}
+	}
+
 	if other.IncludeTrashed.Some() {
 		result.IncludeTrashed = other.IncludeTrashed
 	}
@@ -54,6 +65,7 @@ func (q Query) MergeWith(other Query) Query {
 func (q Query) Clone() Query {
 	var clone Query
 	clone.Pagination = q.Pagination.Clone()
+	clone.Cursor = q.Cursor.Clone()
 	clone.Fields = q.Fields.Clone()
 	clone.Filters = q.Filters.Clone()
 	clone.Sorts = q.Sorts.Clone()

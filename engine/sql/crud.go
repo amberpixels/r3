@@ -165,12 +165,9 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		argIdx = nextIdx
 	}
 
-	whereSQL := ""
-	if len(whereParts) > 0 {
-		whereSQL = " WHERE " + strings.Join(whereParts, " AND ")
-	}
-
-	// Build JOIN clauses
+	// Build JOIN clauses.
+	// Uses JOIN ... ON TRUE because the raw SQL engine lacks schema metadata to infer
+	// ON conditions. ORM-based drivers (GORM, Bun, go-pg) handle proper JOINs natively.
 	var joinSQL string
 	if joins := prep.Joins(); len(joins) > 0 {
 		var joinParts []string
@@ -180,10 +177,14 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		joinSQL = " " + strings.Join(joinParts, " ")
 	}
 
-	// Pagination: count first if needed
+	// Pagination: count first if needed (skip for cursor pagination)
 	var totalCount int64
 	if prep.IsPaginated {
-		countQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s%s%s", r.Meta.TableName, joinSQL, whereSQL)
+		countWhereSQL := ""
+		if len(whereParts) > 0 {
+			countWhereSQL = " WHERE " + strings.Join(whereParts, " AND ")
+		}
+		countQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s%s%s", r.Meta.TableName, joinSQL, countWhereSQL)
 		err := r.Executor.QueryRowContext(ctx, countQuery, whereArgs...).Scan(&totalCount)
 		if err != nil {
 			return nil, 0, err
@@ -191,6 +192,19 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		if totalCount == 0 {
 			return nil, 0, nil
 		}
+	}
+
+	// Cursor pagination: add keyset WHERE clause after count query
+	if prep.IsCursorPaginated && prep.CursorClause.Clause != "" {
+		converted, nextIdx := r.Flavor.ConvertPlaceholders(prep.CursorClause.Clause, argIdx)
+		whereParts = append(whereParts, converted)
+		whereArgs = append(whereArgs, prep.CursorClause.Args...)
+		_ = nextIdx
+	}
+
+	whereSQL := ""
+	if len(whereParts) > 0 {
+		whereSQL = " WHERE " + strings.Join(whereParts, " AND ")
 	}
 
 	// Build ORDER BY
@@ -205,7 +219,9 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 
 	// Build LIMIT/OFFSET
 	var limitSQL string
-	if prep.IsPaginated {
+	if prep.IsCursorPaginated {
+		limitSQL = fmt.Sprintf(" LIMIT %d", prep.CursorLimit)
+	} else if prep.IsPaginated {
 		limitSQL = fmt.Sprintf(" LIMIT %d OFFSET %d", prep.Limit, prep.Offset)
 	}
 
@@ -243,7 +259,11 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		return nil, 0, err
 	}
 
-	entities, totalCount = FinalizeCount(entities, totalCount, prep.IsPaginated)
+	if prep.IsCursorPaginated {
+		entities, totalCount = r3.FinalizeCountCursor(entities)
+	} else {
+		entities, totalCount = FinalizeCount(entities, totalCount, prep.IsPaginated)
+	}
 
 	// Run preloads if any are requested and the model has relations
 	if len(prep.Query.Preloads) > 0 && len(r.Meta.Relations) > 0 {

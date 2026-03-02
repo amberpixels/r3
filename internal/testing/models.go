@@ -49,7 +49,7 @@ type Event struct {
 	HappenedAt time.Time
 	Name       string
 	Weight     int
-	LocationID int64 // relates to Location.ID
+	LocationID int64 `gorm:"column:venue_id"` // DB column is venue_id
 	Active     bool
 
 	Location *Location `gorm:"foreignKey:LocationID"`

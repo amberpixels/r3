@@ -3,6 +3,7 @@ package r3
 import (
 	"encoding/json"
 	"fmt"
+	"reflect"
 )
 
 // Filters represents a list of *FilterSpec.
@@ -87,3 +88,16 @@ func And(filters ...*FilterSpec) *FilterSpec { return NewFilterSpecAndGroup(filt
 
 // Or is a shortcut for NewFilterSpecOrGroup.
 func Or(filters ...*FilterSpec) *FilterSpec { return NewFilterSpecOrGroup(filters...) }
+
+// ExtractBetweenBounds extracts low and high values from a between filter value.
+// The value must be a slice or array with exactly 2 elements.
+func ExtractBetweenBounds(value any) (any, any, error) {
+	rv := reflect.ValueOf(value)
+	if rv.Kind() != reflect.Slice && rv.Kind() != reflect.Array {
+		return nil, nil, fmt.Errorf("between operator requires a slice/array value with 2 elements, got %T", value)
+	}
+	if rv.Len() != 2 {
+		return nil, nil, fmt.Errorf("between operator requires exactly 2 elements, got %d", rv.Len())
+	}
+	return rv.Index(0).Interface(), rv.Index(1).Interface(), nil
+}

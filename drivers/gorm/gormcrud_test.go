@@ -103,10 +103,6 @@ func TestGormRepository(t *testing.T) {
 	})
 
 	t.Run("List cities with translations", func(t *testing.T) {
-		// TODO: Fix preloads functionality - currently not working properly
-		// The preload feature needs investigation as translations are not being loaded
-		t.Skip("Skipping preloads test - TODO: investigate why r3.Preloads are not working with GORM")
-
 		// List cities using the repository with the preload parameter set.
 		result, total, err := cityRepo.List(ctx, r3.Query{
 			Preloads: r3.Preloads{

@@ -33,7 +33,7 @@ func ParseFields(raw string) (r3.Fields, error) {
 }
 
 // FormatFields formats r3.Fields into a comma-separated string.
-// Example: Fields{FieldSpec("id"), FieldSpec("name")} -> "id,name"
+// Example: Fields{FieldSpec("id"), FieldSpec("name")} -> "id,name".
 func FormatFields(fields r3.Fields) string {
 	if len(fields) == 0 {
 		return ""

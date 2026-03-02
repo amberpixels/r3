@@ -2,6 +2,7 @@ package r3url
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -79,7 +80,7 @@ func parseSortColonDir(raw string) (r3.Sorts, error) {
 		}
 
 		// Third segment: nulls position (optional)
-		if len(segments) >= 3 {
+		if len(segments) >= 3 { //nolint:mnd // field:direction:nulls_position
 			nullsStr := strings.TrimSpace(segments[2])
 			spec.NullsPosition = canonical.ParseNullsPosition(nullsStr)
 		}
@@ -116,7 +117,7 @@ func parseSortSignPrefix(raw string) (r3.Sorts, error) {
 
 		part = strings.TrimSpace(part)
 		if part == "" {
-			return nil, newError(fmt.Errorf("empty field name in sort spec"))
+			return nil, newError(errors.New("empty field name in sort spec"))
 		}
 		spec.Column = r3.NewFieldSpec(part)
 

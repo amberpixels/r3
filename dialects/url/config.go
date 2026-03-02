@@ -19,7 +19,7 @@ type SortFormat int
 const (
 	// SortFormatColonDir uses "field:direction" pairs separated by commas.
 	// Example: "name:asc,age:desc"
-	// Nulls position can be appended: "name:asc:nulls_last"
+	// Nulls position can be appended: "name:asc:nulls_last".
 	SortFormatColonDir SortFormat = iota
 
 	// SortFormatSignPrefix uses a "-" prefix for descending, no prefix for ascending.
@@ -29,7 +29,7 @@ const (
 
 	// SortFormatJSON parses the sort parameter as a JSON array of sort objects,
 	// using the same schema as the r3json dialect.
-	// Example: [{"field":"name","direction":"asc"}]
+	// Example: [{"field":"name","direction":"asc"}].
 	SortFormatJSON
 )
 
@@ -47,17 +47,27 @@ type ParamNames struct {
 	PageNum string
 	// PageSize is the parameter name for the page size. Default: "page_size".
 	PageSize string
+
+	// CursorAfter is the parameter name for forward cursor token. Default: "after".
+	CursorAfter string
+	// CursorBefore is the parameter name for backward cursor token. Default: "before".
+	CursorBefore string
+	// CursorLimit is the parameter name for cursor page size. Default: "limit".
+	CursorLimit string
 }
 
 // DefaultParamNames returns parameter names with sensible defaults.
 func DefaultParamNames() ParamNames {
 	return ParamNames{
-		Query:    "query",
-		Fields:   "fields",
-		Filters:  "filters",
-		Sort:     "sort",
-		PageNum:  "page",
-		PageSize: "page_size",
+		Query:        "query",
+		Fields:       "fields",
+		Filters:      "filters",
+		Sort:         "sort",
+		PageNum:      "page",
+		PageSize:     "page_size",
+		CursorAfter:  "after",
+		CursorBefore: "before",
+		CursorLimit:  "limit",
 	}
 }
 
@@ -168,11 +178,14 @@ func WithDjangoSeparator(sep string) Option {
 // so they are not considered as Django-style filter candidates.
 func (c *Config) reservedParamNames() map[string]struct{} {
 	return map[string]struct{}{
-		c.ParamNames.Query:    {},
-		c.ParamNames.Fields:   {},
-		c.ParamNames.Filters:  {},
-		c.ParamNames.Sort:     {},
-		c.ParamNames.PageNum:  {},
-		c.ParamNames.PageSize: {},
+		c.ParamNames.Query:        {},
+		c.ParamNames.Fields:       {},
+		c.ParamNames.Filters:      {},
+		c.ParamNames.Sort:         {},
+		c.ParamNames.PageNum:      {},
+		c.ParamNames.PageSize:     {},
+		c.ParamNames.CursorAfter:  {},
+		c.ParamNames.CursorBefore: {},
+		c.ParamNames.CursorLimit:  {},
 	}
 }

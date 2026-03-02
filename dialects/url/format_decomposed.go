@@ -68,8 +68,15 @@ func formatDecomposed(q r3.Query, cfg Config) (url.Values, error) {
 		}
 	}
 
-	// Pagination
-	if q.Pagination != nil {
+	// Cursor pagination takes precedence over offset-based
+	if q.Cursor != nil {
+		cursorValues := FormatCursorPagination(q.Cursor, cfg.ParamNames)
+		for k, vs := range cursorValues {
+			for _, v := range vs {
+				values.Set(k, v)
+			}
+		}
+	} else if q.Pagination != nil {
 		paginationValues := FormatPagination(q.Pagination, cfg.ParamNames)
 		for k, vs := range paginationValues {
 			for _, v := range vs {

@@ -103,7 +103,7 @@ func (f Flavor) ConvertPlaceholders(clause string, startIdx int) (string, int) {
 	idx := startIdx
 	for i := range len(clause) {
 		if clause[i] == '?' {
-			b.WriteString(fmt.Sprintf("$%d", idx))
+			fmt.Fprintf(&b, "$%d", idx)
 			idx++
 		} else {
 			b.WriteByte(clause[i])

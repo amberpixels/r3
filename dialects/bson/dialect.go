@@ -42,7 +42,8 @@ func OperatorToBSON(op r3.FilterOperatorSpec) (BSONOperator, error) {
 		r3.OperatorBetweenEx,
 		r3.OperatorBetweenExInc,
 		r3.OperatorBetweenIncEx:
-		return "", fmt.Errorf("not implemented: %s", &op)
+		// Between operators are handled directly in FilterToBSON as compound conditions.
+		return "", errors.New("between operators must be handled via FilterToBSON, not OperatorToBSON")
 
 	case r3.OperatorUnspecified:
 		fallthrough
@@ -99,6 +100,12 @@ func FilterToBSON(f *r3.FilterSpec) (bson.D, error) {
 					{Key: string(BSONOperatorRegex), Value: pattern},
 				}},
 			}}}, nil
+		}
+
+		// Between operators: value must be a 2-element slice [low, high].
+		// Translated as compound $gte/$gt + $lte/$lt conditions.
+		if isBetweenOperator(f.Operator) {
+			return betweenToBSON(fieldName, f.Operator, f.Value)
 		}
 
 		// Standard operators
@@ -234,4 +241,52 @@ func FieldsToBSON(fields r3.Fields) bson.D {
 		projection = append(bson.D{{Key: "_id", Value: 1}}, projection...)
 	}
 	return projection
+}
+
+// isBetweenOperator returns true if the operator is any of the between variants.
+func isBetweenOperator(op r3.FilterOperatorSpec) bool {
+	//nolint:exhaustive // only checking between variants
+	switch op {
+	case r3.OperatorBetween,
+		r3.OperatorBetweenEx,
+		r3.OperatorBetweenExInc,
+		r3.OperatorBetweenIncEx:
+		return true
+	default:
+		return false
+	}
+}
+
+// betweenToBSON converts a between filter to a BSON compound condition.
+// Value must be a 2-element slice: [low, high].
+// Between variants:
+//   - Between (inclusive both):   {$gte: low, $lte: high}
+//   - BetweenEx (exclusive both): {$gt: low, $lt: high}
+//   - BetweenExInc (excl low, incl high): {$gt: low, $lte: high}
+//   - BetweenIncEx (incl low, excl high): {$gte: low, $lt: high}
+func betweenToBSON(fieldName string, op r3.FilterOperatorSpec, value any) (bson.D, error) {
+	low, high, err := r3.ExtractBetweenBounds(value)
+	if err != nil {
+		return nil, err
+	}
+
+	var lowOp, highOp BSONOperator
+	//nolint:exhaustive // only between variants reach here, guarded by isBetweenOperator
+	switch op {
+	case r3.OperatorBetween:
+		lowOp, highOp = BSONOperatorGte, BSONOperatorLte
+	case r3.OperatorBetweenEx:
+		lowOp, highOp = BSONOperatorGt, BSONOperatorLt
+	case r3.OperatorBetweenExInc:
+		lowOp, highOp = BSONOperatorGt, BSONOperatorLte
+	case r3.OperatorBetweenIncEx:
+		lowOp, highOp = BSONOperatorGte, BSONOperatorLt
+	default:
+		return nil, fmt.Errorf("unexpected between operator: %v", op)
+	}
+
+	return bson.D{{Key: fieldName, Value: bson.D{
+		{Key: string(lowOp), Value: low},
+		{Key: string(highOp), Value: high},
+	}}}, nil
 }

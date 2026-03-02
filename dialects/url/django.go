@@ -130,14 +130,14 @@ func FormatDjangoFilters(filters r3.Filters, cfg Config) url.Values {
 
 // splitDjangoParam splits a parameter key into field name and operator string.
 // If there's no separator, the whole key is the field and operator is "".
-func splitDjangoParam(key, sep string) (field, op string) {
+func splitDjangoParam(key, sep string) (string, string) {
 	idx := strings.LastIndex(key, sep)
 	if idx < 0 {
 		return key, ""
 	}
 
-	field = key[:idx]
-	op = key[idx+len(sep):]
+	field := key[:idx]
+	op := key[idx+len(sep):]
 
 	// If the operator part is empty or not a recognized operator, treat the whole key as field
 	if op == "" {
@@ -156,6 +156,7 @@ func splitDjangoParam(key, sep string) (field, op string) {
 // parseDjangoValue parses a string value based on the operator.
 // For "in" and "not_in" operators, it splits by comma to create a slice.
 func parseDjangoValue(raw string, op r3.FilterOperatorSpec) any {
+	//nolint:exhaustive // only checking list-type operators
 	switch op {
 	case r3.OperatorIn, r3.OperatorNotIn:
 		parts := strings.Split(raw, ",")

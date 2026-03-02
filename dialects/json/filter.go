@@ -7,6 +7,7 @@ import (
 	"github.com/amberpixels/r3"
 )
 
+// JSONFilter represents a filter in JSON format with field, operator, value, and logical groups.
 type JSONFilter struct {
 	Field JSONField `json:"f,omitempty"`
 
@@ -21,8 +22,6 @@ type JSONFilter struct {
 
 // JSONFilters is a slice of JSONFilter.
 type JSONFilters []*JSONFilter
-
-// TODO: validate filters
 
 // String returns a string representation of a single filter (as a json string).
 func (jf *JSONFilter) String() string {

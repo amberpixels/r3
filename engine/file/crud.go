@@ -212,9 +212,29 @@ func (r *BaseCRUD[T, ID]) List(_ context.Context, qarg ...r3.Query) ([]T, int64,
 	// Apply sorts
 	sortEntities(entities, q.Sorts, &r.Meta)
 
-	// Apply pagination
-	isPaginated := q.Pagination != nil && q.Pagination.IsPaginated()
-	if isPaginated {
+	// Apply cursor pagination or offset pagination
+	isCursorPaginated := q.Cursor != nil
+	isPaginated := !isCursorPaginated && q.Pagination != nil && q.Pagination.IsPaginated()
+
+	if isCursorPaginated {
+		if len(q.Sorts) == 0 {
+			return nil, 0, r3.ErrCursorRequiresSort
+		}
+
+		token := q.Cursor.Token()
+		if token != "" {
+			values, err := r3.DecodeCursor(token)
+			if err != nil {
+				return nil, 0, fmt.Errorf("decode cursor: %w", err)
+			}
+			entities = filterCursorPosition(entities, values, q.Sorts, q.Cursor.Direction(), &r.Meta)
+		}
+
+		limit := q.Cursor.GetLimit()
+		if limit < len(entities) {
+			entities = entities[:limit]
+		}
+	} else if isPaginated {
 		limit, offset := q.Pagination.ToLimitOffset()
 		if offset >= len(entities) {
 			entities = nil
@@ -224,7 +244,13 @@ func (r *BaseCRUD[T, ID]) List(_ context.Context, qarg ...r3.Query) ([]T, int64,
 		}
 	}
 
-	result, count := r3.FinalizeCount(entities, totalCount, isPaginated)
+	var result []T
+	var count int64
+	if isCursorPaginated {
+		result, count = r3.FinalizeCountCursor(entities)
+	} else {
+		result, count = r3.FinalizeCount(entities, totalCount, isPaginated)
+	}
 	if result == nil {
 		result = []T{}
 	}

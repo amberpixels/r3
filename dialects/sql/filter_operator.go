@@ -16,8 +16,6 @@ const (
 	SQLClauseOperatorILike   SQLClauseOperator = "ILIKE"
 	SQLClauseOperatorIn      SQLClauseOperator = "IN"
 	SQLClauseOperatorNotIn   SQLClauseOperator = "NOT IN"
-
-	// TODO: custom support for Between, NotBetween, etc
 )
 
 // String so we implement fmt.Stringer.

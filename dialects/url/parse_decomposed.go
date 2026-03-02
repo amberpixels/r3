@@ -52,12 +52,21 @@ func parseDecomposed(values url.Values, cfg Config) (r3.Query, error) {
 		q.Sorts = sorts
 	}
 
-	// Pagination
-	pagination, err := ParsePagination(values, cfg.ParamNames)
+	// Cursor pagination (takes precedence over offset-based)
+	cursor, err := ParseCursorPagination(values, cfg.ParamNames)
 	if err != nil {
 		return r3.Query{}, err
 	}
-	q.Pagination = pagination
+	if cursor != nil {
+		q.Cursor = cursor
+	} else {
+		// Offset-based pagination
+		pagination, err := ParsePagination(values, cfg.ParamNames)
+		if err != nil {
+			return r3.Query{}, err
+		}
+		q.Pagination = pagination
+	}
 
 	return q, nil
 }

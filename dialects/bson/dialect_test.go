@@ -205,6 +205,86 @@ func TestFilterToBSON_InvalidField(t *testing.T) {
 	}
 }
 
+func TestFilterToBSON_Between(t *testing.T) {
+	// Between (inclusive both): age >= 18 AND age <= 65
+	f := r3.Fop(r3.NewFieldSpec("age"), r3.OperatorBetween, []int{18, 65})
+
+	doc, err := r3bson.FilterToBSON(f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	expected := bson.D{{Key: "age", Value: bson.D{
+		{Key: "$gte", Value: 18},
+		{Key: "$lte", Value: 65},
+	}}}
+	assertBSONEqual(t, expected, doc)
+}
+
+func TestFilterToBSON_BetweenEx(t *testing.T) {
+	// BetweenEx (exclusive both): age > 18 AND age < 65
+	f := r3.Fop(r3.NewFieldSpec("age"), r3.OperatorBetweenEx, []int{18, 65})
+
+	doc, err := r3bson.FilterToBSON(f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	expected := bson.D{{Key: "age", Value: bson.D{
+		{Key: "$gt", Value: 18},
+		{Key: "$lt", Value: 65},
+	}}}
+	assertBSONEqual(t, expected, doc)
+}
+
+func TestFilterToBSON_BetweenExInc(t *testing.T) {
+	// BetweenExInc (excl low, incl high): age > 18 AND age <= 65
+	f := r3.Fop(r3.NewFieldSpec("age"), r3.OperatorBetweenExInc, []int{18, 65})
+
+	doc, err := r3bson.FilterToBSON(f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	expected := bson.D{{Key: "age", Value: bson.D{
+		{Key: "$gt", Value: 18},
+		{Key: "$lte", Value: 65},
+	}}}
+	assertBSONEqual(t, expected, doc)
+}
+
+func TestFilterToBSON_BetweenIncEx(t *testing.T) {
+	// BetweenIncEx (incl low, excl high): age >= 18 AND age < 65
+	f := r3.Fop(r3.NewFieldSpec("age"), r3.OperatorBetweenIncEx, []int{18, 65})
+
+	doc, err := r3bson.FilterToBSON(f)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	expected := bson.D{{Key: "age", Value: bson.D{
+		{Key: "$gte", Value: 18},
+		{Key: "$lt", Value: 65},
+	}}}
+	assertBSONEqual(t, expected, doc)
+}
+
+func TestFilterToBSON_BetweenInvalidValue(t *testing.T) {
+	// Non-slice value should fail
+	f := r3.Fop(r3.NewFieldSpec("age"), r3.OperatorBetween, 18)
+	_, err := r3bson.FilterToBSON(f)
+	if err == nil {
+		t.Fatal("expected error for non-slice between value")
+	}
+
+	// Wrong number of elements
+	f = r3.Fop(r3.NewFieldSpec("age"), r3.OperatorBetween, []int{18})
+	_, err = r3bson.FilterToBSON(f)
+	if err == nil {
+		t.Fatal("expected error for single-element between value")
+	}
+}
+
 // assertBSONEqual compares two bson.D documents by marshalling them to bytes.
 func assertBSONEqual(t *testing.T, expected, actual bson.D) {
 	t.Helper()

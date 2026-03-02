@@ -139,7 +139,16 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		}
 	}
 
-	// Count first if paginated
+	// Cursor pagination: merge keyset filter with existing filters
+	if prep.IsCursorPaginated && len(prep.CursorFilter) > 0 {
+		if len(filter) == 0 {
+			filter = prep.CursorFilter
+		} else {
+			filter = bson.D{{Key: "$and", Value: bson.A{filter, prep.CursorFilter}}}
+		}
+	}
+
+	// Count first if offset-paginated (skip for cursor pagination)
 	var totalCount int64
 	if prep.IsPaginated {
 		totalCount, err = r.Collection.CountDocuments(ctx, filter)
@@ -162,7 +171,9 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		opts.SetProjection(prep.Projection)
 	}
 
-	if prep.IsPaginated {
+	if prep.IsCursorPaginated {
+		opts.SetLimit(prep.CursorLimit)
+	} else if prep.IsPaginated {
 		opts.SetLimit(prep.Limit)
 		opts.SetSkip(prep.Offset)
 	}
@@ -179,7 +190,11 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		return nil, 0, fmt.Errorf("mongo decode: %w", err)
 	}
 
-	entities, totalCount = r3.FinalizeCount(entities, totalCount, prep.IsPaginated)
+	if prep.IsCursorPaginated {
+		entities, totalCount = r3.FinalizeCountCursor(entities)
+	} else {
+		entities, totalCount = r3.FinalizeCount(entities, totalCount, prep.IsPaginated)
+	}
 
 	// Run preloads
 	if len(prep.Query.Preloads) > 0 && len(r.Meta.Relations) > 0 {

@@ -29,6 +29,7 @@ import (
 func ParseQuery(values url.Values, opts ...Option) (r3.Query, error) {
 	cfg := resolveConfig(opts...)
 
+	//nolint:exhaustive // ModeAuto is the default case
 	switch cfg.Mode {
 	case ModeUnified:
 		return parseUnified(values, cfg)
@@ -58,6 +59,7 @@ func ParseQuery(values url.Values, opts ...Option) (r3.Query, error) {
 func FormatQuery(q r3.Query, opts ...Option) (url.Values, error) {
 	cfg := resolveConfig(opts...)
 
+	//nolint:exhaustive // ModeAuto is the default case
 	switch cfg.Mode {
 	case ModeUnified:
 		return formatUnified(q, cfg)

@@ -16,6 +16,7 @@ type IDGenerator[ID comparable] interface {
 // IDGeneratorFunc is a function adapter for IDGenerator.
 type IDGeneratorFunc[ID comparable] func(existing []ID) (ID, error)
 
+// Generate implements IDGenerator by calling the function.
 func (f IDGeneratorFunc[ID]) Generate(existing []ID) (ID, error) {
 	return f(existing)
 }

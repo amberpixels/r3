@@ -17,7 +17,7 @@ func ParsePagination(values url.Values, paramNames ParamNames) (*r3.PaginationSp
 	rawPageSize := values.Get(paramNames.PageSize)
 
 	if rawPageNum == "" && rawPageSize == "" {
-		return nil, nil
+		return nil, nil //nolint:nilnil // nil pagination means "no pagination requested"
 	}
 
 	var pageNum, pageSize int
