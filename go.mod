@@ -4,7 +4,7 @@ go 1.26
 
 require (
 	github.com/amberpixels/k1 v0.1.4
-	github.com/d3rty/json v0.0.0-20260213115610-d08e6c7f6a6f
+	github.com/d3rty/json v0.0.0-20260223214742-da23dcd77ba2
 	github.com/stretchr/testify v1.11.1
 )
 
