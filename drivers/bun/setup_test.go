@@ -9,6 +9,7 @@ import (
 	"time"
 
 	_ "github.com/lib/pq" // PostgreSQL driver for database/sql
+	dockerclient "github.com/moby/moby/client"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 	"github.com/uptrace/bun"
@@ -30,14 +31,14 @@ func isDockerAvailable() bool {
 	}
 
 	ctx := context.Background()
-	client, err := testcontainers.NewDockerClientWithOpts(ctx)
+	dc, err := testcontainers.NewDockerClientWithOpts(ctx)
 	if err != nil {
 		return false
 	}
-	defer client.Close()
+	defer dc.Close()
 
 	// Try to ping Docker
-	_, err = client.Ping(ctx)
+	_, err = dc.Ping(ctx, dockerclient.PingOptions{})
 	return err == nil
 }
 

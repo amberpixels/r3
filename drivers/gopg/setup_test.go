@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-pg/pg/v10"
+	dockerclient "github.com/moby/moby/client"
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
 )
@@ -27,14 +28,14 @@ func isDockerAvailable() bool {
 	}
 
 	ctx := context.Background()
-	client, err := testcontainers.NewDockerClientWithOpts(ctx)
+	dc, err := testcontainers.NewDockerClientWithOpts(ctx)
 	if err != nil {
 		return false
 	}
-	defer client.Close()
+	defer dc.Close()
 
 	// Try to ping Docker
-	_, err = client.Ping(ctx)
+	_, err = dc.Ping(ctx, dockerclient.PingOptions{})
 	return err == nil
 }
 

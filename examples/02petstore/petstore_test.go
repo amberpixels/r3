@@ -13,6 +13,7 @@ import (
 	"time"
 
 	petstore "github.com/amberpixels/r3/examples/02petstore"
+	dockerclient "github.com/moby/moby/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
@@ -32,13 +33,13 @@ func isDockerAvailable() bool {
 	}
 
 	ctx := context.Background()
-	client, err := testcontainers.NewDockerClientWithOpts(ctx)
+	dc, err := testcontainers.NewDockerClientWithOpts(ctx)
 	if err != nil {
 		return false
 	}
-	defer client.Close()
+	defer dc.Close()
 
-	_, err = client.Ping(ctx)
+	_, err = dc.Ping(ctx, dockerclient.PingOptions{})
 	return err == nil
 }
 
