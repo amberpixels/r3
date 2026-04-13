@@ -1,9 +1,15 @@
-// Package enginemongo provides a shared base driver for all r3 CRUD implementations
-// backed by MongoDB. It contains reflection-based struct metadata, BSON query building
-// helpers, and BaseCRUD / BaseRaw generic types.
+// Package enginemongo provides the MongoDB engine for r3.
 //
-// This is the MongoDB equivalent of the enginesql package.
+// It implements the full r3.CRUD interface using the official MongoDB Go driver v2,
+// with reflection-based struct metadata and BSON query building.
+// The drivers/mongo package wraps this engine as a thin constructor.
 //
-// Driver-specific packages (e.g. drivers/mongo) embed BaseCRUD and only override
-// behavior that differs.
+// Key types:
+//   - [BaseCRUD]: full r3.CRUD backed by *mongo.Collection
+//   - [BaseRaw]: escape hatch for arbitrary MongoDB operations
+//   - [StructMeta]: reflection-based struct metadata (fields, PK, relations, soft-delete)
+//   - [PreparedListQuery]: pre-computed BSON filter/sort/pagination from an r3.Query
+//
+// Model structs should use `bson` struct tags for field mapping, or `r3` tags.
+// The primary key field defaults to `_id`.
 package enginemongo

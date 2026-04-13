@@ -1,19 +1,313 @@
-# R3 — Universal Repository Abstraction
+# R3 - Universal Repository Abstraction for Go
 
-## Everything is a repo. Everything is R3.
+**Everything is a repo. Everything is an R3.**
 
-**Write once, query anywhere.** R3 provides identical CRUD operations across in-memory slices, YAML files, JSON APIs, PostgreSQL, MongoDB, Redis — any data source. The same business logic works whether your data lives in a database or a JSON file.
-
-Perfect for testing (use slices), prototyping (use files), and production (use databases) without changing a single line of business code. When you need raw SQL optimization, drop to `sqlc` queries seamlessly.
+R3 provides a single generic `CRUD[T, ID]` interface that works identically across
+PostgreSQL, MySQL, SQLite, MongoDB, JSON/YAML files, and any other data source.
+Your business code talks to `r3.CRUD` - it never knows or cares what's behind it.
 
 ```go
-q := r3.NewListParams().
-    Where("status", "active").
-    Where("age", ">", 18).
-    Sort("created_at", "desc").
-    Limit(10)
-
-// This exact code works against PostgreSQL, []User, YAML files, HTTP APIs...
-// repo as DB, files, slice, etc
-users, total, err := repo.List(ctx, q)
+// Same interface, same query, different backends
+userRepo    r3.CRUD[User, int64]      // PostgreSQL via GORM
+productRepo r3.CRUD[Product, string]  // MongoDB
+configRepo  r3.CRUD[Config, string]   // YAML files on disk
 ```
+
+## Why R3
+
+R3 is **not** about swapping backends. Most systems pick a database and stick with it.
+
+R3 is about the fact that real systems use **multiple** data sources: a relational DB
+for core data, MongoDB for event logs, config files for feature flags, an external
+REST API for third-party data. Without a shared interface, each one gets its own
+query patterns, its own error handling, its own permission logic.
+
+With R3, all of them speak the same language. More importantly, **features compose
+across all of them**: wrap any repo with permissions, audit history, metrics, or
+validation - regardless of what storage is behind it.
+
+## Quick Start
+
+```go
+import (
+    "github.com/amberpixels/r3"
+    r3gorm "github.com/amberpixels/r3/drivers/gorm"
+)
+
+// Define your model (standard GORM model)
+type City struct {
+    ID   int64  `gorm:"primaryKey"`
+    Name string
+}
+
+// Create a repository
+cityRepo := r3gorm.NewGormCRUD[City, int64](db)
+
+// Create
+city, err := cityRepo.Create(ctx, City{Name: "Berlin"})
+
+// Get by ID
+city, err := cityRepo.Get(ctx, 42)
+
+// List with filters, sorting, and pagination
+cities, total, err := cityRepo.List(ctx, r3.Query{
+    Filters: r3.Filters{
+        r3.F(r3.NewFieldSpec("name"), "Berlin"),
+    },
+    Sorts: r3.Sorts{
+        r3.NewSortAscSpec(r3.NewFieldSpec("name")),
+    },
+    Pagination: r3.NewPaginationSpec(1, 25),
+})
+
+// Update
+city.Name = "Munich"
+city, err = cityRepo.Update(ctx, city)
+
+// Patch (partial update - only specified fields)
+city, err = cityRepo.Patch(ctx, city, r3.Fields{r3.NewFieldSpec("name")})
+
+// Delete
+err = cityRepo.Delete(ctx, 42)
+```
+
+## Architecture
+
+R3 is organized in five layers. Each layer has a clear responsibility and depends
+only on the layers above it.
+
+```
+r3 (core)           Interfaces + query model. Zero dependencies.
+  |
+  +-- dialects/     Pure converters: r3 types <-> format-specific representations.
+  |                 No I/O, no state. Two categories:
+  |                   Data-store:    sql, bson
+  |                   Serialization: json, yaml, toml, url
+  |
+  +-- engine/       Complete CRUD implementations per storage category.
+  |                 The heavy lifting lives here.
+  |                   sql   - database/sql + reflection + Flavor
+  |                   mongo - MongoDB driver + reflection
+  |                   file  - filesystem + codecs + in-memory query eval
+  |
+  +-- drivers/      Ready-to-use constructors for specific libraries.
+  |                   pq, pgx, mysql, sqlite3 - wrap engine/sql
+  |                   gorm, bun, gopg         - ORM-native, share query prep
+  |                   mongo                   - wraps engine/mongo
+  |
+  +-- features/     Composable decorators that wrap ANY r3.CRUD[T, ID].
+                      permissions, history, metrics, validation,
+                      softdelete, transactor
+```
+
+### Core (`r3` package)
+
+The interfaces and query model. This is the contract everything else implements.
+
+**Interfaces:**
+- `CRUD[T, ID]` - Full read+write repository (composes Querier + Commander)
+- `Querier[T, ID]` - Read-only: `Get`, `List`
+- `Commander[T, ID]` - Write-only: `Create`, `Update`, `Patch`, `Delete`
+- `Transactor[T, ID]` - Opt-in transaction support: `BeginTx`
+
+**Query model** - a single composable `Query` struct:
+- `Filters` - Field-operator-value conditions with recursive AND/OR groups
+- `Sorts` - Multi-column sort with direction and NULLS FIRST/LAST
+- `PaginationSpec` - Offset-based (page number + page size)
+- `CursorSpec` - Keyset/cursor-based (forward/backward with opaque tokens)
+- `Fields` - Column selection (SELECT specific fields)
+- `Preloads` - Eager loading of related entities
+
+Queries are immutable values. `MergeWith()` combines queries from different sources
+(e.g. defaults + user request + permission scope) without mutation.
+
+### Dialects
+
+Stateless, bidirectional converters between r3 types and format-specific representations.
+
+**Data-store dialects** convert r3 queries into storage-native primitives:
+- `dialects/sql` - `FilterSpec` -> `WHERE status = ? AND age > ?` with parameterized args
+- `dialects/bson` - `FilterSpec` -> `bson.D{{Key: "status", Value: "active"}}`
+
+**Serialization dialects** convert r3 queries to/from interchange formats:
+- `dialects/json` - REST API request/response bodies
+- `dialects/yaml` - Configuration files
+- `dialects/toml` - Configuration files
+- `dialects/url` - URL query parameters (`?sort=name:asc&page=2&status=active`)
+
+Dialects are pure functions. They have no I/O, no database connections, no state.
+Engines and drivers consume them; most application code doesn't import them directly.
+
+### Engines
+
+Complete `r3.CRUD` implementations for a **category** of storage backend.
+Each engine handles reflection, query building, and execution for its storage type.
+
+- `engine/sql` - Generic SQL via `database/sql`. Uses `Flavor` to handle
+  differences between Postgres ($1 placeholders, RETURNING), MySQL (? placeholders,
+  LAST_INSERT_ID), and SQLite. Provides `BaseCRUD[T, ID]` that raw SQL drivers embed,
+  and `PreparedListQuery` that ORM drivers share for filter/sort/pagination translation.
+
+- `engine/mongo` - MongoDB via the official Go driver v2. Handles BSON document
+  building, projection, cursor pagination, relation preloading via separate queries.
+
+- `engine/file` - Filesystem-based storage with pluggable codecs (JSON, YAML).
+  Applies filters, sorts, and pagination in-memory. Supports single-file
+  (one JSON per collection) and directory (one file per entity) modes.
+
+### Drivers
+
+Ready-to-use constructors that wire up an engine for a specific client library.
+
+**Raw SQL drivers** (embed `engine/sql.BaseCRUD`):
+
+| Driver | Package | Library | Notes |
+|--------|---------|---------|-------|
+| PostgreSQL | `drivers/pq` | lib/pq | `$1` placeholders, RETURNING |
+| PostgreSQL | `drivers/pgx` | jackc/pgx | `$1` placeholders, RETURNING |
+| MySQL | `drivers/mysql` | go-sql-driver/mysql | `?` placeholders, no RETURNING |
+| SQLite | `drivers/sqlite3` | mattn/go-sqlite3 | `?` placeholders, RETURNING (3.35+) |
+
+**ORM drivers** (use ORM API natively, share `PreparedListQuery` for query translation):
+
+| Driver | Package | Library | Preloads | Soft-delete |
+|--------|---------|---------|----------|-------------|
+| GORM | `drivers/gorm` | gorm.io/gorm | Preload() | Unscoped() |
+| Bun | `drivers/bun` | uptrace/bun | Relation() | WhereAllWithDeleted() |
+| go-pg | `drivers/gopg` | go-pg/pg/v10 | Relation() | AllWithDeleted() |
+
+**NoSQL drivers:**
+
+| Driver | Package | Library |
+|--------|---------|---------|
+| MongoDB | `drivers/mongo` | mongo-driver/v2 |
+
+All drivers expose a `Raw()` escape hatch for queries that go beyond the r3 interface.
+
+### Features (Decorators)
+
+Composable middleware that wraps **any** `r3.CRUD[T, ID]`, regardless of backend.
+This is where R3's "everything is a repo" philosophy pays off - the same
+permission logic works for your Postgres entities and your MongoDB logs.
+
+```go
+// Stack features via decoration:
+repo := permissions.WithPermissions(
+    history.WithHistory(
+        validation.WithValidation(
+            r3gorm.NewGormCRUD[Order, int64](db),
+            orderValidator,
+        ),
+        historyStore, history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
+    ),
+    orderPermissions,
+)
+// repo is still r3.CRUD[Order, int64] - fully transparent
+```
+
+**Available features:**
+
+- **permissions** - Policy-based authorization. Gates every CRUD operation through a
+  user-defined `Checker`. Supports entity-aware row-level checks and scope injection
+  (automatic filter injection into List queries). Bring your own auth logic.
+
+- **history** - Change tracking / audit log. Records every mutation as a `ChangeRecord`
+  with field-level diffs. Supports snapshots, revert-to-version, and tree queries.
+  The history store is itself an `r3.CRUD[ChangeRecord, string]`.
+
+- **metrics** - Domain-level analytics. 10 built-in collectors (action counts, latency,
+  popularity, error rates, etc.). Configurable time bucketing, aggregation, and retention.
+  The metrics store is itself an `r3.CRUD[MetricRecord, string]`.
+
+- **validation** - Pre-mutation validation. Bring your own validator
+  (go-playground/validator, ozzo-validation, plain Go). Patch-aware and
+  state-transition-aware (can compare new vs existing entity).
+
+- **softdelete** - Adds `Restore()` and `HardDelete()` to any CRUD that supports soft-delete.
+
+- **transactor** - Surfaces transaction capabilities (`BeginTx`, `InTx`) from the
+  underlying driver.
+
+## Filters
+
+Build filters with helpers or construct them directly:
+
+```go
+// Simple equality
+r3.F(r3.NewFieldSpec("status"), "active")
+
+// With operator
+r3.Fop(r3.NewFieldSpec("age"), r3.OperatorGte, 18)
+
+// Logical groups
+r3.And(
+    r3.F(r3.NewFieldSpec("status"), "active"),
+    r3.Fop(r3.NewFieldSpec("age"), r3.OperatorGte, 18),
+)
+
+r3.Or(
+    r3.F(r3.NewFieldSpec("role"), "admin"),
+    r3.F(r3.NewFieldSpec("role"), "moderator"),
+)
+
+// LIKE / ILIKE
+r3.FLike(r3.NewFieldSpec("name"), "%john%")
+r3.FILike(r3.NewFieldSpec("name"), "%john%")
+
+// Between (inclusive)
+r3.Fop(r3.NewFieldSpec("price"), r3.OperatorBetween, []int{10, 100})
+
+// NULL checks (nil value + Eq/Ne operator)
+r3.F(r3.NewFieldSpec("deleted_at"), nil)  // IS NULL
+```
+
+**Available operators:** `Eq`, `Ne`, `Gt`, `Gte`, `Lt`, `Lte`, `In`, `NotIn`,
+`Like`, `NotLike`, `ILike`, `Between`, `BetweenEx`, `BetweenExInc`, `BetweenIncEx`, `Exists`.
+
+## Pagination
+
+```go
+// Offset-based
+r3.Query{Pagination: r3.NewPaginationSpec(1, 25)}  // page 1, 25 per page
+
+// Cursor-based (requires at least one sort)
+r3.Query{
+    Cursor: r3.NewCursorAfter(nextToken, 25),
+    Sorts:  r3.Sorts{r3.NewSortDescSpec(r3.NewFieldSpec("created_at"))},
+}
+```
+
+## Transactions
+
+```go
+err := r3.InTx(ctx, repo, func(tx r3.CRUD[Order, int64]) error {
+    order, err := tx.Create(ctx, newOrder)
+    if err != nil {
+        return err // auto-rollback
+    }
+    // ... more operations within the same transaction
+    return nil // auto-commit
+})
+```
+
+## URL Query Parsing
+
+Parse HTTP request parameters directly into r3 queries:
+
+```go
+import r3url "github.com/amberpixels/r3/dialects/url"
+
+// GET /api/cities?fields=id,name&sort=name:asc&page=2&page_size=25&status=active
+q, err := r3url.ParseQuery(r.URL.Query(),
+    r3url.WithDjangoStyleFilters("status", "name"),
+)
+cities, total, err := cityRepo.List(ctx, q)
+```
+
+## Requirements
+
+- Go 1.24+
+
+## License
+
+MIT
