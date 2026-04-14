@@ -18,14 +18,19 @@ const (
 	RelHasMany = r3tag.RelHasMany
 	// RelBelongsTo represents a many-to-one relationship (e.g. Location belongs to City).
 	RelBelongsTo = r3tag.RelBelongsTo
+	// RelManyToMany represents a many-to-many relationship via a join table.
+	RelManyToMany = r3tag.RelManyToMany
 )
 
 // RelationMeta holds metadata about a struct field that represents a relation.
 type RelationMeta struct {
 	FieldName  string       // Go struct field name (matched against PreloadSpec.Name)
 	FieldIndex int          // struct field index for reflection-based assignment
-	Kind       RelationKind // has-many or belongs-to
-	FKColumn   string       // foreign key column name (on the "many" side)
+	Kind       RelationKind // has-many, belongs-to, or many-to-many
+	FKColumn   string       // foreign key column name (on the "many" side, or left FK for M2M)
+	RefColumn  string       // right FK column in join table (M2M only)
+	JoinTable  string       // join table name (M2M only)
+	Owned      bool         // if true, children are lifecycle-bound to parent (has-many only)
 	TargetMeta StructMeta   // metadata for the related entity type
 	TargetType reflect.Type // reflect.Type of the target entity (element type, not slice/ptr)
 }
@@ -145,6 +150,9 @@ func buildRelationMeta(field reflect.StructField, fieldIndex int) (RelationMeta,
 		FieldIndex: fieldIndex,
 		Kind:       tag.Kind,
 		FKColumn:   tag.FKColumn,
+		RefColumn:  tag.RefColumn,
+		JoinTable:  tag.JoinTable,
+		Owned:      tag.Owned,
 		TargetMeta: targetMeta,
 		TargetType: targetType,
 	}, true

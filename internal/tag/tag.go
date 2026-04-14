@@ -101,11 +101,13 @@ func parseRawColumnTag(raw string) ColumnTag {
 // that should not be treated as a column name.
 func isKnownKeyword(s string) bool {
 	switch s {
-	case "pk", "soft_delete":
+	case "pk", "soft_delete", "owned":
 		return true
 	}
 	return strings.HasPrefix(s, "rel:") ||
 		strings.HasPrefix(s, "fk:") ||
+		strings.HasPrefix(s, "ref:") ||
+		strings.HasPrefix(s, "join:") ||
 		strings.HasPrefix(s, "table:")
 }
 
@@ -127,13 +129,18 @@ const (
 	RelHasMany RelationKind = iota
 	// RelBelongsTo represents a many-to-one relationship.
 	RelBelongsTo
+	// RelManyToMany represents a many-to-many relationship via a join table.
+	RelManyToMany
 )
 
 // RelationTag holds parsed relation tag info.
 type RelationTag struct {
 	Kind      RelationKind
-	FKColumn  string // foreign key column name
+	FKColumn  string // foreign key column name (or left FK for M2M)
+	RefColumn string // right FK column for M2M join table
 	TableName string // explicit table name override (optional)
+	JoinTable string // join table name for M2M relations
+	Owned     bool   // if true, children are lifecycle-bound to parent (delete orphans on update)
 }
 
 // ParseRelationTag parses the `r3` struct tag on a relation field.
@@ -157,8 +164,17 @@ func ParseRelationTag(field reflect.StructField) (RelationTag, bool) {
 		case part == "rel:belongs-to":
 			tag.Kind = RelBelongsTo
 			hasRel = true
+		case part == "rel:many-to-many":
+			tag.Kind = RelManyToMany
+			hasRel = true
+		case part == "owned":
+			tag.Owned = true
 		case strings.HasPrefix(part, "fk:"):
 			tag.FKColumn = strings.TrimPrefix(part, "fk:")
+		case strings.HasPrefix(part, "ref:"):
+			tag.RefColumn = strings.TrimPrefix(part, "ref:")
+		case strings.HasPrefix(part, "join:"):
+			tag.JoinTable = strings.TrimPrefix(part, "join:")
 		case strings.HasPrefix(part, "table:"):
 			tag.TableName = strings.TrimPrefix(part, "table:")
 		}
