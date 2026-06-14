@@ -3,6 +3,7 @@ package enginefile_test
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -478,6 +479,72 @@ func TestDirectoryMode(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(2), total)
 	assert.Len(t, cities, 2)
+}
+
+// TestDirectoryMode_PathTraversal verifies that a crafted string id cannot
+// escape the storage directory when used as a filename (C5).
+func TestDirectoryMode_PathTraversal(t *testing.T) {
+	base := tempDir(t)
+	dir := filepath.Join(base, "store")
+
+	// An id generator that returns a path-traversal payload.
+	evilID := "../../escaped"
+	idGen := enginefile.IDGeneratorFunc[string](func(_ []string) (string, error) {
+		return evilID, nil
+	})
+
+	repo, err := enginefile.New[Pet, string](idGen,
+		enginefile.WithBaseDir(dir),
+		enginefile.WithCodec(enginefile.JSONCodec()),
+		enginefile.WithDirectoryMode(),
+	)
+	require.NoError(t, err)
+
+	_, err = repo.Create(context.Background(), Pet{Name: "Rex", Kind: "dog"})
+	require.Error(t, err, "a traversal id must be rejected, not written")
+
+	// Nothing must have been written outside the storage directory.
+	_, statErr := os.Stat(filepath.Join(base, "escaped.json"))
+	assert.True(t, os.IsNotExist(statErr), "no file should escape the storage dir")
+}
+
+// TestDirectoryMode_SaveIsNonDestructive verifies that deletions clean up stale
+// files and that a save never removes data before the new state is written (C5).
+func TestDirectoryMode_SaveIsNonDestructive(t *testing.T) {
+	dir := tempDir(t)
+	repo, err := enginefile.New[City, int](
+		enginefile.IncrementIDGen[int](),
+		enginefile.WithBaseDir(dir),
+		enginefile.WithCodec(enginefile.JSONCodec()),
+		enginefile.WithDirectoryMode(),
+	)
+	require.NoError(t, err)
+	ctx := context.Background()
+
+	for _, name := range []string{"Berlin", "Munich", "Hamburg"} {
+		_, err = repo.Create(ctx, City{Name: name, Country: "Germany"})
+		require.NoError(t, err)
+	}
+
+	citiesDir := filepath.Join(dir, "cities")
+	entries, err := os.ReadDir(citiesDir)
+	require.NoError(t, err)
+	assert.Len(t, entries, 3, "three entity files expected, no leftover temp files")
+
+	// Deleting one entity must remove exactly its file and keep the others.
+	require.NoError(t, repo.Delete(ctx, 2))
+
+	_, statErr := os.Stat(filepath.Join(citiesDir, "2.json"))
+	assert.True(t, os.IsNotExist(statErr), "deleted entity file should be gone")
+	for _, id := range []int{1, 3} {
+		_, statErr := os.Stat(filepath.Join(citiesDir, fmt.Sprintf("%d.json", id)))
+		require.NoError(t, statErr, "surviving entity %d must still be on disk", id)
+	}
+
+	remaining, total, err := repo.List(ctx, r3.Query{Pagination: r3.NoPagination()})
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), total)
+	assert.Len(t, remaining, 2)
 }
 
 // --------------------------------------------------------------------------

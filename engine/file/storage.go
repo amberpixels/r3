@@ -165,46 +165,117 @@ func (s *directoryStorage) load(codec Codec, target any) error {
 	return nil
 }
 
+// tmpFilePrefix marks the per-entity temp files written during an atomic save.
+// It deliberately does not end with a codec extension so load() ignores it.
+const tmpFilePrefix = ".tmp-"
+
 func (s *directoryStorage) save(codec Codec, source any) error {
 	if err := os.MkdirAll(s.dirPath, 0o750); err != nil {
 		return fmt.Errorf("create directory %s: %w", s.dirPath, err)
 	}
 
-	// Remove existing files first (to handle deletions)
 	ext := codec.FileExtension()
+
+	// Resolve every target filename up front. An invalid/unsafe PK or a
+	// duplicate aborts the whole save before anything is written, so a crafted
+	// string id can never escape the storage directory and a key collision can
+	// never silently overwrite another entity.
+	sourceVal := reflect.ValueOf(source)
+	type pendingWrite struct {
+		filename string
+		entity   any
+	}
+	items := make([]pendingWrite, 0, sourceVal.Len())
+	desired := make(map[string]struct{}, sourceVal.Len())
+	for i := range sourceVal.Len() {
+		entity := sourceVal.Index(i).Interface()
+		filename, err := safeEntityFilename(s.meta.PKValue(entity), ext)
+		if err != nil {
+			return err
+		}
+		if _, dup := desired[filename]; dup {
+			return fmt.Errorf("duplicate entity id maps to file %q", filename)
+		}
+		desired[filename] = struct{}{}
+		items = append(items, pendingWrite{filename: filename, entity: entity})
+	}
+
+	// Write each entity atomically (temp file + rename) WITHOUT removing
+	// anything first. If a write fails the existing collection is left intact,
+	// so a partial save never destroys data.
+	for _, it := range items {
+		if err := s.writeEntityFile(codec, it.filename, it.entity); err != nil {
+			return err
+		}
+	}
+
+	// All writes succeeded — only now remove files for entities that no longer
+	// exist (deletions), plus any leftover temp files from a crashed save.
 	entries, err := os.ReadDir(s.dirPath)
-	if err != nil && !os.IsNotExist(err) {
+	if err != nil {
 		return fmt.Errorf("read directory %s: %w", s.dirPath, err)
 	}
 	for _, entry := range entries {
-		if !entry.IsDir() && strings.HasSuffix(entry.Name(), ext) {
-			_ = os.Remove(filepath.Join(s.dirPath, entry.Name()))
+		if entry.IsDir() {
+			continue
 		}
-	}
-
-	// Write each entity as a separate file
-	sourceVal := reflect.ValueOf(source)
-	for i := range sourceVal.Len() {
-		entity := sourceVal.Index(i).Interface()
-		pkVal := s.meta.PKValue(entity)
-		filename := fmt.Sprintf("%v%s", pkVal, ext)
-		filePath := filepath.Join(s.dirPath, filename)
-
-		f, err := os.Create(filePath)
-		if err != nil {
-			return fmt.Errorf("create file %s: %w", filePath, err)
-		}
-
-		enc := codec.NewEncoder(f)
-		if err := enc.Encode(entity); err != nil {
-			_ = f.Close()
-			return fmt.Errorf("encode to file %s: %w", filePath, err)
-		}
-
-		if err := f.Close(); err != nil {
-			return fmt.Errorf("close file %s: %w", filePath, err)
+		name := entry.Name()
+		switch {
+		case strings.HasPrefix(name, tmpFilePrefix):
+			_ = os.Remove(filepath.Join(s.dirPath, name))
+		case strings.HasSuffix(name, ext):
+			if _, keep := desired[name]; !keep {
+				_ = os.Remove(filepath.Join(s.dirPath, name))
+			}
 		}
 	}
 
 	return nil
+}
+
+// writeEntityFile writes a single entity to its file atomically: encode into a
+// temp file in the same directory, then rename it over the target path.
+func (s *directoryStorage) writeEntityFile(codec Codec, filename string, entity any) error {
+	tmp, err := os.CreateTemp(s.dirPath, tmpFilePrefix+"*")
+	if err != nil {
+		return fmt.Errorf("create temp file in %s: %w", s.dirPath, err)
+	}
+	tmpPath := tmp.Name()
+
+	enc := codec.NewEncoder(tmp)
+	if err := enc.Encode(entity); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("encode entity to %s: %w", tmpPath, err)
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("close temp file %s: %w", tmpPath, err)
+	}
+
+	finalPath := filepath.Join(s.dirPath, filename)
+	if err := os.Rename(tmpPath, finalPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("rename %s -> %s: %w", tmpPath, finalPath, err)
+	}
+	return nil
+}
+
+// safeEntityFilename builds a filesystem-safe filename for an entity's primary
+// key. The key is used verbatim as a single path segment, so it must not be
+// empty, "." / "..", or contain a path separator — otherwise a crafted string
+// id (e.g. "../../etc/passwd") could escape the storage directory. Unsafe keys
+// are rejected rather than rewritten, since rewriting could map two distinct
+// keys onto the same file and lose data.
+func safeEntityFilename(pkVal any, ext string) (string, error) {
+	key := fmt.Sprintf("%v", pkVal)
+	if key == "" || key == "." || key == ".." || strings.ContainsAny(key, `/\`) {
+		return "", fmt.Errorf(
+			"entity id %q is not a valid storage filename: "+
+				"directory mode requires ids that are a single path segment "+
+				"with no separators or path traversal",
+			key,
+		)
+	}
+	return key + ext, nil
 }
