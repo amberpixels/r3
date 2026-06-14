@@ -145,9 +145,10 @@ func TestFilterToSQL(t *testing.T) {
 				Value:    []string{"electronics", "books"},
 			},
 			validate: func(t *testing.T, result r3sql.SQLClause) {
-				assert.Equal(t, `"category" IN ?`, result.Clause)
-				require.Len(t, result.Args, 1)
-				assert.Equal(t, []string{"electronics", "books"}, result.Args[0])
+				assert.Equal(t, `"category" IN (?, ?)`, result.Clause)
+				require.Len(t, result.Args, 2)
+				assert.Equal(t, "electronics", result.Args[0])
+				assert.Equal(t, "books", result.Args[1])
 			},
 		},
 		{
@@ -769,11 +770,16 @@ func TestFilterToSQL_Integration(t *testing.T) {
 				},
 			},
 			validate: func(t *testing.T, result r3sql.SQLClause) {
-				assert.Equal(t, `("category"."name" IN ? AND ("price" < ? OR "discount"."active" = ?))`, result.Clause)
-				require.Len(t, result.Args, 3)
-				assert.Equal(t, []string{"electronics", "computers"}, result.Args[0])
-				assert.Equal(t, 1000, result.Args[1])
-				assert.Equal(t, true, result.Args[2])
+				assert.Equal(
+					t,
+					`("category"."name" IN (?, ?) AND ("price" < ? OR "discount"."active" = ?))`,
+					result.Clause,
+				)
+				require.Len(t, result.Args, 4)
+				assert.Equal(t, "electronics", result.Args[0])
+				assert.Equal(t, "computers", result.Args[1])
+				assert.Equal(t, 1000, result.Args[2])
+				assert.Equal(t, true, result.Args[3])
 
 				// Joins should be quoted table names
 				expectedJoins := []r3sql.SQLColumn{r3sql.SQLColumn(`"category"`), r3sql.SQLColumn(`"discount"`)}
@@ -931,6 +937,71 @@ func TestPagination_RoundTrip(t *testing.T) {
 			// Verify round-trip
 			assert.Equal(t, tt.pageNum, result.GetPageNum())
 			assert.Equal(t, tt.pageSize, result.GetPageSize())
+		})
+	}
+}
+
+// TestFilterToSQL_InExpansion covers IN / NOT IN placeholder expansion and the
+// degenerate (empty-set) and scalar edge cases. A single "col IN ?" bound to a
+// slice is not expanded by database/sql, so the dialect must emit one
+// placeholder per value (C1).
+func TestFilterToSQL_InExpansion(t *testing.T) {
+	tests := []struct {
+		name       string
+		filter     *r3.FilterSpec
+		wantClause string
+		wantArgs   []any
+	}{
+		{
+			name:       "IN with multiple values",
+			filter:     r3.In("status", []string{"active", "pending"}),
+			wantClause: `"status" IN (?, ?)`,
+			wantArgs:   []any{"active", "pending"},
+		},
+		{
+			name:       "IN with a single value",
+			filter:     r3.In("status", []string{"active"}),
+			wantClause: `"status" IN (?)`,
+			wantArgs:   []any{"active"},
+		},
+		{
+			name:       "NOT IN with multiple values",
+			filter:     r3.NotIn("status", []int{1, 2, 3}),
+			wantClause: `"status" NOT IN (?, ?, ?)`,
+			wantArgs:   []any{1, 2, 3},
+		},
+		{
+			name:       "empty IN collapses to constant false",
+			filter:     r3.In("status", []string{}),
+			wantClause: "1=0",
+			wantArgs:   nil,
+		},
+		{
+			name:       "empty NOT IN collapses to constant true",
+			filter:     r3.NotIn("status", []string{}),
+			wantClause: "1=1",
+			wantArgs:   nil,
+		},
+		{
+			name:       "scalar value passed to IN is treated as a single-element set",
+			filter:     r3.In("status", "active"),
+			wantClause: `"status" IN (?)`,
+			wantArgs:   []any{"active"},
+		},
+		{
+			name:       "byte slice is a scalar, not a list",
+			filter:     r3.In("data", []byte{0x01, 0x02}),
+			wantClause: `"data" IN (?)`,
+			wantArgs:   []any{[]byte{0x01, 0x02}},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			clause, err := r3sql.FilterToSQL(tt.filter)
+			require.NoError(t, err)
+			assert.Equal(t, tt.wantClause, clause.Clause)
+			assert.Equal(t, tt.wantArgs, clause.Args)
 		})
 	}
 }

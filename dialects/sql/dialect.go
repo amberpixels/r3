@@ -9,6 +9,7 @@ package r3sql
 import (
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 
 	"github.com/amberpixels/k1/quick"
@@ -141,6 +142,17 @@ func FilterToSQL(cf *r3.FilterSpec) (SQLClause, error) {
 		// Between operators: value must be a 2-element slice [low, high].
 		if isBetweenOperator(cf.Operator) {
 			return betweenToSQL(safeCol, cf.Operator, cf.Value, joins)
+		}
+
+		// IN / NOT IN: the value is a set, so it needs one placeholder per
+		// element ("col IN (?, ?, ?)"). A single "col IN ?" placeholder bound to
+		// a slice is NOT expanded by database/sql, so it must be expanded here.
+		if cf.Operator == r3.OperatorIn || cf.Operator == r3.OperatorNotIn {
+			sqlOp, err := OperatorToSQL(cf.Operator)
+			if err != nil {
+				return SQLClause{}, err
+			}
+			return inToSQL(safeCol, sqlOp, cf.Value, joins), nil
 		}
 
 		// Simple case: Field is set and Value is non-nil.
@@ -424,4 +436,49 @@ func betweenToSQL(safeCol string, op r3.FilterOperatorSpec, value any, joins []S
 		Args:   []any{low, high},
 		Joins:  joins,
 	}, nil
+}
+
+// inToSQL converts an IN / NOT IN filter into a clause with one placeholder per
+// value: "col IN (?, ?, ?)". The values are flattened into Args so that both the
+// raw database/sql engine and the ORM drivers (which forward Clause + Args to
+// their query builders) bind them as individual positional arguments.
+//
+// An empty set collapses to a constant predicate, since "col IN ()" is invalid
+// SQL: "col IN ()" matches nothing, "col NOT IN ()" matches everything.
+func inToSQL(safeCol string, op SQLClauseOperator, value any, joins []SQLColumn) SQLClause {
+	args := flattenInValues(value)
+	if len(args) == 0 {
+		predicate := sqlFalse
+		if op == SQLClauseOperatorNotIn {
+			predicate = sqlTrue
+		}
+		// The join is only needed to reference the column; a constant predicate
+		// references nothing, so it is dropped.
+		return SQLClause{Clause: predicate, Args: nil, Joins: nil}
+	}
+
+	placeholders := strings.Repeat("?, ", len(args)-1) + "?"
+	clause := fmt.Sprintf("%s %s (%s)", safeCol, op, placeholders)
+	return SQLClause{Clause: clause, Args: args, Joins: joins}
+}
+
+// flattenInValues expands an IN value into individual arguments. A slice or
+// array yields one argument per element; any other value (including a scalar
+// passed to In) yields a single-element set. A []byte is treated as one scalar
+// value (a BLOB), not a list of bytes, matching how SQL drivers handle it.
+func flattenInValues(value any) []any {
+	rv := reflect.ValueOf(value)
+	switch rv.Kind() {
+	case reflect.Slice, reflect.Array:
+		if rv.Type().Elem().Kind() == reflect.Uint8 {
+			return []any{value}
+		}
+		args := make([]any, rv.Len())
+		for i := range args {
+			args[i] = rv.Index(i).Interface()
+		}
+		return args
+	default:
+		return []any{value}
+	}
 }

@@ -118,6 +118,47 @@ func TestSqlite3Repository(t *testing.T) {
 		assert.Equal(t, int64(1), n, "expected 1 matching city")
 	})
 
+	// C1 regression: IN / NOT IN must expand to one placeholder per value.
+	// A single "col IN ?" placeholder bound to a slice is NOT expanded by
+	// database/sql and fails at execution, so these must run against a real DB.
+	t.Run("List cities with IN filter", func(t *testing.T) {
+		both, _, err := cityRepo.List(ctx, r3.Query{
+			Filters: r3.Filters{r3.In("name", []string{"City One", "City Two"})},
+		})
+		require.NoError(t, err, "IN with multiple values must execute")
+		assert.Len(t, both, 2, "IN with two values should match both cities")
+
+		one, _, err := cityRepo.List(ctx, r3.Query{
+			Filters: r3.Filters{r3.In("name", []string{"City One"})},
+		})
+		require.NoError(t, err, "IN with a single value must execute")
+		assert.Len(t, one, 1, "IN with one value should match one city")
+
+		// An empty IN set collapses to a constant-false predicate, since
+		// "col IN ()" is invalid SQL.
+		none, _, err := cityRepo.List(ctx, r3.Query{
+			Filters: r3.Filters{r3.In("name", []string{})},
+		})
+		require.NoError(t, err, "empty IN must execute")
+		assert.Empty(t, none, "empty IN set should match nothing")
+	})
+
+	t.Run("List cities with NOT IN filter", func(t *testing.T) {
+		rest, _, err := cityRepo.List(ctx, r3.Query{
+			Filters: r3.Filters{r3.NotIn("name", []string{"City One"})},
+		})
+		require.NoError(t, err, "NOT IN must execute")
+		require.Len(t, rest, 1, "NOT IN should exclude the named city")
+		assert.Equal(t, "City Two", rest[0].Name)
+
+		// An empty NOT IN set collapses to a constant-true predicate.
+		all, _, err := cityRepo.List(ctx, r3.Query{
+			Filters: r3.Filters{r3.NotIn("name", []string{})},
+		})
+		require.NoError(t, err, "empty NOT IN must execute")
+		assert.Len(t, all, 2, "empty NOT IN set should match everything")
+	})
+
 	t.Run("List locations", func(t *testing.T) {
 		result, total, err := locRepo.List(ctx, r3.Query{})
 		require.NoError(t, err, "failed to list locations")

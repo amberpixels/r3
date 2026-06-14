@@ -102,6 +102,44 @@ func TestPqRepository(t *testing.T) {
 		assert.Equal(t, int64(2), total, "expected 2 total cities")
 	})
 
+	// C1 regression: IN / NOT IN must expand to one placeholder per value.
+	// A single "col IN ?" bound to a slice is not expanded by the underlying
+	// query layer, so this must run against a real database.
+	t.Run("List cities with IN filter", func(t *testing.T) {
+		both, _, err := cityRepo.List(ctx, r3.Query{
+			Filters: r3.Filters{r3.In("name", []string{"City One", "City Two"})},
+		})
+		require.NoError(t, err, "IN with multiple values must execute")
+		assert.Len(t, both, 2, "IN with two values should match both cities")
+
+		one, _, err := cityRepo.List(ctx, r3.Query{
+			Filters: r3.Filters{r3.In("name", []string{"City One"})},
+		})
+		require.NoError(t, err, "IN with a single value must execute")
+		assert.Len(t, one, 1, "IN with one value should match one city")
+
+		none, _, err := cityRepo.List(ctx, r3.Query{
+			Filters: r3.Filters{r3.In("name", []string{})},
+		})
+		require.NoError(t, err, "empty IN must execute")
+		assert.Empty(t, none, "empty IN set should match nothing")
+	})
+
+	t.Run("List cities with NOT IN filter", func(t *testing.T) {
+		rest, _, err := cityRepo.List(ctx, r3.Query{
+			Filters: r3.Filters{r3.NotIn("name", []string{"City One"})},
+		})
+		require.NoError(t, err, "NOT IN must execute")
+		require.Len(t, rest, 1, "NOT IN should exclude the named city")
+		assert.Equal(t, "City Two", rest[0].Name)
+
+		all, _, err := cityRepo.List(ctx, r3.Query{
+			Filters: r3.Filters{r3.NotIn("name", []string{})},
+		})
+		require.NoError(t, err, "empty NOT IN must execute")
+		assert.Len(t, all, 2, "empty NOT IN set should match everything")
+	})
+
 	t.Run("Get city by ID", func(t *testing.T) {
 		city, err := cityRepo.Get(ctx, int64(1), r3.Query{})
 		require.NoError(t, err, "failed to get city")

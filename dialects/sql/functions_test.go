@@ -81,9 +81,10 @@ func TestFiltersToSQLClauses(t *testing.T) {
 				assert.Equal(t, "John%", result[1].Args[0])
 
 				// Third filter: status IN ('active', 'pending')
-				assert.Equal(t, `"status" IN ?`, result[2].Clause)
-				require.Len(t, result[2].Args, 1)
-				assert.Equal(t, []string{"active", "pending"}, result[2].Args[0])
+				assert.Equal(t, `"status" IN (?, ?)`, result[2].Clause)
+				require.Len(t, result[2].Args, 2)
+				assert.Equal(t, "active", result[2].Args[0])
+				assert.Equal(t, "pending", result[2].Args[1])
 			},
 		},
 		{
@@ -200,12 +201,14 @@ func TestFiltersToSQLClauses(t *testing.T) {
 
 				expectedClauses := []string{
 					`"f1" = ?`, `"f2" != ?`, `"f3" > ?`, `"f4" >= ?`, `"f5" < ?`, `"f6" <= ?`,
-					`"f7" LIKE ?`, `"f8" NOT LIKE ?`, `"f9" ILIKE ?`, `"f10" IN ?`, `"f11" NOT IN ?`,
+					`"f7" LIKE ?`, `"f8" NOT LIKE ?`, `"f9" ILIKE ?`, `"f10" IN (?, ?)`, `"f11" NOT IN (?, ?)`,
 				}
+				// IN / NOT IN expand to one placeholder per value; all others bind a single arg.
+				expectedArgs := []int{1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2}
 
 				for i, expectedClause := range expectedClauses {
 					assert.Equal(t, expectedClause, result[i].Clause, "Clause mismatch at index %d", i)
-					assert.Len(t, result[i].Args, 1, "Should have exactly one arg at index %d", i)
+					assert.Len(t, result[i].Args, expectedArgs[i], "Arg count mismatch at index %d", i)
 				}
 			},
 		},
@@ -249,8 +252,9 @@ func TestFiltersToSQLClauses(t *testing.T) {
 				assert.Equal(t, true, result[2].Args[0])
 
 				// Interface slice
-				assert.Equal(t, `"tags" IN ?`, result[3].Clause)
-				assert.Equal(t, []any{"golang", "testing", "sql"}, result[3].Args[0])
+				assert.Equal(t, `"tags" IN (?, ?, ?)`, result[3].Clause)
+				require.Len(t, result[3].Args, 3)
+				assert.Equal(t, []any{"golang", "testing", "sql"}, result[3].Args)
 			},
 		},
 	}
@@ -345,13 +349,14 @@ func TestFiltersToSQLClauses_Integration(t *testing.T) {
 				require.Len(t, result, 1)
 				assert.Equal(
 					t,
-					`("category"."name" IN ? AND ("price" < ? OR "discount"."active" = ?))`,
+					`("category"."name" IN (?, ?) AND ("price" < ? OR "discount"."active" = ?))`,
 					result[0].Clause,
 				)
-				require.Len(t, result[0].Args, 3)
-				assert.Equal(t, []string{"electronics", "computers"}, result[0].Args[0])
-				assert.Equal(t, 1000, result[0].Args[1])
-				assert.Equal(t, true, result[0].Args[2])
+				require.Len(t, result[0].Args, 4)
+				assert.Equal(t, "electronics", result[0].Args[0])
+				assert.Equal(t, "computers", result[0].Args[1])
+				assert.Equal(t, 1000, result[0].Args[2])
+				assert.Equal(t, true, result[0].Args[3])
 
 				// Check joins
 				expectedJoins := []r3sql.SQLColumn{r3sql.SQLColumn(`"category"`), r3sql.SQLColumn(`"discount"`)}
@@ -391,13 +396,14 @@ func TestFiltersToSQLClauses_Integration(t *testing.T) {
 				require.Len(t, result, 1)
 				assert.Equal(
 					t,
-					`("created_at" >= ? AND "created_at" <= ? AND "user"."role" NOT IN ? AND "deleted_at" IS NULL)`,
+					`("created_at" >= ? AND "created_at" <= ? AND "user"."role" NOT IN (?, ?) AND "deleted_at" IS NULL)`,
 					result[0].Clause,
 				)
-				require.Len(t, result[0].Args, 3)
+				require.Len(t, result[0].Args, 4)
 				assert.Equal(t, "2023-01-01T00:00:00Z", result[0].Args[0])
 				assert.Equal(t, "2023-12-31T23:59:59Z", result[0].Args[1])
-				assert.Equal(t, []string{"system", "bot"}, result[0].Args[2])
+				assert.Equal(t, "system", result[0].Args[2])
+				assert.Equal(t, "bot", result[0].Args[3])
 
 				// Check joins
 				expectedJoins := []r3sql.SQLColumn{r3sql.SQLColumn(`"user"`)}
