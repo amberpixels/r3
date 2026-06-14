@@ -7,6 +7,7 @@ require (
 	github.com/d3rty/json v0.0.0-20260223214742-da23dcd77ba2
 	github.com/go-pg/pg/v10 v10.15.0
 	github.com/go-sql-driver/mysql v1.9.3
+	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.9.1
 	github.com/lib/pq v1.12.3
 	github.com/mattn/go-sqlite3 v1.14.42
@@ -45,7 +46,6 @@ require (
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-ole/go-ole v1.2.6 // indirect
 	github.com/go-pg/zerochecker v0.2.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect

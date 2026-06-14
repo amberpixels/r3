@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
-	"strconv"
 	"time"
 
 	"github.com/amberpixels/r3"
@@ -146,7 +145,7 @@ func evaluateSnapshotRules[T any](
 		}
 
 		snapshot := Snapshot{
-			ID:         strconv.FormatInt(time.Now().UnixNano(), 10),
+			ID:         generateID(),
 			RecordType: recordType,
 			RecordID:   recordID,
 			Version:    version,

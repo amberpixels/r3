@@ -31,6 +31,10 @@ type Reverter[T any, ID comparable] struct {
 	crud  r3.CRUD[T, ID]
 	store r3.CRUD[ChangeRecord, string]
 	opts  Options[T, ID]
+
+	// versionLocks is shared with the owning history CRUD so revert records
+	// participate in the same per-record version serialization.
+	versionLocks *versionLocker
 }
 
 // RevertTo restores an entity to the state it was in at a specific version.
@@ -72,7 +76,6 @@ func (r *Reverter[T, ID]) RevertTo(ctx context.Context, id ID, version int64) (T
 	}
 
 	record := ChangeRecord{
-		ID:         generateID(),
 		RecordType: r.opts.RecordType,
 		RecordID:   recordID,
 		Action:     ActionRevert,
@@ -91,9 +94,9 @@ func (r *Reverter[T, ID]) RevertTo(ctx context.Context, id ID, version int64) (T
 		record.ParentID = extractFieldByName(result, r.opts.ParentRef.FKField)
 	}
 
-	record.Version = nextVersion(ctx, r.store, record.RecordType, record.RecordID)
-
-	if _, err := r.store.Create(ctx, record); err != nil {
+	// Assign version + ID and persist atomically per record key.
+	record, err = persistVersioned(ctx, r.store, r.versionLocks, record)
+	if err != nil {
 		slog.ErrorContext(
 			ctx,
 			"r3history: failed to record revert",

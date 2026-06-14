@@ -4,10 +4,10 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"strconv"
 	"time"
 
 	"github.com/amberpixels/r3"
+	"github.com/google/uuid"
 )
 
 // CRUD is a decorator that wraps any r3.CRUD[T, ID] and records every
@@ -33,6 +33,9 @@ type CRUD[T any, ID comparable] struct {
 	inner r3.CRUD[T, ID]
 	store r3.CRUD[ChangeRecord, string]
 	opts  Options[T, ID]
+
+	// versionLocks serializes per-record version assignment (see versionLocker).
+	versionLocks *versionLocker
 }
 
 // Compile-time check that CRUD satisfies r3.CRUD.
@@ -63,9 +66,10 @@ func WithHistory[T any, ID comparable](
 	applyDefaults(&opts)
 
 	return &CRUD[T, ID]{
-		inner: inner,
-		store: store,
-		opts:  opts,
+		inner:        inner,
+		store:        store,
+		opts:         opts,
+		versionLocks: newVersionLocker(),
 	}
 }
 
@@ -85,9 +89,10 @@ func (h *CRUD[T, ID]) History() r3.CRUD[ChangeRecord, string] {
 // Reverter returns a Reverter for undo/revert operations on this entity type.
 func (h *CRUD[T, ID]) Reverter() *Reverter[T, ID] {
 	return &Reverter[T, ID]{
-		crud:  h.inner,
-		store: h.store,
-		opts:  h.opts,
+		crud:         h.inner,
+		store:        h.store,
+		opts:         h.opts,
+		versionLocks: h.versionLocks,
 	}
 }
 
@@ -249,12 +254,9 @@ func (h *CRUD[T, ID]) record(ctx context.Context, info recordInfo[T], diffFn fun
 		// request returns) while preserving request-scoped values like the Actor.
 		asyncCtx := context.WithoutCancel(ctx)
 		go func() {
-			record := buildRecord()
-			// Compute next version internally
-			record.Version = nextVersion(asyncCtx, h.store, record.RecordType, record.RecordID)
-			record.ID = generateID()
-
-			if _, err := h.store.Create(asyncCtx, record); err != nil {
+			// Assign version + ID and persist atomically per record key.
+			record, err := persistVersioned(asyncCtx, h.store, h.versionLocks, buildRecord())
+			if err != nil {
 				slog.ErrorContext(
 					asyncCtx,
 					"r3history: async record failed",
@@ -284,12 +286,9 @@ func (h *CRUD[T, ID]) record(ctx context.Context, info recordInfo[T], diffFn fun
 		return
 	}
 
-	record := buildRecord()
-	// Compute next version internally
-	record.Version = nextVersion(ctx, h.store, record.RecordType, record.RecordID)
-	record.ID = generateID()
-
-	if _, err := h.store.Create(ctx, record); err != nil {
+	// Assign version + ID and persist atomically per record key.
+	record, err := persistVersioned(ctx, h.store, h.versionLocks, buildRecord())
+	if err != nil {
 		slog.ErrorContext(
 			ctx,
 			"r3history: record failed",
@@ -356,7 +355,7 @@ func nextVersion(ctx context.Context, store r3.CRUD[ChangeRecord, string], recor
 	return records[0].Version + 1
 }
 
-// generateID creates a unique ID for a change record.
+// generateID creates a unique, collision-resistant ID for a change record.
 func generateID() string {
-	return strconv.FormatInt(time.Now().UnixNano(), 10)
+	return uuid.NewString()
 }

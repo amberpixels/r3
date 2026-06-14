@@ -1463,3 +1463,68 @@ func incrementID[ID comparable](id ID) ID {
 		return id
 	}
 }
+
+// TestCRUD_ConcurrentUpdatesGetUniqueVersions verifies that concurrent
+// mutations of the same record are assigned unique, contiguous versions and
+// unique IDs (C3). Before the fix, the unlocked read-modify-write in
+// nextVersion handed out duplicate versions, and time-based IDs could collide.
+func TestCRUD_ConcurrentUpdatesGetUniqueVersions(t *testing.T) {
+	inner := newMemoryCRUD()
+	store := newMemoryChangeRecordCRUD()
+	repo := history.WithHistory[Order, int64](inner, store,
+		history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
+	)
+	ctx := context.Background()
+
+	created, err := repo.Create(ctx, Order{Name: "init"})
+	if err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	const n = 50
+	var wg sync.WaitGroup
+	wg.Add(n)
+	for i := range n {
+		go func(i int) {
+			defer wg.Done()
+			if _, err := repo.Update(ctx, Order{ID: created.ID, Name: fmt.Sprintf("v%d", i)}); err != nil {
+				t.Errorf("Update %d failed: %v", i, err)
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	records, _, err := store.List(ctx)
+	if err != nil {
+		t.Fatalf("List failed: %v", err)
+	}
+
+	// 1 create + n updates.
+	wantCount := n + 1
+	if len(records) != wantCount {
+		t.Fatalf("expected %d change records, got %d", wantCount, len(records))
+	}
+
+	versions := make(map[int64]int, wantCount)
+	ids := make(map[string]int, wantCount)
+	for _, r := range records {
+		versions[r.Version]++
+		if r.ID == "" {
+			t.Error("change record has empty ID")
+		}
+		ids[r.ID]++
+	}
+
+	// Versions must be exactly 1..wantCount, each assigned once.
+	for v := int64(1); v <= int64(wantCount); v++ {
+		if versions[v] != 1 {
+			t.Errorf("version %d assigned %d times, want exactly 1", v, versions[v])
+		}
+	}
+	// IDs must be unique.
+	for id, c := range ids {
+		if c != 1 {
+			t.Errorf("ID %q assigned %d times, want unique", id, c)
+		}
+	}
+}
