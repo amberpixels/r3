@@ -60,6 +60,11 @@ func (m *memoryCRUD) Get(_ context.Context, id int64, _ ...r3.Query) (Post, erro
 	return entity, nil
 }
 
+func (m *memoryCRUD) Count(ctx context.Context, qarg ...r3.Query) (int64, error) {
+	_, n, err := m.List(ctx, qarg...)
+	return n, err
+}
+
 func (m *memoryCRUD) List(_ context.Context, qarg ...r3.Query) ([]Post, int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()

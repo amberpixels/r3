@@ -88,6 +88,11 @@ func (v *CRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, e
 	return v.inner.List(ctx, qarg...)
 }
 
+// Count delegates directly to inner.Count (no validation on reads).
+func (v *CRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, error) {
+	return v.inner.Count(ctx, qarg...)
+}
+
 // Update optionally fetches the existing entity (if IDFunc is set),
 // validates, then delegates to inner.Update.
 func (v *CRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {

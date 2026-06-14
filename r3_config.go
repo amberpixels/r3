@@ -37,8 +37,17 @@ type NamingConfig struct {
 type DefaultsConfig struct {
 	// PageSize is the default number of items per page when pagination
 	// is active but no explicit page size is provided.
-	// Default: 50 (same as PageSizeDefault)
+	// Default: 100 (same as PageSizeDefault)
 	PageSize int
+
+	// Unpaginated, when true, makes List return ALL matching rows by default —
+	// no implicit page-size cap. Individual queries can still opt back into
+	// pagination per call by setting Query.Pagination. Takes precedence over
+	// PageSize.
+	//
+	// Use with care on large tables; prefer the per-query r3.Unpaginated()
+	// escape hatch when only some call sites need everything.
+	Unpaginated bool
 }
 
 // DefaultConfig returns a Config with all defaults applied.

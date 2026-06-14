@@ -15,6 +15,14 @@ type Querier[T any, ID comparable] interface {
 
 	// List retrieves records based on the provided query parameters.
 	List(context.Context, ...Query) ([]T, int64, error)
+
+	// Count returns the number of records matching the query's filters.
+	//
+	// Only Filters and IncludeTrashed affect the result — pagination, sorts,
+	// fields, and preloads are ignored. Called with no query it counts every
+	// (non-trashed) record. It is the efficient way to answer "how many?"
+	// without materializing rows.
+	Count(context.Context, ...Query) (int64, error)
 }
 
 // Commander is the write-only subset of repository operations.

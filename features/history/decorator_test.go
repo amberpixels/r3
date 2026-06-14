@@ -52,6 +52,11 @@ func (m *memoryCRUD) Get(_ context.Context, id int64, _ ...r3.Query) (Order, err
 	return entity, nil
 }
 
+func (m *memoryCRUD) Count(ctx context.Context, qarg ...r3.Query) (int64, error) {
+	_, n, err := m.List(ctx, qarg...)
+	return n, err
+}
+
 func (m *memoryCRUD) List(_ context.Context, _ ...r3.Query) ([]Order, int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -134,6 +139,11 @@ func (s *memoryChangeRecordCRUD) Get(_ context.Context, id string, _ ...r3.Query
 		}
 	}
 	return history.ChangeRecord{}, history.ErrRecordNotFound
+}
+
+func (s *memoryChangeRecordCRUD) Count(ctx context.Context, qargs ...r3.Query) (int64, error) {
+	_, n, err := s.List(ctx, qargs...)
+	return n, err
 }
 
 func (s *memoryChangeRecordCRUD) List(_ context.Context, qargs ...r3.Query) ([]history.ChangeRecord, int64, error) {
@@ -325,6 +335,11 @@ func (s *memorySnapshotCRUD) Get(_ context.Context, id string, _ ...r3.Query) (h
 		}
 	}
 	return history.Snapshot{}, errors.New("snapshot not found")
+}
+
+func (s *memorySnapshotCRUD) Count(ctx context.Context, qargs ...r3.Query) (int64, error) {
+	_, n, err := s.List(ctx, qargs...)
+	return n, err
 }
 
 func (s *memorySnapshotCRUD) List(_ context.Context, qargs ...r3.Query) ([]history.Snapshot, int64, error) {
@@ -1408,6 +1423,11 @@ func (m *mockCRUD[T, ID]) Get(_ context.Context, id ID, _ ...r3.Query) (T, error
 		return zero, errors.New("not found")
 	}
 	return entity, nil
+}
+
+func (m *mockCRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, error) {
+	_, n, err := m.List(ctx, qarg...)
+	return n, err
 }
 
 func (m *mockCRUD[T, ID]) List(_ context.Context, _ ...r3.Query) ([]T, int64, error) {

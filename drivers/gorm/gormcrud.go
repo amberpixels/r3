@@ -2,6 +2,7 @@ package r3gorm
 
 import (
 	"context"
+	"errors"
 	"reflect"
 
 	"github.com/amberpixels/r3"
@@ -112,6 +113,33 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 	return entities, totalCount, nil
 }
 
+// Count returns the number of records matching the query's filters.
+func (r *GormCRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, error) {
+	prep, err := enginesql.PrepareListQuery(&r.DefaultsManager, qarg...)
+	if err != nil {
+		return 0, err
+	}
+
+	var entity T
+	query := r.db.WithContext(ctx).Model(&entity)
+
+	if prep.Query.IncludeTrashed.Some(true) {
+		query = query.Unscoped()
+	}
+	for _, join := range prep.Joins() {
+		query = query.Joins(join.String())
+	}
+	for _, clause := range prep.Clauses {
+		query = query.Where(clause.Clause, clause.Args...)
+	}
+
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
 func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, error) {
 	var entity T
 
@@ -136,6 +164,9 @@ func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 	}
 
 	if err := query.First(&entity, id).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return entity, r3.ErrNotFound
+		}
 		return entity, err
 	}
 

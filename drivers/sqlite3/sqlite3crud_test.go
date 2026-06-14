@@ -96,6 +96,28 @@ func TestSqlite3Repository(t *testing.T) {
 		assert.Equal(t, "City One", city.Name, "unexpected city name")
 	})
 
+	t.Run("Get missing city returns ErrNotFound", func(t *testing.T) {
+		_, err := cityRepo.Get(ctx, int64(99999))
+		require.Error(t, err)
+		assert.ErrorIs(t, err, r3.ErrNotFound, "missing record must normalize to r3.ErrNotFound")
+	})
+
+	t.Run("Count cities", func(t *testing.T) {
+		n, err := cityRepo.Count(ctx)
+		require.NoError(t, err, "failed to count cities")
+		assert.Equal(t, int64(2), n, "expected 2 cities")
+	})
+
+	t.Run("Count with filter ignores pagination", func(t *testing.T) {
+		// A page size of 1 must not cap the count.
+		n, err := cityRepo.Count(ctx, r3.Query{
+			Pagination: r3.NewPaginationSpec(1, 1),
+			Filters:    r3.Filters{r3.Eq("name", "City One")},
+		})
+		require.NoError(t, err, "failed to count cities with filter")
+		assert.Equal(t, int64(1), n, "expected 1 matching city")
+	})
+
 	t.Run("List locations", func(t *testing.T) {
 		result, total, err := locRepo.List(ctx, r3.Query{})
 		require.NoError(t, err, "failed to list locations")

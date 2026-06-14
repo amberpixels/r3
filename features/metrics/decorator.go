@@ -142,6 +142,28 @@ func (m *CRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, e
 	return results, total, err
 }
 
+// Count returns the number of matching entities and records metrics.
+func (m *CRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, error) {
+	var q r3.Query
+	if len(qarg) > 0 {
+		q = qarg[0]
+	}
+
+	start := time.Now()
+	total, err := m.inner.Count(ctx, qarg...)
+	duration := time.Since(start)
+
+	m.record(ctx, OperationContext[T, ID]{
+		Operation:  OpCount,
+		Duration:   duration,
+		TotalCount: total,
+		Query:      q,
+		Err:        err,
+	})
+
+	return total, err
+}
+
 // Update modifies an existing entity and records metrics.
 func (m *CRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	// Fetch old state for diff-based collectors

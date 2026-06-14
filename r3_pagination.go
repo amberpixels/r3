@@ -8,7 +8,7 @@ import (
 
 const (
 	// PageSizeDefault is a GLOBAL per-package default page size if no pagination was specified.
-	PageSizeDefault = 50
+	PageSizeDefault = 100
 )
 
 // PaginationSpec is the core pagination type using PageNum/PageSize.
@@ -36,6 +36,24 @@ func NewPaginationSpecWithSize(pageSize int) *PaginationSpec {
 // NoPagination returns a PaginationSpec with no pagination limits.
 func NoPagination() *PaginationSpec {
 	return &PaginationSpec{}
+}
+
+// Unpaginated returns a PaginationSpec that disables the default page-size cap,
+// so List returns every matching record.
+//
+// By default List paginates (PageSizeDefault items per page); a caller that
+// expects "give me everything" would otherwise silently get a truncated slice.
+// Make the intent explicit:
+//
+//	all, total, err := repo.List(ctx, r3.Query{Pagination: r3.Unpaginated()})
+//
+// Passing this on a query overrides any configured default page size (it clears
+// the inherited cap during query merge). To make a whole repo unpaginated by
+// default instead, set Config.Defaults.Unpaginated.
+//
+// Unpaginated is an intention-revealing alias for NoPagination.
+func Unpaginated() *PaginationSpec {
+	return NoPagination()
 }
 
 // DefaultPagination returns a PaginationSpec with default page size.

@@ -127,6 +127,8 @@ func TestGet_NotFound(t *testing.T) {
 	_, err := repo.Get(ctx, 999)
 	require.Error(t, err)
 	assert.True(t, enginefile.IsNotFound(err))
+	// The file engine normalizes its not-found error to the package-wide sentinel.
+	assert.ErrorIs(t, err, r3.ErrNotFound)
 }
 
 // --------------------------------------------------------------------------

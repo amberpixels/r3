@@ -2,6 +2,7 @@ package r3gopg
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/amberpixels/r3"
@@ -115,6 +116,33 @@ func (r *GoPgCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 	return entities, totalCount, nil
 }
 
+// Count returns the number of records matching the query's filters.
+func (r *GoPgCRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, error) {
+	prep, err := enginesql.PrepareListQuery(&r.DefaultsManager, qarg...)
+	if err != nil {
+		return 0, err
+	}
+
+	var entities []T
+	query := r.db.ModelContext(ctx, &entities)
+
+	if prep.Query.IncludeTrashed.Some(true) {
+		query = query.AllWithDeleted()
+	}
+	for _, join := range prep.Joins() {
+		query = query.Join(fmt.Sprintf("JOIN %s ON TRUE", join.String()))
+	}
+	for _, clause := range prep.Clauses {
+		query = query.Where(clause.Clause, clause.Args...)
+	}
+
+	count, err := query.Count()
+	if err != nil {
+		return 0, err
+	}
+	return int64(count), nil
+}
+
 func (r *GoPgCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, error) {
 	var entity T
 
@@ -138,6 +166,9 @@ func (r *GoPgCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 	}
 
 	if err := query.Select(); err != nil {
+		if errors.Is(err, pg.ErrNoRows) {
+			return entity, r3.ErrNotFound
+		}
 		return entity, err
 	}
 	return entity, nil

@@ -41,6 +41,11 @@ func (c *CRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, e
 	return c.inner.List(ctx, qarg...)
 }
 
+// Count passes through to the inner CRUD.
+func (c *CRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, error) {
+	return c.inner.Count(ctx, qarg...)
+}
+
 // Update passes through to the inner CRUD.
 func (c *CRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	return c.inner.Update(ctx, entity)

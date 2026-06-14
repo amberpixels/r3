@@ -141,14 +141,16 @@ func (r *BaseCRUD[T, ID]) createWithLastInsertID(ctx context.Context, entity T) 
 	return entity, nil
 }
 
-// List retrieves records based on the provided query parameters.
-func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, error) {
-	prep, err := PrepareListQuery(&r.DefaultsManager, qarg...)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	// Build WHERE clauses (with placeholder conversion for this flavor)
+// buildFilterSQL converts the prepared query's filters into WHERE parts (with
+// flavor-specific placeholders), their args, and a JOIN fragment. It is the
+// shared core of List and Count. The returned argIdx is the next free
+// placeholder index, so callers (List) can append further clauses (e.g. cursor).
+//
+// JOINs use JOIN ... ON TRUE because the raw SQL engine lacks schema metadata to
+// infer ON conditions. ORM-based drivers (GORM, Bun, go-pg) handle proper JOINs.
+func (r *BaseCRUD[T, ID]) buildFilterSQL(
+	prep PreparedListQuery,
+) ([]string, []any, string, int) {
 	var whereParts []string
 	var whereArgs []any
 	argIdx := 1
@@ -165,9 +167,6 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		argIdx = nextIdx
 	}
 
-	// Build JOIN clauses.
-	// Uses JOIN ... ON TRUE because the raw SQL engine lacks schema metadata to infer
-	// ON conditions. ORM-based drivers (GORM, Bun, go-pg) handle proper JOINs natively.
 	var joinSQL string
 	if joins := prep.Joins(); len(joins) > 0 {
 		var joinParts []string
@@ -176,6 +175,42 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		}
 		joinSQL = " " + strings.Join(joinParts, " ")
 	}
+
+	return whereParts, whereArgs, joinSQL, argIdx
+}
+
+// Count returns the number of records matching the query's filters.
+func (r *BaseCRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, error) {
+	prep, err := PrepareListQuery(&r.DefaultsManager, qarg...)
+	if err != nil {
+		return 0, err
+	}
+
+	whereParts, whereArgs, joinSQL, _ := r.buildFilterSQL(prep)
+
+	whereSQL := ""
+	if len(whereParts) > 0 {
+		whereSQL = " WHERE " + strings.Join(whereParts, " AND ")
+	}
+
+	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s%s%s", r.Meta.TableName, joinSQL, whereSQL)
+
+	var total int64
+	if err := r.Executor.QueryRowContext(ctx, countQuery, whereArgs...).Scan(&total); err != nil {
+		return 0, err
+	}
+	return total, nil
+}
+
+// List retrieves records based on the provided query parameters.
+func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, error) {
+	prep, err := PrepareListQuery(&r.DefaultsManager, qarg...)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Build WHERE/JOIN clauses (with placeholder conversion for this flavor)
+	whereParts, whereArgs, joinSQL, argIdx := r.buildFilterSQL(prep)
 
 	// Pagination: count first if needed (skip for cursor pagination)
 	var totalCount int64
@@ -301,6 +336,9 @@ func (r *BaseCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 	dests := r.Meta.ScanDestForColumns(&entity, selectedCols)
 	err := r.Executor.QueryRowContext(ctx, query, id).Scan(dests...)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return entity, r3.ErrNotFound
+		}
 		return entity, err
 	}
 

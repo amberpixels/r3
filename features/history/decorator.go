@@ -116,6 +116,11 @@ func (h *CRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, e
 	return h.inner.List(ctx, qarg...)
 }
 
+// Count returns the number of matching entities. No history is recorded for reads.
+func (h *CRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, error) {
+	return h.inner.Count(ctx, qarg...)
+}
+
 // Update modifies an existing entity and records an "update" change with field-level diff.
 func (h *CRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	// Fetch old state for diffing

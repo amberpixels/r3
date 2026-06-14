@@ -55,6 +55,11 @@ func (m *memoryCRUD) Get(_ context.Context, id int64, _ ...r3.Query) (User, erro
 	return entity, nil
 }
 
+func (m *memoryCRUD) Count(ctx context.Context, qarg ...r3.Query) (int64, error) {
+	_, n, err := m.List(ctx, qarg...)
+	return n, err
+}
+
 func (m *memoryCRUD) List(_ context.Context, _ ...r3.Query) ([]User, int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -164,6 +169,11 @@ func (m *plainCRUD) Get(_ context.Context, id int64, _ ...r3.Query) (User, error
 		return User{}, fmt.Errorf("not found: %d", id)
 	}
 	return entity, nil
+}
+
+func (m *plainCRUD) Count(ctx context.Context, qarg ...r3.Query) (int64, error) {
+	_, n, err := m.List(ctx, qarg...)
+	return n, err
 }
 
 func (m *plainCRUD) List(_ context.Context, _ ...r3.Query) ([]User, int64, error) {

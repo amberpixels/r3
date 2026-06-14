@@ -1,7 +1,7 @@
 // Package r3 provides a universal CRUD repository abstraction for Go.
 //
 // The core interface is [CRUD], a generic interface parameterized by entity type T
-// and primary key type ID. It composes [Querier] (Get, List) and [Commander]
+// and primary key type ID. It composes [Querier] (Get, List, Count) and [Commander]
 // (Create, Update, Patch, Delete) — use the narrower sub-interfaces when full
 // CRUD access is not needed (e.g. read-only config stores only need [Querier]).
 //
@@ -9,7 +9,18 @@
 // [PaginationSpec], [CursorSpec], [Fields], and [Preloads] — combined into a
 // single [Query] struct. Queries are immutable; [Query.MergeWith] returns a new
 // value, making it safe to combine queries from different sources (defaults,
-// user request, permission scope).
+// user request, permission scope). Build filters with the short-form helpers
+// ([Eq], [Gt], [In], [Like], [Between], ...) for the common case, or the
+// [FieldSpec]-based forms ([F], [Fop]) when you need table hints or nested paths.
+//
+// # Errors and pagination
+//
+// Get normalizes every backend's "not found" condition to the [ErrNotFound]
+// sentinel, so callers detect a missing record with errors.Is the same way
+// regardless of driver. List paginates by default ([PageSizeDefault] items);
+// pass [Unpaginated] to opt out, or compare the returned total against the slice
+// length to detect truncation. Count answers "how many match?" without
+// materializing rows — only Filters and IncludeTrashed affect its result.
 //
 // # Project layout
 //

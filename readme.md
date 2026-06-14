@@ -91,19 +91,26 @@ cityRepo := r3gorm.NewGormCRUD[City, int64](db)
 // Create
 city, err := cityRepo.Create(ctx, City{Name: "Berlin"})
 
-// Get by ID
+// Get by ID — missing records return r3.ErrNotFound on every backend
 city, err := cityRepo.Get(ctx, 42)
+if errors.Is(err, r3.ErrNotFound) {
+    // respond 404, etc.
+}
 
-// List with filters, sorting, and pagination
+// List with filters, sorting, and pagination.
+// Short-form helpers (r3.Eq, r3.Gt, ...) keep simple filters terse.
 cities, total, err := cityRepo.List(ctx, r3.Query{
     Filters: r3.Filters{
-        r3.F(r3.NewFieldSpec("name"), "Berlin"),
+        r3.Eq("name", "Berlin"),
     },
     Sorts: r3.Sorts{
         r3.NewSortAscSpec(r3.NewFieldSpec("name")),
     },
     Pagination: r3.NewPaginationSpec(1, 25),
 })
+
+// Count matching records without materializing rows
+n, err := cityRepo.Count(ctx, r3.Query{Filters: r3.Filters{r3.Eq("name", "Berlin")}})
 
 // Update
 city.Name = "Munich"
@@ -275,35 +282,36 @@ repo := permissions.WithPermissions(
 
 ## Filters
 
-Build filters with helpers or construct them directly:
+Build filters with the short-form helpers (a plain field name) for the common
+case, or drop down to the `FieldSpec`-based forms when you need table hints or
+nested paths:
 
 ```go
-// Simple equality
-r3.F(r3.NewFieldSpec("status"), "active")
+// Short-form helpers — terse, take a plain field name
+r3.Eq("status", "active")
+r3.Gt("age", 18)
+r3.In("country", []string{"DE", "FR"})
+r3.Like("name", "%john%")
+r3.ILike("name", "%john%")
+r3.Between("price", 10, 100)        // inclusive
 
-// With operator
+// FieldSpec forms — for table hints / nested paths
+r3.F(r3.NewFieldSpec("status"), "active")
 r3.Fop(r3.NewFieldSpec("age"), r3.OperatorGte, 18)
 
-// Logical groups
+// Logical groups (compose either form)
 r3.And(
-    r3.F(r3.NewFieldSpec("status"), "active"),
-    r3.Fop(r3.NewFieldSpec("age"), r3.OperatorGte, 18),
+    r3.Eq("status", "active"),
+    r3.Gte("age", 18),
 )
 
 r3.Or(
-    r3.F(r3.NewFieldSpec("role"), "admin"),
-    r3.F(r3.NewFieldSpec("role"), "moderator"),
+    r3.Eq("role", "admin"),
+    r3.Eq("role", "moderator"),
 )
 
-// LIKE / ILIKE
-r3.FLike(r3.NewFieldSpec("name"), "%john%")
-r3.FILike(r3.NewFieldSpec("name"), "%john%")
-
-// Between (inclusive)
-r3.Fop(r3.NewFieldSpec("price"), r3.OperatorBetween, []int{10, 100})
-
 // NULL checks (nil value + Eq/Ne operator)
-r3.F(r3.NewFieldSpec("deleted_at"), nil)  // IS NULL
+r3.Eq("deleted_at", nil)  // IS NULL
 ```
 
 **Available operators:** `Eq`, `Ne`, `Gt`, `Gte`, `Lt`, `Lte`, `In`, `NotIn`,
@@ -311,14 +319,39 @@ r3.F(r3.NewFieldSpec("deleted_at"), nil)  // IS NULL
 
 ## Pagination
 
-```go
-// Offset-based
-r3.Query{Pagination: r3.NewPaginationSpec(1, 25)}  // page 1, 25 per page
+**`List` paginates by default** — with no `Pagination` set it caps results at
+`r3.PageSizeDefault` (100), so a forgotten pagination never accidentally scans a
+whole table. There are three ways to get more:
 
-// Cursor-based (requires at least one sort)
+```go
+// 1. A custom page / size, per query
+r3.Query{Pagination: r3.NewPaginationSpec(1, 250)}  // page 1, 250 per page
+
+// 2. Everything, for this one query (clears the default cap)
+all, total, err := repo.List(ctx, r3.Query{Pagination: r3.Unpaginated()})
+
+// 3. Everything by default, for this repo (global opt-out)
+repo := r3gorm.NewGormCRUD[City, int64](db,
+    r3.WithConfig(r3.Config{Defaults: r3.DefaultsConfig{Unpaginated: true}}),
+)
+// repo.List(ctx) now returns all rows; individual queries can still paginate.
+```
+
+Cursor-based pagination is the alternative to offset (requires at least one sort):
+
+```go
 r3.Query{
     Cursor: r3.NewCursorAfter(nextToken, 25),
     Sorts:  r3.Sorts{r3.NewSortDescSpec(r3.NewFieldSpec("created_at"))},
+}
+```
+
+You can also detect truncation from the returned total without changing anything:
+
+```go
+items, total, err := repo.List(ctx)
+if total > int64(len(items)) {
+    // there are more rows than were returned
 }
 ```
 

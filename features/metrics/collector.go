@@ -14,6 +14,7 @@ const (
 	OpCreate Operation = "create"
 	OpGet    Operation = "get"
 	OpList   Operation = "list"
+	OpCount  Operation = "count"
 	OpUpdate Operation = "update"
 	OpPatch  Operation = "patch"
 	OpDelete Operation = "delete"

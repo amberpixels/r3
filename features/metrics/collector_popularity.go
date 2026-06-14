@@ -44,7 +44,7 @@ func PopularityCollector[T any, ID comparable]() Collector[T, ID] {
 			}
 			return entries
 
-		case OpCreate, OpUpdate, OpPatch, OpDelete:
+		case OpCreate, OpCount, OpUpdate, OpPatch, OpDelete:
 			return nil
 		}
 

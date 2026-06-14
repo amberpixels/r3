@@ -83,6 +83,64 @@ func F(field *FieldSpec, value any) *FilterSpec      { return Fop(field, Operato
 func FLike(field *FieldSpec, value any) *FilterSpec  { return Fop(field, OperatorLike, value) }
 func FILike(field *FieldSpec, value any) *FilterSpec { return Fop(field, OperatorILike, value) }
 
+//
+// Ergonomic short-form helpers.
+//
+// These take a plain field name (string) instead of a *FieldSpec and cover the
+// common case without ceremony: r3.Eq("name", "Berlin"), r3.Gt("age", 18).
+// They are sugar over Fop + NewFieldSpec; reach for F/Fop with a hand-built
+// FieldSpec when you need table hints or nested paths.
+
+// Eq builds a `field = value` filter.
+func Eq(field string, value any) *FilterSpec { return Fop(NewFieldSpec(field), OperatorEq, value) }
+
+// Ne builds a `field != value` filter.
+func Ne(field string, value any) *FilterSpec { return Fop(NewFieldSpec(field), OperatorNe, value) }
+
+// Gt builds a `field > value` filter.
+func Gt(field string, value any) *FilterSpec { return Fop(NewFieldSpec(field), OperatorGt, value) }
+
+// Gte builds a `field >= value` filter.
+func Gte(field string, value any) *FilterSpec { return Fop(NewFieldSpec(field), OperatorGte, value) }
+
+// Lt builds a `field < value` filter.
+func Lt(field string, value any) *FilterSpec { return Fop(NewFieldSpec(field), OperatorLt, value) }
+
+// Lte builds a `field <= value` filter.
+func Lte(field string, value any) *FilterSpec { return Fop(NewFieldSpec(field), OperatorLte, value) }
+
+// In builds a `field IN (values...)` filter. The value is typically a slice.
+func In(field string, value any) *FilterSpec { return Fop(NewFieldSpec(field), OperatorIn, value) }
+
+// NotIn builds a `field NOT IN (values...)` filter. The value is typically a slice.
+func NotIn(field string, value any) *FilterSpec {
+	return Fop(NewFieldSpec(field), OperatorNotIn, value)
+}
+
+// Like builds a case-sensitive `field LIKE value` filter.
+func Like(field string, value any) *FilterSpec { return Fop(NewFieldSpec(field), OperatorLike, value) }
+
+// NotLike builds a case-sensitive `field NOT LIKE value` filter.
+func NotLike(field string, value any) *FilterSpec {
+	return Fop(NewFieldSpec(field), OperatorNotLike, value)
+}
+
+// ILike builds a case-insensitive `field ILIKE value` filter.
+func ILike(field string, value any) *FilterSpec {
+	return Fop(NewFieldSpec(field), OperatorILike, value)
+}
+
+// Exists builds a `field exists` filter (presence check). The value is the
+// expected existence as a bool where the backend supports it.
+func Exists(field string, value any) *FilterSpec {
+	return Fop(NewFieldSpec(field), OperatorExists, value)
+}
+
+// Between builds an inclusive `field BETWEEN lo AND hi` filter.
+func Between(field string, lo, hi any) *FilterSpec {
+	return Fop(NewFieldSpec(field), OperatorBetween, []any{lo, hi})
+}
+
 // And is a shortcut for NewFilterSpecAndGroup.
 func And(filters ...*FilterSpec) *FilterSpec { return NewFilterSpecAndGroup(filters...) }
 

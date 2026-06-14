@@ -35,11 +35,19 @@ func NewDefaultsManager() DefaultsManager {
 }
 
 // NewDefaultsManagerWithConfig creates a DefaultsManager that respects the given Config.
-// If Config.Defaults.PageSize differs from the global default, the default list query
-// is initialized with that page size.
+//
+// If Config.Defaults.Unpaginated is set, the default list query is unbounded
+// (List returns all rows unless a query opts into pagination). Otherwise, if
+// Config.Defaults.PageSize differs from the global default, the default list
+// query is initialized with that page size.
 func NewDefaultsManagerWithConfig(cfg Config) DefaultsManager {
 	d := NewDefaults()
-	if cfg.Defaults.PageSize > 0 && cfg.Defaults.PageSize != PageSizeDefault {
+	switch {
+	case cfg.Defaults.Unpaginated:
+		q := DefaultQuery()
+		q.Pagination = NoPagination()
+		d.ListQuery = q
+	case cfg.Defaults.PageSize > 0 && cfg.Defaults.PageSize != PageSizeDefault:
 		q := DefaultQuery()
 		q.Pagination = NewPaginationSpecWithSize(cfg.Defaults.PageSize)
 		d.ListQuery = q

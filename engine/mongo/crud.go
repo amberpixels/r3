@@ -104,6 +104,9 @@ func (r *BaseCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 
 	err := r.Collection.FindOne(ctx, filter, opts).Decode(&entity)
 	if err != nil {
+		if errors.Is(err, mongo.ErrNoDocuments) {
+			return entity, r3.ErrNotFound
+		}
 		return entity, err
 	}
 
@@ -119,20 +122,15 @@ func (r *BaseCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 	return entity, nil
 }
 
-// List retrieves documents based on the provided query parameters.
-func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, error) {
-	prep, err := PrepareListQuery(&r.DefaultsManager, qarg...)
-	if err != nil {
-		return nil, 0, err
-	}
-
-	// Build the filter
+// buildFilter assembles the BSON filter from the prepared query's user filters
+// plus the soft-delete condition. It is shared by List and Count; cursor keyset
+// filtering is layered on top by List only.
+func (r *BaseCRUD[T, ID]) buildFilter(prep PreparedListQuery) bson.D {
 	filter := prep.Filter
 	if filter == nil {
 		filter = bson.D{}
 	}
 
-	// Add soft-delete filter
 	if r.Meta.SoftDeleteField != "" && !prep.Query.IncludeTrashed.Some(true) {
 		sdFilter := bson.D{{Key: r.Meta.SoftDeleteField, Value: bson.D{{Key: "$eq", Value: nil}}}}
 		if len(filter) == 0 {
@@ -141,6 +139,33 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 			filter = bson.D{{Key: "$and", Value: bson.A{filter, sdFilter}}}
 		}
 	}
+
+	return filter
+}
+
+// Count returns the number of documents matching the query's filters.
+func (r *BaseCRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, error) {
+	prep, err := PrepareListQuery(&r.DefaultsManager, qarg...)
+	if err != nil {
+		return 0, err
+	}
+
+	total, err := r.Collection.CountDocuments(ctx, r.buildFilter(prep))
+	if err != nil {
+		return 0, fmt.Errorf("mongo count: %w", err)
+	}
+	return total, nil
+}
+
+// List retrieves documents based on the provided query parameters.
+func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, error) {
+	prep, err := PrepareListQuery(&r.DefaultsManager, qarg...)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	// Build the filter (user filters + soft-delete)
+	filter := r.buildFilter(prep)
 
 	// Cursor pagination: merge keyset filter with existing filters
 	if prep.IsCursorPaginated && len(prep.CursorFilter) > 0 {

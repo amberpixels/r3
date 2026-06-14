@@ -50,6 +50,11 @@ func (m *plainCRUD) Get(_ context.Context, id int64, _ ...r3.Query) (User, error
 	return entity, nil
 }
 
+func (m *plainCRUD) Count(ctx context.Context, q ...r3.Query) (int64, error) {
+	_, n, err := m.List(ctx, q...)
+	return n, err
+}
+
 func (m *plainCRUD) List(_ context.Context, _ ...r3.Query) ([]User, int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -125,6 +130,11 @@ func (t *memTxCRUD) Create(ctx context.Context, entity User) (User, error) {
 
 func (t *memTxCRUD) Get(ctx context.Context, id int64, q ...r3.Query) (User, error) {
 	return t.parent.Get(ctx, id, q...)
+}
+
+func (t *memTxCRUD) Count(ctx context.Context, q ...r3.Query) (int64, error) {
+	_, n, err := t.List(ctx, q...)
+	return n, err
 }
 
 func (t *memTxCRUD) List(ctx context.Context, q ...r3.Query) ([]User, int64, error) {

@@ -58,6 +58,11 @@ func (m *memoryCRUD) Get(_ context.Context, id int64, _ ...r3.Query) (Order, err
 	return entity, nil
 }
 
+func (m *memoryCRUD) Count(ctx context.Context, qarg ...r3.Query) (int64, error) {
+	_, n, err := m.List(ctx, qarg...)
+	return n, err
+}
+
 func (m *memoryCRUD) List(_ context.Context, _ ...r3.Query) ([]Order, int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -140,6 +145,11 @@ func (m *memoryMetricsCRUD) Get(_ context.Context, id string, _ ...r3.Query) (me
 		return metrics.MetricRecord{}, fmt.Errorf("not found: %s", id)
 	}
 	return record, nil
+}
+
+func (m *memoryMetricsCRUD) Count(ctx context.Context, qarg ...r3.Query) (int64, error) {
+	_, n, err := m.List(ctx, qarg...)
+	return n, err
 }
 
 func (m *memoryMetricsCRUD) List(_ context.Context, qarg ...r3.Query) ([]metrics.MetricRecord, int64, error) {

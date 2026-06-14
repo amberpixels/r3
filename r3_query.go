@@ -36,11 +36,19 @@ func (q Query) MergeWith(other Query) Query {
 	result.Sorts = result.Sorts.MergeWith(other.Sorts)
 	result.Preloads = result.Preloads.MergeWith(other.Preloads)
 
-	// For pagination merging
+	// For pagination merging.
+	//
+	// A non-nil but non-paginated spec (r3.Unpaginated / r3.NoPagination) is an
+	// EXPLICIT "return everything" — it must clear any inherited default page
+	// size, not be swallowed by a field-wise merge (an empty spec has no Some()
+	// fields, so MergeWith would otherwise keep the default's size).
 	if other.Pagination != nil {
-		if result.Pagination != nil {
+		switch {
+		case !other.Pagination.IsPaginated():
+			result.Pagination = other.Pagination.Clone()
+		case result.Pagination != nil:
 			result.Pagination = result.Pagination.MergeWith(other.Pagination)
-		} else {
+		default:
 			result.Pagination = other.Pagination.Clone()
 		}
 	}

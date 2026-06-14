@@ -4,6 +4,8 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
+
+	"github.com/amberpixels/r3"
 )
 
 // IDGenerator generates new unique IDs for entities.
@@ -87,8 +89,9 @@ func extractIDs[T any, ID comparable](entities []T, meta *StructMeta) []ID {
 	return ids
 }
 
-// errNotFound is returned when an entity is not found.
-var errNotFound = errors.New("entity not found")
+// errNotFound is returned when an entity is not found. It aliases r3.ErrNotFound
+// so the file engine surfaces the same sentinel as every other backend.
+var errNotFound = r3.ErrNotFound
 
 // IsNotFound returns true if the error indicates that an entity was not found.
 func IsNotFound(err error) bool {

@@ -2,6 +2,8 @@ package r3bun
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 
 	"github.com/amberpixels/r3"
@@ -115,6 +117,33 @@ func (r *BunCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64
 	return entities, totalCount, nil
 }
 
+// Count returns the number of records matching the query's filters.
+func (r *BunCRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, error) {
+	prep, err := enginesql.PrepareListQuery(&r.DefaultsManager, qarg...)
+	if err != nil {
+		return 0, err
+	}
+
+	var entities []T
+	query := r.db.NewSelect().Model(&entities)
+
+	if prep.Query.IncludeTrashed.Some(true) {
+		query = query.WhereAllWithDeleted()
+	}
+	for _, join := range prep.Joins() {
+		query = query.Join(fmt.Sprintf("JOIN %s ON TRUE", join.String()))
+	}
+	for _, clause := range prep.Clauses {
+		query = query.Where(clause.Clause, clause.Args...)
+	}
+
+	count, err := query.Count(ctx)
+	if err != nil {
+		return 0, err
+	}
+	return int64(count), nil
+}
+
 func (r *BunCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, error) {
 	var entity T
 
@@ -138,6 +167,9 @@ func (r *BunCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, e
 	}
 
 	if err := query.Scan(ctx); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return entity, r3.ErrNotFound
+		}
 		return entity, err
 	}
 	return entity, nil

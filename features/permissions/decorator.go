@@ -132,6 +132,38 @@ func (p *CRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, e
 	return p.inner.List(ctx, qarg...)
 }
 
+// Count checks OpRead permission (resource-level), optionally injects scope
+// filters if the checker implements Scoper, then delegates to inner.Count.
+func (p *CRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, error) {
+	actor := r3.GetActor(ctx)
+
+	// Resource-level check: can this actor read this resource type at all?
+	if err := p.checker.Check(ctx, AccessRequest[T, ID]{
+		Operation: OpRead,
+		Actor:     actor,
+	}); err != nil {
+		return 0, err
+	}
+
+	// If the checker also implements Scoper, inject scope filters.
+	if scoper, ok := p.checker.(Scoper[T, ID]); ok {
+		filters, err := scoper.Scope(ctx, actor)
+		if err != nil {
+			return 0, err
+		}
+		if len(filters) > 0 {
+			scopeQuery := r3.Query{Filters: filters}
+			if len(qarg) > 0 {
+				qarg[0] = qarg[0].MergeWith(scopeQuery)
+			} else {
+				qarg = append(qarg, scopeQuery)
+			}
+		}
+	}
+
+	return p.inner.Count(ctx, qarg...)
+}
+
 // Update fetches the existing entity (if IDFunc is set) for entity-aware
 // checks, then checks OpUpdate permission, then delegates to inner.Update.
 func (p *CRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {

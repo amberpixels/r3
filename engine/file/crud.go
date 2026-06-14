@@ -257,6 +257,31 @@ func (r *BaseCRUD[T, ID]) List(_ context.Context, qarg ...r3.Query) ([]T, int64,
 	return result, count, nil
 }
 
+// Count returns the number of entities matching the query's filters.
+func (r *BaseCRUD[T, ID]) Count(_ context.Context, qarg ...r3.Query) (int64, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	q := r.MergeListQuery(qarg...)
+
+	entities, err := r.loadAll()
+	if err != nil {
+		return 0, fmt.Errorf("load entities: %w", err)
+	}
+
+	includeTrashed := q.IncludeTrashed.Some() && q.IncludeTrashed.Unwrap()
+	entities = r.filterSoftDeleted(entities, includeTrashed)
+
+	if len(q.Filters) > 0 {
+		entities, err = filterEntities(entities, q.Filters, &r.Meta)
+		if err != nil {
+			return 0, fmt.Errorf("apply filters: %w", err)
+		}
+	}
+
+	return int64(len(entities)), nil
+}
+
 // Update replaces an existing entity entirely.
 func (r *BaseCRUD[T, ID]) Update(_ context.Context, entity T) (T, error) {
 	r.mu.Lock()
