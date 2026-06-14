@@ -305,7 +305,9 @@ func (m *CRUD[T, ID]) record(ctx context.Context, opCtx OperationContext[T, ID])
 	}
 
 	if m.opts.Async {
-		go doRecord(context.Background())
+		// Detach from the request lifetime (so recording isn't cancelled when the
+		// request returns) while preserving request-scoped values like the Actor.
+		go doRecord(context.WithoutCancel(ctx))
 		return
 	}
 

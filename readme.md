@@ -1,10 +1,27 @@
-# R3 - Universal Repository Abstraction for Go
+<p align="center">
+  <img src="logo.svg" alt="R3" width="230">
+</p>
 
-**Everything is a repo. Everything is an R3.**
+<div align="center">
 
-R3 provides a single generic `CRUD[T, ID]` interface that works identically across
-PostgreSQL, MySQL, SQLite, MongoDB, JSON/YAML files, and any other data source.
-Your business code talks to `r3.CRUD` - it never knows or cares what's behind it.
+### Everything is a repo. Everything is an R3.
+
+A universal, backend-agnostic CRUD repository abstraction for Go.
+
+[![Go Reference](https://pkg.go.dev/badge/github.com/amberpixels/r3.svg)](https://pkg.go.dev/github.com/amberpixels/r3)
+[![CI](https://github.com/amberpixels/r3/actions/workflows/go.yml/badge.svg)](https://github.com/amberpixels/r3/actions/workflows/go.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/amberpixels/r3)](https://goreportcard.com/report/github.com/amberpixels/r3)
+[![Go Version](https://img.shields.io/github/go-mod/go-version/amberpixels/r3)](go.mod)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+
+</div>
+
+---
+
+R3 (pronounced *"ree"* /riː/, as in **repo**) provides a single generic `CRUD[T, ID]`
+interface that works identically across PostgreSQL, MySQL, SQLite, MongoDB,
+JSON/YAML/TOML files, and any other data source. Your business code talks to
+`r3.CRUD` - it never knows or cares what's behind it.
 
 ```go
 // Same interface, same query, different backends
@@ -12,6 +29,26 @@ userRepo    r3.CRUD[User, int64]      // PostgreSQL via GORM
 productRepo r3.CRUD[Product, string]  // MongoDB
 configRepo  r3.CRUD[Config, string]   // YAML files on disk
 ```
+
+> [!NOTE]
+> R3 is in **early development** (pre-1.0). The core API is stable in spirit, but
+> details may change before a tagged release. Questions, ideas, and feedback are
+> very welcome - see [Feedback](#feedback).
+
+## Contents
+
+- [Why R3](#why-r3)
+- [Install](#install)
+- [Quick Start](#quick-start)
+- [Architecture](#architecture)
+- [Filters](#filters)
+- [Pagination](#pagination)
+- [Transactions](#transactions)
+- [URL Query Parsing](#url-query-parsing)
+- [Requirements](#requirements)
+- [AI disclosure](#ai-disclosure)
+- [Feedback](#feedback)
+- [License](#license)
 
 ## Why R3
 
@@ -25,6 +62,14 @@ query patterns, its own error handling, its own permission logic.
 With R3, all of them speak the same language. More importantly, **features compose
 across all of them**: wrap any repo with permissions, audit history, metrics, or
 validation - regardless of what storage is behind it.
+
+## Install
+
+```bash
+go get github.com/amberpixels/r3
+```
+
+Then pull in the driver(s) you need, e.g. `github.com/amberpixels/r3/drivers/gorm`.
 
 ## Quick Start
 
@@ -306,8 +351,32 @@ cities, total, err := cityRepo.List(ctx, q)
 
 ## Requirements
 
-- Go 1.24+
+- Go 1.26+
+
+## AI disclosure
+
+R3's code is written with heavy AI assistance - and that's by design. But the AI
+is a tool here, not the author of record:
+
+- **Every architectural decision is made by a human.** The layering, the
+  interfaces, the trade-offs - those are deliberate human choices, not whatever
+  a model happened to produce.
+- **Every line of code is read and reviewed by a human before it's pushed.**
+  Nothing lands in this repository unread.
+- **The code is written AI-first.** It's deliberately optimized to be easy for AI
+  to read, grep, update, and extend - not primarily for human ergonomics. Clear,
+  greppable names and consistent structure win over cleverness.
+
+Responsibility for the code is human. The AI just types faster.
+
+## Feedback
+
+R3 isn't accepting pull requests at this stage - but **questions, ideas, bug
+reports, and feedback are genuinely welcome**. Please [open an issue](https://github.com/amberpixels/r3/issues),
+and see [CONTRIBUTING.md](CONTRIBUTING.md) for the why and the details. It's
+MIT-licensed, so you're also free to fork and adapt it for your own work. For
+security issues, see [SECURITY.md](SECURITY.md).
 
 ## License
 
-MIT
+[MIT](LICENSE) © amberpixels

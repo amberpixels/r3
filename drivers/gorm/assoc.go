@@ -10,7 +10,7 @@ import (
 
 // splitPreloads separates preloads into R3-managed (have RelationMeta with r3 tags)
 // and GORM-managed (no r3 relation tag — use GORM's native Preload).
-func splitPreloads[T any](preloads r3.Preloads) (r3Managed []enginesql.RelationMeta, gormManaged r3.Preloads) {
+func splitPreloads[T any](preloads r3.Preloads) ([]enginesql.RelationMeta, r3.Preloads) {
 	if len(preloads) == 0 {
 		return nil, nil
 	}
@@ -21,6 +21,8 @@ func splitPreloads[T any](preloads r3.Preloads) (r3Managed []enginesql.RelationM
 		r3RelMap[rel.FieldName] = rel
 	}
 
+	var r3Managed []enginesql.RelationMeta
+	var gormManaged r3.Preloads
 	for _, p := range preloads {
 		if rel, ok := r3RelMap[p.GetName()]; ok {
 			r3Managed = append(r3Managed, rel)
@@ -96,7 +98,10 @@ func preloadM2M[T any](db *gorm.DB, entities []T, meta enginesql.StructMeta, rel
 	childSlice := reflect.MakeSlice(reflect.SliceOf(rel.TargetType), 0, len(childIDs))
 	childPtr := reflect.New(childSlice.Type())
 	childPtr.Elem().Set(childSlice)
-	if err := db.Table(rel.TargetMeta.TableName).Where(rel.TargetMeta.PKColumn+" IN (?)", childIDs).Find(childPtr.Interface()).Error; err != nil {
+	if err := db.Table(rel.TargetMeta.TableName).
+		Where(rel.TargetMeta.PKColumn+" IN (?)", childIDs).
+		Find(childPtr.Interface()).
+		Error; err != nil {
 		return err
 	}
 	loadedChildren := childPtr.Elem()
@@ -122,7 +127,10 @@ func preloadM2M[T any](db *gorm.DB, entities []T, meta enginesql.StructMeta, rel
 	// Assign to entities
 	for i := range entities {
 		ev := reflect.ValueOf(&entities[i]).Elem()
-		parentPK := ev.Field(meta.Fields[meta.PKField]).Interface().(int64)
+		parentPK, ok := ev.Field(meta.Fields[meta.PKField]).Interface().(int64)
+		if !ok {
+			continue
+		}
 		children := parentToChildren[parentPK]
 		childSlice := reflect.MakeSlice(reflect.SliceOf(rel.TargetType), len(children), len(children))
 		for j, child := range children {
@@ -145,7 +153,10 @@ func preloadHasMany[T any](db *gorm.DB, entities []T, meta enginesql.StructMeta,
 	childSlice := reflect.MakeSlice(reflect.SliceOf(rel.TargetType), 0, 0)
 	childPtr := reflect.New(childSlice.Type())
 	childPtr.Elem().Set(childSlice)
-	if err := db.Table(rel.TargetMeta.TableName).Where(rel.FKColumn+" IN (?)", parentIDs).Find(childPtr.Interface()).Error; err != nil {
+	if err := db.Table(rel.TargetMeta.TableName).
+		Where(rel.FKColumn+" IN (?)", parentIDs).
+		Find(childPtr.Interface()).
+		Error; err != nil {
 		return err
 	}
 	loadedChildren := childPtr.Elem()
@@ -166,14 +177,20 @@ func preloadHasMany[T any](db *gorm.DB, entities []T, meta enginesql.StructMeta,
 	parentToChildren := make(map[int64][]reflect.Value)
 	for i := range loadedChildren.Len() {
 		child := loadedChildren.Index(i)
-		fkVal := child.Field(fkFieldIdx).Interface().(int64)
+		fkVal, ok := child.Field(fkFieldIdx).Interface().(int64)
+		if !ok {
+			continue
+		}
 		parentToChildren[fkVal] = append(parentToChildren[fkVal], child)
 	}
 
 	// Assign to entities
 	for i := range entities {
 		ev := reflect.ValueOf(&entities[i]).Elem()
-		parentPK := ev.Field(meta.Fields[meta.PKField]).Interface().(int64)
+		parentPK, ok := ev.Field(meta.Fields[meta.PKField]).Interface().(int64)
+		if !ok {
+			continue
+		}
 		children := parentToChildren[parentPK]
 		cs := reflect.MakeSlice(reflect.SliceOf(rel.TargetType), len(children), len(children))
 		for j, child := range children {
@@ -227,7 +244,10 @@ func preloadBelongsTo[T any](db *gorm.DB, entities []T, meta enginesql.StructMet
 	targetSlice := reflect.MakeSlice(reflect.SliceOf(rel.TargetType), 0, 0)
 	targetPtr := reflect.New(targetSlice.Type())
 	targetPtr.Elem().Set(targetSlice)
-	if err := db.Table(rel.TargetMeta.TableName).Where(rel.TargetMeta.PKColumn+" IN (?)", ids).Find(targetPtr.Interface()).Error; err != nil {
+	if err := db.Table(rel.TargetMeta.TableName).
+		Where(rel.TargetMeta.PKColumn+" IN (?)", ids).
+		Find(targetPtr.Interface()).
+		Error; err != nil {
 		return err
 	}
 	loadedTargets := targetPtr.Elem()
@@ -236,7 +256,10 @@ func preloadBelongsTo[T any](db *gorm.DB, entities []T, meta enginesql.StructMet
 	targetByPK := make(map[int64]reflect.Value)
 	for i := range loadedTargets.Len() {
 		t := loadedTargets.Index(i)
-		pkVal := t.Field(rel.TargetMeta.Fields[rel.TargetMeta.PKField]).Interface().(int64)
+		pkVal, ok := t.Field(rel.TargetMeta.Fields[rel.TargetMeta.PKField]).Interface().(int64)
+		if !ok {
+			continue
+		}
 		targetByPK[pkVal] = t
 	}
 

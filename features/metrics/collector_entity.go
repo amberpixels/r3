@@ -21,6 +21,9 @@ const (
 	MetricEntityPatchSize = "entity.patch_size"
 )
 
+// labelField is the metric label key naming the entity field a metric refers to.
+const labelField = "field"
+
 // FieldChangeCollector tracks which fields change most often on Update and Patch.
 // Emits one "entity.field_change" entry per changed field.
 // Labels: {"field": "<field_name>"}.
@@ -46,7 +49,7 @@ func FieldChangeCollector[T any, ID comparable]() Collector[T, ID] {
 				entries = append(entries, MetricEntry{
 					MetricName: MetricEntityFieldChange,
 					Value:      1,
-					Labels:     Labels{"field": name},
+					Labels:     Labels{labelField: name},
 				})
 			}
 			return entries
@@ -59,7 +62,7 @@ func FieldChangeCollector[T any, ID comparable]() Collector[T, ID] {
 				entries = append(entries, MetricEntry{
 					MetricName: MetricEntityFieldChange,
 					Value:      1,
-					Labels:     Labels{"field": name},
+					Labels:     Labels{labelField: name},
 				})
 			}
 			return entries

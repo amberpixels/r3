@@ -240,15 +240,18 @@ func (h *CRUD[T, ID]) record(ctx context.Context, info recordInfo[T], diffFn fun
 	}
 
 	if h.opts.Async {
+		// Detach from the request lifetime (so the write isn't cancelled when the
+		// request returns) while preserving request-scoped values like the Actor.
+		asyncCtx := context.WithoutCancel(ctx)
 		go func() {
 			record := buildRecord()
 			// Compute next version internally
-			record.Version = nextVersion(context.Background(), h.store, record.RecordType, record.RecordID)
+			record.Version = nextVersion(asyncCtx, h.store, record.RecordType, record.RecordID)
 			record.ID = generateID()
 
-			if _, err := h.store.Create(context.Background(), record); err != nil {
+			if _, err := h.store.Create(asyncCtx, record); err != nil {
 				slog.ErrorContext(
-					context.Background(),
+					asyncCtx,
 					"r3history: async record failed",
 					"record_type",
 					record.RecordType,
@@ -261,7 +264,7 @@ func (h *CRUD[T, ID]) record(ctx context.Context, info recordInfo[T], diffFn fun
 			// Evaluate snapshot rules
 			if len(h.opts.SnapshotRules) > 0 {
 				evaluateSnapshotRules(
-					context.Background(),
+					asyncCtx,
 					h.opts.SnapshotRules,
 					record.RecordType,
 					record.RecordID,

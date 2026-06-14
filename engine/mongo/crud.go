@@ -12,6 +12,9 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
+// setOp is the MongoDB update operator for setting field values.
+const setOp = "$set"
+
 // BaseCRUD is a generic CRUD repository backed by MongoDB.
 // It implements the full r3.CRUD[T, ID] interface using the MongoDB Go driver v2.
 //
@@ -211,7 +214,7 @@ func (r *BaseCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	idVal := r.Meta.IDValue(entity)
 
 	doc := r.Meta.ToBSONDoc(entity, false)
-	update := bson.D{{Key: "$set", Value: doc}}
+	update := bson.D{{Key: setOp, Value: doc}}
 
 	filter := bson.D{{Key: r.Meta.IDField, Value: idVal}}
 
@@ -242,7 +245,7 @@ func (r *BaseCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields)
 		setDoc = append(setDoc, bson.E{Key: name, Value: vals[i]})
 	}
 
-	update := bson.D{{Key: "$set", Value: setDoc}}
+	update := bson.D{{Key: setOp, Value: setDoc}}
 
 	_, err = r.Collection.UpdateOne(ctx, filter, update)
 	if err != nil {
@@ -267,7 +270,7 @@ func (r *BaseCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 
 	if r.Meta.SoftDeleteField != "" {
 		// Soft-delete: set deleted_at to now
-		update := bson.D{{Key: "$set", Value: bson.D{
+		update := bson.D{{Key: setOp, Value: bson.D{
 			{Key: r.Meta.SoftDeleteField, Value: time.Now()},
 		}}}
 		_, err := r.Collection.UpdateOne(ctx, filter, update)

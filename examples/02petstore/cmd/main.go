@@ -28,6 +28,9 @@ import (
 	"gorm.io/gorm/logger"
 )
 
+// statusAvailable is the seed pet status for pets ready to be adopted.
+const statusAvailable = "available"
+
 func main() {
 	dsn := envOr("DATABASE_URL",
 		"host=localhost port=5432 user=petstore password=petstore dbname=petstore sslmode=disable")
@@ -80,7 +83,7 @@ func seed(db *gorm.DB) {
 		{
 			Name:      "Buddy",
 			SpeciesID: species[0].ID,
-			Status:    "available",
+			Status:    statusAvailable,
 			Age:       3,
 			Price:     500,
 			Tags:      "friendly,trained",
@@ -88,7 +91,7 @@ func seed(db *gorm.DB) {
 		{
 			Name:      "Max",
 			SpeciesID: species[0].ID,
-			Status:    "available",
+			Status:    statusAvailable,
 			Age:       1,
 			Price:     800,
 			Tags:      "puppy,energetic",
@@ -112,7 +115,7 @@ func seed(db *gorm.DB) {
 		{
 			Name:      "Luna",
 			SpeciesID: species[1].ID,
-			Status:    "available",
+			Status:    statusAvailable,
 			Age:       2,
 			Price:     350,
 			Tags:      "playful",
@@ -120,7 +123,7 @@ func seed(db *gorm.DB) {
 		{
 			Name:      "Mittens",
 			SpeciesID: species[1].ID,
-			Status:    "available",
+			Status:    statusAvailable,
 			Age:       1,
 			Price:     400,
 			Tags:      "kitten,fluffy",
@@ -136,7 +139,7 @@ func seed(db *gorm.DB) {
 		{
 			Name:      "Polly",
 			SpeciesID: species[2].ID,
-			Status:    "available",
+			Status:    statusAvailable,
 			Age:       3,
 			Price:     250,
 			Tags:      "talking,colorful",
@@ -144,7 +147,7 @@ func seed(db *gorm.DB) {
 		{
 			Name:      "Nemo",
 			SpeciesID: species[3].ID,
-			Status:    "available",
+			Status:    statusAvailable,
 			Age:       1,
 			Price:     50,
 			Tags:      "colorful,tropical",
@@ -152,7 +155,7 @@ func seed(db *gorm.DB) {
 		{
 			Name:      "Goldie",
 			SpeciesID: species[3].ID,
-			Status:    "available",
+			Status:    statusAvailable,
 			Age:       2,
 			Price:     30,
 			Tags:      "goldfish",
@@ -160,7 +163,7 @@ func seed(db *gorm.DB) {
 		{
 			Name:      "Hammy",
 			SpeciesID: species[4].ID,
-			Status:    "available",
+			Status:    statusAvailable,
 			Age:       1,
 			Price:     25,
 			Tags:      "small,cute",

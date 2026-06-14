@@ -51,7 +51,7 @@ func walkFilters(filters r3.Filters, entries *[]MetricEntry) {
 
 		// If this is a leaf filter (has a field), emit a metric
 		if f.Field != nil {
-			labels := Labels{"field": f.Field.String()}
+			labels := Labels{labelField: f.Field.String()}
 			op := f.Operator
 			if op != r3.OperatorUnspecified {
 				labels["operator"] = op.String()
