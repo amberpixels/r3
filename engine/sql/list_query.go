@@ -37,6 +37,12 @@ type PreparedListQuery struct {
 	// CursorLimit is the maximum number of results for cursor pagination.
 	CursorLimit int
 
+	// CursorBackward indicates a "before" cursor. Backward keyset pagination
+	// must scan in the reversed sort order (so LIMIT takes the rows immediately
+	// preceding the cursor) and then reverse the result slice back to the
+	// requested order. See OrderBySorts.
+	CursorBackward bool
+
 	// Query is the merged r3.Query (defaults + user args) for access to
 	// Preloads, IncludeTrashed, and other fields that are driver-specific.
 	Query r3.Query
@@ -77,6 +83,7 @@ func PrepareListQuery(dm *DefaultsManager, qarg ...r3.Query) (PreparedListQuery,
 
 		p.IsCursorPaginated = true
 		p.CursorLimit = q.Cursor.GetLimit()
+		p.CursorBackward = q.Cursor.Direction() == r3.CursorBackward
 
 		token := q.Cursor.Token()
 		if token != "" {
@@ -96,6 +103,45 @@ func PrepareListQuery(dm *DefaultsManager, qarg ...r3.Query) (PreparedListQuery,
 	}
 
 	return p, nil
+}
+
+// OrderBySorts returns the ORDER BY expressions to apply to the main SELECT.
+//
+// For forward queries it is just Sorts. For a backward ("before") cursor it
+// returns the sorts with reversed direction: the rows immediately preceding the
+// cursor must be scanned in the opposite order under LIMIT, then reversed back
+// to the requested order by the caller (see CursorBackward).
+func (p *PreparedListQuery) OrderBySorts() ([]r3sql.SQLSort, error) {
+	if !p.CursorBackward {
+		return p.Sorts, nil
+	}
+	return r3sql.SortsToSQL(reverseSortDirections(p.Query.Sorts))
+}
+
+// reverseSortDirections returns a copy of sorts with each direction (and NULLS
+// position) flipped. Unspecified direction defaults to DESC (matching
+// SortToSQL), so its reverse is ASC.
+func reverseSortDirections(sorts r3.Sorts) r3.Sorts {
+	reversed := make(r3.Sorts, len(sorts))
+	for i, s := range sorts {
+		c := s.Clone()
+		switch c.Direction {
+		case r3.SortDirectionAsc:
+			c.Direction = r3.SortDirectionDesc
+		case r3.SortDirectionDesc, r3.SortDirectionUnspecified:
+			c.Direction = r3.SortDirectionAsc
+		}
+		switch c.NullsPosition {
+		case r3.NullsPositionFirst:
+			c.NullsPosition = r3.NullsPositionLast
+		case r3.NullsPositionLast:
+			c.NullsPosition = r3.NullsPositionFirst
+		case r3.NullsPositionNotSpecified:
+			// leave unspecified
+		}
+		reversed[i] = c
+	}
+	return reversed
 }
 
 // Joins returns the deduplicated list of SQL joins from the clauses.

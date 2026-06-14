@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/amberpixels/r3"
@@ -242,11 +243,15 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		whereSQL = " WHERE " + strings.Join(whereParts, " AND ")
 	}
 
-	// Build ORDER BY
+	// Build ORDER BY (reversed for a backward cursor; see OrderBySorts).
+	orderSorts, sortErr := prep.OrderBySorts()
+	if sortErr != nil {
+		return nil, 0, fmt.Errorf("failed to build order by: %w", sortErr)
+	}
 	var orderSQL string
-	if len(prep.Sorts) > 0 {
+	if len(orderSorts) > 0 {
 		var sortParts []string
-		for _, sort := range prep.Sorts {
+		for _, sort := range orderSorts {
 			sortParts = append(sortParts, sort.String())
 		}
 		orderSQL = " ORDER BY " + strings.Join(sortParts, ", ")
@@ -292,6 +297,11 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 	}
 	if err := rows.Err(); err != nil {
 		return nil, 0, err
+	}
+
+	// A backward cursor scanned in reversed order; restore the requested order.
+	if prep.CursorBackward {
+		slices.Reverse(entities)
 	}
 
 	if prep.IsCursorPaginated {

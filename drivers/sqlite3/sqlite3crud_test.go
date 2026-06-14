@@ -258,3 +258,60 @@ func TestSqlite3Repository(t *testing.T) {
 		assert.Equal(t, int64(3), total, "expected 3 total artists")
 	})
 }
+
+// TestSqlite3_BackwardCursor verifies keyset pagination in both directions (H1).
+// A "before" cursor must return the rows immediately preceding it, in the
+// requested order — not the rows farthest from it.
+func TestSqlite3_BackwardCursor(t *testing.T) {
+	ctx := t.Context()
+
+	db, err := setupSQLiteDB()
+	require.NoError(t, err, "failed to setup SQLite database")
+	defer db.Close()
+
+	const pathToMigrations = "../../internal/testing/migrations_sqlite"
+	require.NoError(t, goose.SetDialect("sqlite3"))
+	require.NoError(t, goose.Up(db, pathToMigrations))
+	defer func() {
+		if err := goose.Down(db, pathToMigrations); err != nil {
+			t.Logf("failed to run down migration: %v", err)
+		}
+	}()
+
+	cityRepo := r3sqlite3.NewSqlite3CRUD[City, int64](db)
+
+	// Migrations seed City One (id 1) and City Two (id 2). Add three more so the
+	// dataset is larger than the page size and the backward bug is observable.
+	for _, name := range []string{"City Three", "City Four", "City Five"} {
+		_, err := cityRepo.Create(ctx, City{Name: name, CountryName: "X", Popularity: 0})
+		require.NoError(t, err)
+	}
+	// Cities now have ids 1..5.
+
+	sortByID := r3.Sorts{r3.NewSortAscSpec(r3.NewFieldSpec("id"))}
+
+	// Forward sanity check: After id=2, limit 2 → [3, 4].
+	afterToken, err := r3.EncodeCursor(r3.CursorValues{"id": int64(2)})
+	require.NoError(t, err)
+	fwd, _, err := cityRepo.List(ctx, r3.Query{
+		Sorts:  sortByID,
+		Cursor: r3.NewCursorAfter(afterToken, 2),
+	})
+	require.NoError(t, err)
+	require.Len(t, fwd, 2)
+	assert.Equal(t, int64(3), fwd[0].ID)
+	assert.Equal(t, int64(4), fwd[1].ID)
+
+	// Backward: Before id=5, limit 2 → the two rows immediately before id 5,
+	// in ascending order: [3, 4]. The buggy implementation returned [1, 2].
+	beforeToken, err := r3.EncodeCursor(r3.CursorValues{"id": int64(5)})
+	require.NoError(t, err)
+	bwd, _, err := cityRepo.List(ctx, r3.Query{
+		Sorts:  sortByID,
+		Cursor: r3.NewCursorBefore(beforeToken, 2),
+	})
+	require.NoError(t, err)
+	require.Len(t, bwd, 2)
+	assert.Equal(t, int64(3), bwd[0].ID, "backward cursor should return the rows immediately before, ascending")
+	assert.Equal(t, int64(4), bwd[1].ID)
+}
