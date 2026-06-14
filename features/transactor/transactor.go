@@ -61,15 +61,17 @@ func (c *CRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 	return c.inner.Delete(ctx, id)
 }
 
-// BeginTx starts a transaction if the inner CRUD supports it.
-// Returns [r3.ErrTransactionsNotSupported] if the inner CRUD does not
-// implement [r3.Transactor].
+// BeginTx starts a transaction if the underlying backend supports it.
+//
+// It walks the decorator chain below the transactor to the backend, begins the
+// transaction there, and re-applies the same decorator stack on top of it — so
+// the returned [r3.TxCRUD] is fully decorated and writes inside the transaction
+// are still validated, audited, permission-checked, etc.
+//
+// Returns [r3.ErrTransactionsNotSupported] if no layer in the chain implements
+// [r3.Transactor].
 func (c *CRUD[T, ID]) BeginTx(ctx context.Context) (r3.TxCRUD[T, ID], error) {
-	txr, ok := c.inner.(r3.Transactor[T, ID])
-	if !ok {
-		return nil, r3.ErrTransactionsNotSupported
-	}
-	return txr.BeginTx(ctx)
+	return r3.BeginTxChain(ctx, c.inner)
 }
 
 // InTx runs fn inside a transaction if the inner CRUD supports it.
@@ -83,14 +85,20 @@ func (c *CRUD[T, ID]) InTx(ctx context.Context, fn func(tx r3.CRUD[T, ID]) error
 	return r3.InTx(ctx, c.inner, fn)
 }
 
-// SupportsTransactions reports whether the inner CRUD implements
-// [r3.Transactor] and can be used with BeginTx / InTx.
+// SupportsTransactions reports whether the underlying backend supports
+// transactions (seen through any decorators between the transactor and the
+// backend), and can therefore be used with BeginTx / InTx.
 func (c *CRUD[T, ID]) SupportsTransactions() bool {
-	_, ok := c.inner.(r3.Transactor[T, ID])
-	return ok
+	return r3.SupportsTx(c.inner)
 }
 
 // Inner returns the wrapped CRUD (for advanced usage / unwrapping).
 func (c *CRUD[T, ID]) Inner() r3.CRUD[T, ID] {
+	return c.inner
+}
+
+// Unwrap returns the wrapped CRUD so capability detection and transaction
+// propagation can walk the decorator chain.
+func (c *CRUD[T, ID]) Unwrap() r3.CRUD[T, ID] {
 	return c.inner
 }

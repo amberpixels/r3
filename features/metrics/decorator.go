@@ -70,6 +70,19 @@ func (m *CRUD[T, ID]) Inner() r3.CRUD[T, ID] {
 	return m.inner
 }
 
+// Unwrap returns the wrapped CRUD so capability detection and transaction
+// propagation can walk the decorator chain.
+func (m *CRUD[T, ID]) Unwrap() r3.CRUD[T, ID] {
+	return m.inner
+}
+
+// Rewrap rebuilds this decorator around a different inner CRUD (used to
+// re-apply the metrics layer on top of a transaction-bound CRUD). The metric
+// store and options are shared with the rebuilt instance.
+func (m *CRUD[T, ID]) Rewrap(inner r3.CRUD[T, ID]) r3.CRUD[T, ID] {
+	return &CRUD[T, ID]{inner: inner, store: m.store, opts: m.opts}
+}
+
 // Metrics returns the metric record CRUD for querying metrics directly.
 // Use it with the query builders or the Aggregator to retrieve metric data.
 func (m *CRUD[T, ID]) Metrics() r3.CRUD[MetricRecord, string] {

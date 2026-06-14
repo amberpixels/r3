@@ -310,6 +310,70 @@ func TestCRUD_PassthroughDelete(t *testing.T) {
 	}
 }
 
+// passthroughDecorator is a minimal decorator that forwards every CRUD method
+// and participates in the Unwrap chain, but does NOT implement SoftDeleter. It
+// simulates another feature (history, validation, ...) sitting between the
+// soft-delete decorator and the backend.
+type passthroughDecorator struct {
+	inner r3.CRUD[User, int64]
+}
+
+func (d *passthroughDecorator) Create(ctx context.Context, e User) (User, error) {
+	return d.inner.Create(ctx, e)
+}
+func (d *passthroughDecorator) Get(ctx context.Context, id int64, q ...r3.Query) (User, error) {
+	return d.inner.Get(ctx, id, q...)
+}
+
+func (d *passthroughDecorator) List(ctx context.Context, q ...r3.Query) ([]User, int64, error) {
+	return d.inner.List(ctx, q...)
+}
+func (d *passthroughDecorator) Count(ctx context.Context, q ...r3.Query) (int64, error) {
+	return d.inner.Count(ctx, q...)
+}
+func (d *passthroughDecorator) Update(ctx context.Context, e User) (User, error) {
+	return d.inner.Update(ctx, e)
+}
+
+func (d *passthroughDecorator) Patch(ctx context.Context, e User, f r3.Fields) (User, error) {
+	return d.inner.Patch(ctx, e, f)
+}
+func (d *passthroughDecorator) Delete(ctx context.Context, id int64) error {
+	return d.inner.Delete(ctx, id)
+}
+func (d *passthroughDecorator) Unwrap() r3.CRUD[User, int64] { return d.inner }
+
+// TestCRUD_RestoreThroughIntermediateDecorator verifies that Restore reaches a
+// backend SoftDeleter even when another (non-soft-delete) decorator sits
+// between the soft-delete decorator and the backend (H9). Before the fix, the
+// non-recursive type assertion returned ErrNotSoftDeletable here.
+func TestCRUD_RestoreThroughIntermediateDecorator(t *testing.T) {
+	backend := newMemoryCRUD()
+	middle := &passthroughDecorator{inner: backend}
+	repo := softdelete.WithSoftDelete[User, int64](middle)
+
+	ctx := context.Background()
+	user, _ := repo.Create(ctx, User{Name: "Heidi"})
+	if err := repo.Delete(ctx, user.ID); err != nil {
+		t.Fatalf("Delete failed: %v", err)
+	}
+
+	if err := repo.Restore(ctx, user.ID); err != nil {
+		t.Fatalf("Restore through intermediate decorator failed: %v", err)
+	}
+	restored, err := repo.Get(ctx, user.ID)
+	if err != nil {
+		t.Fatalf("Get after Restore failed: %v", err)
+	}
+	if restored.Name != "Heidi" {
+		t.Errorf("expected Name='Heidi', got %q", restored.Name)
+	}
+
+	if err := repo.HardDelete(ctx, user.ID); err != nil {
+		t.Fatalf("HardDelete through intermediate decorator failed: %v", err)
+	}
+}
+
 func TestCRUD_RestoreDelegatesToSoftDeleter(t *testing.T) {
 	inner := newMemoryCRUD()
 	repo := softdelete.WithSoftDelete[User, int64](inner)

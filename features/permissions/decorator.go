@@ -63,6 +63,18 @@ func (p *CRUD[T, ID]) Inner() r3.CRUD[T, ID] {
 	return p.inner
 }
 
+// Unwrap returns the wrapped CRUD so capability detection and transaction
+// propagation can walk the decorator chain.
+func (p *CRUD[T, ID]) Unwrap() r3.CRUD[T, ID] {
+	return p.inner
+}
+
+// Rewrap rebuilds this decorator around a different inner CRUD (used to
+// re-apply the permission layer on top of a transaction-bound CRUD).
+func (p *CRUD[T, ID]) Rewrap(inner r3.CRUD[T, ID]) r3.CRUD[T, ID] {
+	return &CRUD[T, ID]{inner: inner, checker: p.checker, opts: p.opts}
+}
+
 // Create checks OpCreate permission, then delegates to inner.Create.
 func (p *CRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 	actor := r3.GetActor(ctx)

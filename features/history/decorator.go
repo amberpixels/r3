@@ -79,6 +79,20 @@ func (h *CRUD[T, ID]) Inner() r3.CRUD[T, ID] {
 	return h.inner
 }
 
+// Unwrap returns the wrapped CRUD so capability detection and transaction
+// propagation can walk the decorator chain.
+func (h *CRUD[T, ID]) Unwrap() r3.CRUD[T, ID] {
+	return h.inner
+}
+
+// Rewrap rebuilds this decorator around a different inner CRUD (used to
+// re-apply the history layer on top of a transaction-bound CRUD). The change
+// store, options, and version locks are shared with the rebuilt instance so
+// version assignment stays serialized across the original and tx-bound layers.
+func (h *CRUD[T, ID]) Rewrap(inner r3.CRUD[T, ID]) r3.CRUD[T, ID] {
+	return &CRUD[T, ID]{inner: inner, store: h.store, opts: h.opts, versionLocks: h.versionLocks}
+}
+
 // History returns the change record CRUD for querying history directly.
 // Use it with the query builders (QueryForRecord, QueryForType, etc.)
 // to retrieve change records.

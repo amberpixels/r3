@@ -65,6 +65,18 @@ func (v *CRUD[T, ID]) Inner() r3.CRUD[T, ID] {
 	return v.inner
 }
 
+// Unwrap returns the wrapped CRUD so capability detection and transaction
+// propagation can walk the decorator chain.
+func (v *CRUD[T, ID]) Unwrap() r3.CRUD[T, ID] {
+	return v.inner
+}
+
+// Rewrap rebuilds this decorator around a different inner CRUD (used to
+// re-apply the validation layer on top of a transaction-bound CRUD).
+func (v *CRUD[T, ID]) Rewrap(inner r3.CRUD[T, ID]) r3.CRUD[T, ID] {
+	return &CRUD[T, ID]{inner: inner, validator: v.validator, opts: v.opts}
+}
+
 // Create validates the entity, then delegates to inner.Create.
 func (v *CRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 	if err := v.validator.Validate(ctx, Request[T, ID]{

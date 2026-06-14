@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"testing"
 
 	"github.com/amberpixels/r3"
@@ -389,5 +390,93 @@ func TestInner(t *testing.T) {
 	got := repo.Inner()
 	if got != inner {
 		t.Error("Inner() should return the wrapped CRUD")
+	}
+}
+
+// countingCRUD is a minimal decorator that counts Create calls and participates
+// in the Unwrap/Rewrap chain protocol. It is used to prove that decorators are
+// re-applied on top of the transaction and run for writes inside InTx/BeginTx.
+type countingCRUD struct {
+	inner   r3.CRUD[User, int64]
+	creates *int32
+}
+
+func (c *countingCRUD) Create(ctx context.Context, e User) (User, error) {
+	atomic.AddInt32(c.creates, 1)
+	return c.inner.Create(ctx, e)
+}
+
+func (c *countingCRUD) Get(ctx context.Context, id int64, q ...r3.Query) (User, error) {
+	return c.inner.Get(ctx, id, q...)
+}
+
+func (c *countingCRUD) List(ctx context.Context, q ...r3.Query) ([]User, int64, error) {
+	return c.inner.List(ctx, q...)
+}
+
+func (c *countingCRUD) Count(ctx context.Context, q ...r3.Query) (int64, error) {
+	return c.inner.Count(ctx, q...)
+}
+
+func (c *countingCRUD) Update(ctx context.Context, e User) (User, error) {
+	return c.inner.Update(ctx, e)
+}
+
+func (c *countingCRUD) Patch(ctx context.Context, e User, f r3.Fields) (User, error) {
+	return c.inner.Patch(ctx, e, f)
+}
+
+func (c *countingCRUD) Delete(ctx context.Context, id int64) error {
+	return c.inner.Delete(ctx, id)
+}
+func (c *countingCRUD) Unwrap() r3.CRUD[User, int64] { return c.inner }
+func (c *countingCRUD) Rewrap(inner r3.CRUD[User, int64]) r3.CRUD[User, int64] {
+	return &countingCRUD{inner: inner, creates: c.creates} // share the counter
+}
+
+// TestInTx_DecoratorsRunInsideTransaction verifies that decorators between the
+// transactor and the backend are re-applied on top of the transaction, so their
+// behaviour runs for writes inside InTx (C2). Before the fix, InTx handed the
+// raw backend tx to fn, bypassing every decorator.
+func TestInTx_DecoratorsRunInsideTransaction(t *testing.T) {
+	backend := newTxCRUD()
+	var creates int32
+	decorated := &countingCRUD{inner: backend, creates: &creates}
+	repo := transactor.WithTransactor[User, int64](decorated)
+
+	ctx := context.Background()
+	err := repo.InTx(ctx, func(tx r3.CRUD[User, int64]) error {
+		_, cErr := tx.Create(ctx, User{Name: "TxUser"})
+		return cErr
+	})
+	if err != nil {
+		t.Fatalf("InTx failed: %v", err)
+	}
+	if got := atomic.LoadInt32(&creates); got != 1 {
+		t.Fatalf("expected decorator Create to run once inside the tx, got %d", got)
+	}
+}
+
+// TestBeginTx_DecoratorsRunInsideTransaction verifies the same for the BeginTx
+// entry point.
+func TestBeginTx_DecoratorsRunInsideTransaction(t *testing.T) {
+	backend := newTxCRUD()
+	var creates int32
+	decorated := &countingCRUD{inner: backend, creates: &creates}
+	repo := transactor.WithTransactor[User, int64](decorated)
+
+	ctx := context.Background()
+	tx, err := repo.BeginTx(ctx)
+	if err != nil {
+		t.Fatalf("BeginTx failed: %v", err)
+	}
+	if _, err := tx.Create(ctx, User{Name: "TxUser"}); err != nil {
+		t.Fatalf("Create in tx failed: %v", err)
+	}
+	if err := tx.Commit(); err != nil {
+		t.Fatalf("Commit failed: %v", err)
+	}
+	if got := atomic.LoadInt32(&creates); got != 1 {
+		t.Fatalf("expected decorator Create to run once inside the tx, got %d", got)
 	}
 }
