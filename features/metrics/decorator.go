@@ -269,17 +269,22 @@ func (m *CRUD[T, ID]) record(ctx context.Context, opCtx OperationContext[T, ID])
 	}
 
 	doRecord := func(recordCtx context.Context) {
+		// Everything below reads from recordCtx, never the captured ctx: in async
+		// mode recordCtx is a detached (WithoutCancel) copy, so collectors, actor
+		// extraction, and context labelers must use it too — otherwise they would
+		// observe the request context after it has been cancelled.
+
 		// Collect entries from all collectors
 		var entries []MetricEntry
 		for _, c := range m.opts.Collectors {
-			entries = append(entries, c.Collect(ctx, opCtx)...)
+			entries = append(entries, c.Collect(recordCtx, opCtx)...)
 		}
 		if len(entries) == 0 {
 			return
 		}
 
 		// Build core labels (auto-injected by the framework)
-		actor := r3.GetActor(ctx)
+		actor := r3.GetActor(recordCtx)
 		coreLabels := Labels{
 			"operation":  string(opCtx.Operation),
 			"actor_id":   actor.ID,
@@ -289,7 +294,7 @@ func (m *CRUD[T, ID]) record(ctx context.Context, opCtx OperationContext[T, ID])
 		// Build context labels
 		var ctxLabels Labels
 		for _, cl := range m.opts.ContextLabelers {
-			ctxLabels = ctxLabels.Merge(cl(ctx))
+			ctxLabels = ctxLabels.Merge(cl(recordCtx))
 		}
 
 		// Build entity labels (only when an entity is available)

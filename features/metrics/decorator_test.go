@@ -603,6 +603,68 @@ func TestCRUD_ContextLabelers(t *testing.T) {
 	}
 }
 
+// TestCRUD_AsyncUsesDetachedContext verifies that in async mode collectors (and
+// context labelers / actor extraction, which share the same context) observe the
+// detached recording context, not the original request context after it has been
+// cancelled (C4). With the bug, the collector saw context.Canceled.
+func TestCRUD_AsyncUsesDetachedContext(t *testing.T) {
+	started := make(chan struct{})
+	release := make(chan struct{})
+	observed := make(chan error, 1)
+
+	// A collector that records the context's cancellation state, but only after
+	// the test has cancelled the request context.
+	gated := metrics.CollectorFunc[Order, int64](
+		func(ctx context.Context, _ metrics.OperationContext[Order, int64]) []metrics.MetricEntry {
+			close(started)
+			<-release
+			observed <- ctx.Err()
+			return []metrics.MetricEntry{{MetricName: "test", Value: 1}}
+		},
+	)
+
+	inner := newMemoryCRUD()
+	store := newMemoryMetricsCRUD()
+	repo := newTestRepo(inner, store,
+		metrics.WithCollectors[Order, int64](gated),
+		metrics.WithAsync[Order, int64](),
+	)
+
+	ctx, cancel := context.WithCancel(r3.WithActor(context.Background(), r3.Actor{ID: "7", Type: "user"}))
+	if _, err := repo.Create(ctx, Order{Name: "Test"}); err != nil {
+		t.Fatalf("Create failed: %v", err)
+	}
+
+	<-started // the async goroutine has reached the collector
+	cancel()  // cancel the request context, as a handler returning would
+	close(release)
+
+	select {
+	case err := <-observed:
+		if err != nil {
+			t.Errorf("collector observed cancelled context %v; recording must use the detached context", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for async recording")
+	}
+
+	// The detached context must still carry request-scoped values (the Actor).
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		records := store.recordsByMetric("test")
+		if len(records) == 1 {
+			if got := records[0].Labels.Val["actor_id"]; got != "7" {
+				t.Errorf("expected actor_id '7' preserved on detached context, got %q", got)
+			}
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("expected 1 record, got %d", len(records))
+		}
+		time.Sleep(time.Millisecond)
+	}
+}
+
 func TestCRUD_LatencyCollector(t *testing.T) {
 	inner := newMemoryCRUD()
 	store := newMemoryMetricsCRUD()
