@@ -1,36 +1,28 @@
-# Default recipe
-default: tidy
+# Default recipe: format and auto-fix everything
+default: fmt
 
-# Tidy: format, vet, and tidy
-tidy:
-    go fmt ./...
-    go vet ./...
+# Lint — check only, never modifies files (immutable).
+# golangci-lint runs govet (enable-all), so no separate vet step is needed.
+lint: lint-install
+    golangci-lint run
+
+# Format & auto-fix — fixes everything that can be fixed (mutable)
+fmt: lint-install
+    golangci-lint fmt
+    golangci-lint run --fix
     go mod tidy
 
 # Install golangci-lint if not already installed
 lint-install:
     @which golangci-lint > /dev/null 2>&1 || go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 
-# Lint the code using golangci-lint
-lint: lint-install
-    golangci-lint fmt
-    golangci-lint run
-
-# Test all modules
+# Test all modules (requires Docker for integration tests)
 test:
     go test ./...
 
 # Test only short tests (skip integration tests requiring Docker)
 test-short:
     go test -short ./...
-
-# Vet all modules
-vet:
-    go vet ./...
-
-# Run go mod tidy
-mod-tidy:
-    go mod tidy
 
 # Run the pet store example (starts PostgreSQL in Docker + the Go server)
 example:
