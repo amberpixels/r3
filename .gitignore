@@ -39,3 +39,6 @@ Thumbs.db
 
 # Misc
 output.txt
+
+# Internal review notes (local only)
+tasks.md
