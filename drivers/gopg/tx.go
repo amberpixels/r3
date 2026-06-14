@@ -34,7 +34,8 @@ func (r *GoPgCRUD[T, ID]) BeginTx(ctx context.Context) (r3.TxCRUD[T, ID], error)
 
 	txCrud := &GoPgCRUD[T, ID]{
 		db:     tx,
-		pgDB:   nil, // signal that this is a tx-mode GoPgCRUD
+		pgDB:   nil,                   // signal that this is a tx-mode GoPgCRUD
+		raw:    NewGoPgRaw[T, ID](tx), // Raw bound to the tx, not the root DB
 		Config: r.Config,
 	}
 	txCrud.DefaultsManager = r3.NewDefaultsManager()

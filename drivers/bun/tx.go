@@ -35,7 +35,8 @@ func (r *BunCRUD[T, ID]) BeginTx(ctx context.Context) (r3.TxCRUD[T, ID], error) 
 
 	txCrud := &BunCRUD[T, ID]{
 		db:     tx,
-		sqlDB:  nil, // signal that this is a tx-mode BunCRUD
+		sqlDB:  nil,                  // signal that this is a tx-mode BunCRUD
+		raw:    NewBunRaw[T, ID](tx), // Raw bound to the tx, not the root DB
 		Config: r.Config,
 	}
 	txCrud.DefaultsManager = r3.NewDefaultsManager()

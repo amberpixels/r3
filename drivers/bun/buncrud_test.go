@@ -311,6 +311,35 @@ func TestBunRepository(t *testing.T) {
 		}
 	})
 
+	t.Run("Raw works inside a transaction", func(t *testing.T) {
+		tx, err := cityRepo.BeginTx(ctx)
+		require.NoError(t, err, "BeginTx failed")
+
+		// H7: Raw() must be available and bound to the tx (it was nil before the
+		// fix, so any use panicked).
+		rawer, ok := tx.(interface {
+			Raw() *r3bun.BunRaw[City, int64]
+		})
+		require.True(t, ok, "tx CRUD should expose Raw()")
+		require.NotNil(t, rawer.Raw(), "Raw() must not be nil inside a transaction")
+
+		created, err := tx.Create(ctx, City{Name: "TxCity", CountryName: "TxLand", Popularity: 1})
+		require.NoError(t, err, "Create in tx failed")
+
+		// Raw runs on the tx connection, so it sees the uncommitted row.
+		rows, err := rawer.Raw().Find(ctx, func(q *bun.SelectQuery) *bun.SelectQuery {
+			return q.Where("id = ?", created.ID)
+		})
+		require.NoError(t, err, "Raw query inside tx failed")
+		require.Len(t, rows, 1, "Raw inside tx should see the uncommitted row")
+
+		require.NoError(t, tx.Commit(), "Commit failed")
+
+		got, err := cityRepo.Get(ctx, created.ID)
+		require.NoError(t, err, "committed city should exist")
+		assert.Equal(t, "TxCity", got.Name)
+	})
+
 	// Subtest: Delete an event and verify it no longer exists
 	t.Run("Delete event", func(t *testing.T) {
 		// Delete the first event
