@@ -118,9 +118,15 @@ func (h *CRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 	}
 
 	var zero T
-	h.record(ctx, recordInfo[T]{entity: result, old: zero, hasOld: false, action: ActionCreate}, func() []FieldChange {
-		return DiffCreate(result)
-	})
+	if recErr := h.record(
+		ctx,
+		recordInfo[T]{entity: result, old: zero, hasOld: false, action: ActionCreate},
+		func() []FieldChange {
+			return DiffCreate(result)
+		},
+	); recErr != nil {
+		return result, recErr
+	}
 
 	return result, nil
 }
@@ -159,12 +165,18 @@ func (h *CRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 		return result, err
 	}
 
-	h.record(ctx, recordInfo[T]{entity: result, old: old, hasOld: hasOld, action: ActionUpdate}, func() []FieldChange {
-		if hasOld {
-			return h.opts.DiffFunc(old, result)
-		}
-		return nil
-	})
+	if recErr := h.record(
+		ctx,
+		recordInfo[T]{entity: result, old: old, hasOld: hasOld, action: ActionUpdate},
+		func() []FieldChange {
+			if hasOld {
+				return h.opts.DiffFunc(old, result)
+			}
+			return nil
+		},
+	); recErr != nil {
+		return result, recErr
+	}
 
 	return result, nil
 }
@@ -188,13 +200,19 @@ func (h *CRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields) (T,
 		return result, err
 	}
 
-	h.record(ctx, recordInfo[T]{entity: result, old: old, hasOld: hasOld, action: ActionPatch}, func() []FieldChange {
-		if hasOld {
-			fieldNames := r3.FieldsToStrings(fields)
-			return DiffWithFields(old, result, fieldNames)
-		}
-		return nil
-	})
+	if recErr := h.record(
+		ctx,
+		recordInfo[T]{entity: result, old: old, hasOld: hasOld, action: ActionPatch},
+		func() []FieldChange {
+			if hasOld {
+				fieldNames := r3.FieldsToStrings(fields)
+				return DiffWithFields(old, result, fieldNames)
+			}
+			return nil
+		},
+	); recErr != nil {
+		return result, recErr
+	}
 
 	return result, nil
 }
@@ -215,9 +233,15 @@ func (h *CRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 	}
 
 	if hasOld {
-		h.record(ctx, recordInfo[T]{entity: old, old: old, hasOld: true, action: ActionDelete}, func() []FieldChange {
-			return DiffDelete(old)
-		})
+		if recErr := h.record(
+			ctx,
+			recordInfo[T]{entity: old, old: old, hasOld: true, action: ActionDelete},
+			func() []FieldChange {
+				return DiffDelete(old)
+			},
+		); recErr != nil {
+			return recErr
+		}
 	}
 
 	return nil
@@ -231,12 +255,15 @@ type recordInfo[T any] struct {
 	action Action // the mutation type
 }
 
-// record creates and persists a ChangeRecord. If Async is enabled, it runs
-// in a background goroutine. Errors during async recording are logged.
+// record creates and persists a ChangeRecord. If Async is enabled, it runs in a
+// background goroutine and always returns nil (errors are reported via
+// handleError). In synchronous mode a failed change-record write is reported via
+// handleError and, if FailOnError is set, returned to the caller — otherwise nil
+// is returned and recording is best-effort.
 //
-// After recording, snapshot rules are evaluated — snapshots are stored
+// After a successful record, snapshot rules are evaluated — snapshots are stored
 // separately via each rule's snapshot CRUD.
-func (h *CRUD[T, ID]) record(ctx context.Context, info recordInfo[T], diffFn func() []FieldChange) {
+func (h *CRUD[T, ID]) record(ctx context.Context, info recordInfo[T], diffFn func() []FieldChange) error {
 	buildRecord := func() ChangeRecord {
 		recordID := ""
 		if h.opts.IDFunc != nil {
@@ -271,64 +298,57 @@ func (h *CRUD[T, ID]) record(ctx context.Context, info recordInfo[T], diffFn fun
 			// Assign version + ID and persist atomically per record key.
 			record, err := persistVersioned(asyncCtx, h.store, h.versionLocks, buildRecord())
 			if err != nil {
-				slog.ErrorContext(
-					asyncCtx,
-					"r3history: async record failed",
-					"record_type",
-					record.RecordType,
-					"record_id",
-					record.RecordID,
-					"error",
-					err,
-				)
+				h.handleError(asyncCtx, err)
+				return // do not snapshot a change that was not recorded
 			}
-			// Evaluate snapshot rules
-			if len(h.opts.SnapshotRules) > 0 {
-				evaluateSnapshotRules(
-					asyncCtx,
-					h.opts.SnapshotRules,
-					record.RecordType,
-					record.RecordID,
-					record.Version,
-					info.action,
-					info.old,
-					info.entity,
-					record.Metadata.Val,
-				)
-			}
+			h.evaluateSnapshots(asyncCtx, record, info)
 		}()
-		return
+		return nil
 	}
 
 	// Assign version + ID and persist atomically per record key.
 	record, err := persistVersioned(ctx, h.store, h.versionLocks, buildRecord())
 	if err != nil {
-		slog.ErrorContext(
-			ctx,
-			"r3history: record failed",
-			"record_type",
-			record.RecordType,
-			"record_id",
-			record.RecordID,
-			"error",
-			err,
-		)
+		h.handleError(ctx, err)
+		if h.opts.FailOnError {
+			return fmt.Errorf(
+				"r3history: failed to record %s of %s/%s: %w",
+				record.Action, record.RecordType, record.RecordID, err,
+			)
+		}
+		return nil // best-effort: the mutation already succeeded
 	}
 
-	// Evaluate snapshot rules
-	if len(h.opts.SnapshotRules) > 0 {
-		evaluateSnapshotRules(
-			ctx,
-			h.opts.SnapshotRules,
-			record.RecordType,
-			record.RecordID,
-			record.Version,
-			info.action,
-			info.old,
-			info.entity,
-			record.Metadata.Val,
-		)
+	h.evaluateSnapshots(ctx, record, info)
+	return nil
+}
+
+// evaluateSnapshots runs the configured snapshot rules for a recorded change.
+func (h *CRUD[T, ID]) evaluateSnapshots(ctx context.Context, record ChangeRecord, info recordInfo[T]) {
+	if len(h.opts.SnapshotRules) == 0 {
+		return
 	}
+	evaluateSnapshotRules(
+		ctx,
+		h.opts.SnapshotRules,
+		record.RecordType,
+		record.RecordID,
+		record.Version,
+		info.action,
+		info.old,
+		info.entity,
+		record.Metadata.Val,
+	)
+}
+
+// handleError reports a failed change-record write. It calls the configured
+// ErrorHandler if set, otherwise logs via slog.
+func (h *CRUD[T, ID]) handleError(ctx context.Context, err error) {
+	if h.opts.ErrorHandler != nil {
+		h.opts.ErrorHandler(err)
+		return
+	}
+	slog.ErrorContext(ctx, "r3history: record failed", "record_type", h.opts.RecordType, "error", err)
 }
 
 // buildMetadata constructs a Metadata value by combining the user-provided

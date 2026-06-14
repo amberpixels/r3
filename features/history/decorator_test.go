@@ -1528,3 +1528,61 @@ func TestCRUD_ConcurrentUpdatesGetUniqueVersions(t *testing.T) {
 		}
 	}
 }
+
+// failingChangeRecordStore is a change-record store whose Create always fails,
+// used to exercise the audit-write failure policy (H10). List/Get/etc. are
+// inherited so nextVersion still works.
+type failingChangeRecordStore struct {
+	*memoryChangeRecordCRUD
+}
+
+func (s *failingChangeRecordStore) Create(context.Context, history.ChangeRecord) (history.ChangeRecord, error) {
+	return history.ChangeRecord{}, errors.New("change store write failed")
+}
+
+// TestCRUD_SyncRecordErrorPolicy verifies the synchronous audit-write failure
+// policy (H10): by default the operation succeeds and the error is reported via
+// ErrorHandler (best-effort); with WithFailOnError the error is surfaced to the
+// caller even though the mutation was already applied.
+func TestCRUD_SyncRecordErrorPolicy(t *testing.T) {
+	idFn := history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID })
+
+	t.Run("default is best-effort and reports via ErrorHandler", func(t *testing.T) {
+		inner := newMemoryCRUD()
+		store := &failingChangeRecordStore{memoryChangeRecordCRUD: newMemoryChangeRecordCRUD()}
+
+		var handled error
+		repo := history.WithHistory[Order, int64](inner, store, idFn,
+			history.WithErrorHandler[Order, int64](func(err error) { handled = err }),
+		)
+
+		created, err := repo.Create(context.Background(), Order{Name: "x"})
+		if err != nil {
+			t.Fatalf("default policy must not fail the operation, got %v", err)
+		}
+		if created.ID == 0 {
+			t.Error("entity should have been created")
+		}
+		if handled == nil {
+			t.Error("ErrorHandler should have been called on audit-write failure")
+		}
+	})
+
+	t.Run("FailOnError surfaces the audit error", func(t *testing.T) {
+		inner := newMemoryCRUD()
+		store := &failingChangeRecordStore{memoryChangeRecordCRUD: newMemoryChangeRecordCRUD()}
+
+		repo := history.WithHistory[Order, int64](inner, store, idFn,
+			history.WithFailOnError[Order, int64](),
+		)
+
+		_, err := repo.Create(context.Background(), Order{Name: "y"})
+		if err == nil {
+			t.Fatal("FailOnError must surface the audit-write failure")
+		}
+		// The mutation was already applied before the audit attempt.
+		if n := len(inner.data); n != 1 {
+			t.Errorf("entity should be persisted despite audit failure, got %d rows", n)
+		}
+	})
+}

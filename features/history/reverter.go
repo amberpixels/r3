@@ -37,6 +37,16 @@ type Reverter[T any, ID comparable] struct {
 	versionLocks *versionLocker
 }
 
+// handleError reports a failed revert change-record write via the configured
+// ErrorHandler, or slog if none is set.
+func (r *Reverter[T, ID]) handleError(ctx context.Context, err error) {
+	if r.opts.ErrorHandler != nil {
+		r.opts.ErrorHandler(err)
+		return
+	}
+	slog.ErrorContext(ctx, "r3history: revert record failed", "record_type", r.opts.RecordType, "error", err)
+}
+
 // RevertTo restores an entity to the state it was in at a specific version.
 //
 // It reconstructs the state by replaying all FieldChanges from version 1
@@ -97,16 +107,15 @@ func (r *Reverter[T, ID]) RevertTo(ctx context.Context, id ID, version int64) (T
 	// Assign version + ID and persist atomically per record key.
 	record, err = persistVersioned(ctx, r.store, r.versionLocks, record)
 	if err != nil {
-		slog.ErrorContext(
-			ctx,
-			"r3history: failed to record revert",
-			"record_type",
-			record.RecordType,
-			"record_id",
-			record.RecordID,
-			"error",
-			err,
-		)
+		r.handleError(ctx, err)
+		if r.opts.FailOnError {
+			return zero, fmt.Errorf(
+				"r3history: failed to record revert of %s/%s: %w",
+				record.RecordType, record.RecordID, err,
+			)
+		}
+		// best-effort: the revert mutation already succeeded
+		return result, nil
 	}
 
 	// Evaluate snapshot rules after revert

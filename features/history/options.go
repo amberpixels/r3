@@ -78,9 +78,27 @@ type Options[T any, ID comparable] struct {
 	SnapshotRules []SnapshotRule[T]
 
 	// Async when true records history in a background goroutine.
-	// The CRUD operation returns immediately; history recording errors are logged
-	// but do not affect the CRUD result. Default: false (synchronous).
+	// The CRUD operation returns immediately; history recording errors are
+	// reported via ErrorHandler but never affect the CRUD result (FailOnError is
+	// ignored in async mode). Default: false (synchronous).
 	Async bool
+
+	// ErrorHandler is invoked when writing a change record fails. It makes the
+	// handling of a failed audit write explicit and overridable. If nil, the
+	// failure is logged via slog. It does not control whether the operation
+	// fails — see FailOnError.
+	ErrorHandler func(error)
+
+	// FailOnError, in synchronous mode, makes a failed change-record write return
+	// its error from the CRUD operation instead of only being reported. This
+	// surfaces audit gaps to the caller.
+	//
+	// NOTE: history is recorded after the underlying mutation succeeds, so when
+	// this fires the entity change has ALREADY been applied; the returned error
+	// signals that the change could not be audited, not that the mutation was
+	// rolled back. For atomic audit, run the operation inside a transaction.
+	// Ignored in async mode. Default: false.
+	FailOnError bool
 }
 
 // Option is a functional option for configuring CRUD.
@@ -136,6 +154,25 @@ func WithSnapshotRules[T any, ID comparable](rules ...SnapshotRule[T]) Option[T,
 func WithAsync[T any, ID comparable]() Option[T, ID] {
 	return func(o *Options[T, ID]) {
 		o.Async = true
+	}
+}
+
+// WithErrorHandler sets a handler invoked when writing a change record fails.
+// It overrides the default slog logging. It does not change whether the
+// operation fails — use WithFailOnError for that.
+func WithErrorHandler[T any, ID comparable](fn func(error)) Option[T, ID] {
+	return func(o *Options[T, ID]) {
+		o.ErrorHandler = fn
+	}
+}
+
+// WithFailOnError makes a failed change-record write return its error from the
+// CRUD operation in synchronous mode. See Options.FailOnError for the important
+// caveat that the underlying mutation has already been applied. Ignored in
+// async mode.
+func WithFailOnError[T any, ID comparable]() Option[T, ID] {
+	return func(o *Options[T, ID]) {
+		o.FailOnError = true
 	}
 }
 
