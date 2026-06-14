@@ -92,6 +92,13 @@ func (p *CRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 
 // Get delegates to inner.Get first (need entity for row-level check),
 // then checks OpRead permission. If denied, the entity is not leaked.
+//
+// If the checker also implements Scoper, the fetched entity is verified against
+// the scope filters — consistent with List/Count, which apply the same filters
+// at the database level. An entity outside the actor's scope is reported as
+// [r3.ErrNotFound] (invisible), exactly as List would omit it. The scope filters
+// are evaluated in-memory against the fetched entity; an unevaluable filter
+// fails closed (treated as out of scope).
 func (p *CRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, error) {
 	result, err := p.inner.Get(ctx, id, qarg...)
 	if err != nil {
@@ -107,6 +114,22 @@ func (p *CRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, erro
 	}); err != nil {
 		var zero T
 		return zero, err
+	}
+
+	// Row-level scope: the entity must satisfy the same filters List/Count apply.
+	if scoper, ok := p.checker.(Scoper[T, ID]); ok {
+		filters, err := scoper.Scope(ctx, actor)
+		if err != nil {
+			var zero T
+			return zero, err
+		}
+		if len(filters) > 0 {
+			inScope, matchErr := entityMatchesFilters(&result, filters)
+			if matchErr != nil || !inScope {
+				var zero T
+				return zero, r3.ErrNotFound
+			}
+		}
 	}
 
 	return result, nil

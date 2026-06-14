@@ -580,6 +580,41 @@ func (scopedPolicy) Scope(_ context.Context, actor r3.Actor) (r3.Filters, error)
 	return r3.Filters{r3.F(r3.NewFieldSpec("owner_id"), actor.ID)}, nil
 }
 
+// TestScoper_GetEnforcesScope verifies that Get respects the Scoper, not just
+// List/Count (H3). scopedPolicy allows every OpRead via Check, so scope is the
+// only row-level enforcement: an out-of-scope Get must report ErrNotFound.
+func TestScoper_GetEnforcesScope(t *testing.T) {
+	inner := newMemoryCRUD()
+	inner.data[1] = Post{ID: 1, Title: "Alice Post", OwnerID: "alice"}
+	inner.data[2] = Post{ID: 2, Title: "Bob Post", OwnerID: "bob"}
+	inner.nextID = 3
+
+	repo := permissions.WithPermissions[Post, int64](inner, scopedPolicy{})
+
+	aliceCtx := r3.WithActor(context.Background(), r3.Actor{ID: "alice", Type: "user"})
+
+	// In scope: alice can read her own post.
+	got, err := repo.Get(aliceCtx, 1)
+	if err != nil {
+		t.Fatalf("expected alice to read her own post, got %v", err)
+	}
+	if got.OwnerID != "alice" {
+		t.Errorf("expected alice's post, got owner=%s", got.OwnerID)
+	}
+
+	// Out of scope: alice must not read bob's post; it is invisible (ErrNotFound).
+	_, err = repo.Get(aliceCtx, 2)
+	if !errors.Is(err, r3.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound for out-of-scope Get, got %v", err)
+	}
+
+	// Admin scope is nil (sees everything): Get must succeed for any post.
+	adminCtx := r3.WithActor(context.Background(), r3.Actor{ID: "root", Type: "admin"})
+	if _, err := repo.Get(adminCtx, 2); err != nil {
+		t.Fatalf("expected admin to read any post, got %v", err)
+	}
+}
+
 func TestScoper_InjectsFilters(t *testing.T) {
 	inner := newMemoryCRUD()
 	inner.data[1] = Post{ID: 1, Title: "Alice Post", OwnerID: "alice"}
