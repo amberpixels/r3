@@ -262,6 +262,85 @@ func TestSqlite3Repository(t *testing.T) {
 // TestSqlite3_BackwardCursor verifies keyset pagination in both directions (H1).
 // A "before" cursor must return the rows immediately preceding it, in the
 // requested order — not the rows farthest from it.
+// SoftCity is a soft-deletable model used to exercise soft-delete / Restore
+// not-found semantics. It owns its table so the test is self-contained.
+type SoftCity struct {
+	ID        int64      `db:"id,pk"`
+	Name      string     `db:"name"`
+	DeletedAt *time.Time `db:"deleted_at,soft_delete"`
+}
+
+// TestSqlite3_NotFoundSemantics verifies M2: Update, Patch, Delete, HardDelete
+// and Restore all report r3.ErrNotFound when no row matches the primary key, and
+// that a no-op update of an existing row still succeeds (not a false ErrNotFound).
+func TestSqlite3_NotFoundSemantics(t *testing.T) {
+	ctx := t.Context()
+
+	db, err := setupSQLiteDB()
+	require.NoError(t, err, "failed to setup SQLite database")
+	defer db.Close()
+
+	const pathToMigrations = "../../internal/testing/migrations_sqlite"
+	require.NoError(t, goose.SetDialect("sqlite3"))
+	require.NoError(t, goose.Up(db, pathToMigrations))
+	defer func() {
+		if err := goose.Down(db, pathToMigrations); err != nil {
+			t.Logf("failed to run down migration: %v", err)
+		}
+	}()
+
+	const missingID = int64(99999)
+	cityRepo := r3sqlite3.NewSqlite3CRUD[City, int64](db)
+
+	t.Run("Update missing returns ErrNotFound", func(t *testing.T) {
+		_, err := cityRepo.Update(ctx, City{ID: missingID, Name: "ghost", CountryName: "X"})
+		require.ErrorIs(t, err, r3.ErrNotFound)
+	})
+
+	t.Run("Patch missing returns ErrNotFound", func(t *testing.T) {
+		_, err := cityRepo.Patch(ctx, City{ID: missingID}, r3.Fields{r3.NewFieldSpec("name")})
+		require.ErrorIs(t, err, r3.ErrNotFound)
+	})
+
+	t.Run("Delete missing returns ErrNotFound", func(t *testing.T) {
+		err := cityRepo.Delete(ctx, missingID)
+		require.ErrorIs(t, err, r3.ErrNotFound)
+	})
+
+	t.Run("HardDelete missing returns ErrNotFound", func(t *testing.T) {
+		err := cityRepo.HardDelete(ctx, missingID)
+		require.ErrorIs(t, err, r3.ErrNotFound)
+	})
+
+	t.Run("no-op Update of existing row succeeds", func(t *testing.T) {
+		// Migrations seed City One (id 1). Re-applying its own values must NOT be
+		// misreported as not-found (the MySQL changed-vs-matched-rows case).
+		existing, err := cityRepo.Get(ctx, int64(1))
+		require.NoError(t, err)
+		_, err = cityRepo.Update(ctx, existing)
+		require.NoError(t, err)
+	})
+
+	t.Run("soft-delete and Restore missing returns ErrNotFound", func(t *testing.T) {
+		_, err := db.ExecContext(ctx,
+			`CREATE TABLE soft_cities (id INTEGER PRIMARY KEY, name TEXT, deleted_at DATETIME)`)
+		require.NoError(t, err)
+
+		softRepo := r3sqlite3.NewSqlite3CRUD[SoftCity, int64](db)
+		created, err := softRepo.Create(ctx, SoftCity{Name: "live"})
+		require.NoError(t, err)
+
+		// Soft-delete of a missing row → ErrNotFound.
+		require.ErrorIs(t, softRepo.Delete(ctx, missingID), r3.ErrNotFound)
+		// Restore of a missing row → ErrNotFound.
+		require.ErrorIs(t, softRepo.Restore(ctx, missingID), r3.ErrNotFound)
+
+		// Soft-delete then restore the real row → both succeed.
+		require.NoError(t, softRepo.Delete(ctx, created.ID))
+		require.NoError(t, softRepo.Restore(ctx, created.ID))
+	})
+}
+
 func TestSqlite3_BackwardCursor(t *testing.T) {
 	ctx := t.Context()
 

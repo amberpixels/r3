@@ -706,6 +706,61 @@ func TestSQLToSort(t *testing.T) {
 	}
 }
 
+// TestSortRoundTrip verifies SortToSQL -> SQLToSort recovers the original field
+// name. SortToSQL quotes identifiers (`"name"`, `"user"."name"`), so the decoder
+// must strip the quoting rather than carry the quote characters into the field.
+func TestSortRoundTrip(t *testing.T) {
+	tests := []struct {
+		name  string
+		input *r3.SortSpec
+	}{
+		{
+			name: "simple column DESC",
+			input: func() *r3.SortSpec {
+				c := r3.FieldSpec("name")
+				return &r3.SortSpec{Column: &c, Direction: r3.SortDirectionDesc}
+			}(),
+		},
+		{
+			name: "dotted column ASC with nulls first",
+			input: func() *r3.SortSpec {
+				c := r3.FieldSpec("user.name")
+				return &r3.SortSpec{
+					Column:        &c,
+					Direction:     r3.SortDirectionAsc,
+					NullsPosition: r3.NullsPositionFirst,
+				}
+			}(),
+		},
+		{
+			name: "dotted column DESC with nulls last",
+			input: func() *r3.SortSpec {
+				c := r3.FieldSpec("a.b.c")
+				return &r3.SortSpec{
+					Column:        &c,
+					Direction:     r3.SortDirectionDesc,
+					NullsPosition: r3.NullsPositionLast,
+				}
+			}(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			encoded, err := r3sql.SortToSQL(tt.input)
+			require.NoError(t, err)
+
+			decoded, err := r3sql.SQLToSort(encoded)
+			require.NoError(t, err)
+
+			assert.Equal(t, tt.input.Column.String(), decoded.Column.String(),
+				"field name must round-trip without quote characters")
+			assert.Equal(t, tt.input.Direction, decoded.Direction)
+			assert.Equal(t, tt.input.NullsPosition, decoded.NullsPosition)
+		})
+	}
+}
+
 func TestFilterToSQL_Integration(t *testing.T) {
 	// Test realistic scenarios combining multiple features
 	tests := []struct {

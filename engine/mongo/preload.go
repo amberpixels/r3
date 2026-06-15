@@ -95,7 +95,7 @@ func preloadHasMany(
 	targetMeta := &rel.TargetMeta
 	coll := db.Collection(targetMeta.CollectionName)
 
-	filter := bson.D{{Key: rel.FKField, Value: bson.D{{Key: "$in", Value: idValues}}}}
+	filter := bson.D{{Key: rel.FKField, Value: bson.D{{Key: inOp, Value: idValues}}}}
 
 	cursor, err := coll.Find(ctx, filter)
 	if err != nil {
@@ -194,7 +194,7 @@ func preloadBelongsTo(
 	targetMeta := &rel.TargetMeta
 	coll := db.Collection(targetMeta.CollectionName)
 
-	filter := bson.D{{Key: targetMeta.IDField, Value: bson.D{{Key: "$in", Value: fkValues}}}}
+	filter := bson.D{{Key: targetMeta.IDField, Value: bson.D{{Key: inOp, Value: fkValues}}}}
 
 	cursor, err := coll.Find(ctx, filter)
 	if err != nil {

@@ -378,8 +378,11 @@ func (r *BaseCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	)
 
 	args := append(vals, pkVal) //nolint: gocritic // intentional append to new slice
-	_, err := r.Executor.ExecContext(ctx, query, args...)
+	res, err := r.Executor.ExecContext(ctx, query, args...)
 	if err != nil {
+		return entity, err
+	}
+	if err := r.requireUpdatedRow(ctx, res, pkVal); err != nil {
 		return entity, err
 	}
 	return entity, nil
@@ -414,6 +417,11 @@ func (r *BaseCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields)
 	dests := r.Meta.ScanDest(&entity)
 	err = r.Executor.QueryRowContext(ctx, query, args...).Scan(dests...)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			// No row matched the PK: normalize to the cross-backend sentinel
+			// instead of leaking the raw driver error (matches Get).
+			return entity, r3.ErrNotFound
+		}
 		return entity, err
 	}
 	return entity, nil
@@ -448,6 +456,13 @@ func (r *BaseCRUD[T, ID]) patchWithoutRETURNING(ctx context.Context, entity T, c
 	dests := r.Meta.ScanDest(&entity)
 	err = r.Executor.QueryRowContext(ctx, selectQuery, pkVal).Scan(dests...)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			// The row does not exist (the UPDATE matched nothing): report the
+			// cross-backend sentinel. The re-fetch is a reliable not-found
+			// signal even on MySQL, where RowsAffected counts changed (not
+			// matched) rows and so cannot distinguish a no-op from a miss.
+			return entity, r3.ErrNotFound
+		}
 		return entity, err
 	}
 	return entity, nil
@@ -458,27 +473,33 @@ func (r *BaseCRUD[T, ID]) patchWithoutRETURNING(ctx context.Context, entity T, c
 // it performs a soft-delete by setting the column to the current timestamp.
 // Otherwise, it performs a hard delete.
 func (r *BaseCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
-	var query string
 	if r.Meta.SoftDeleteColumn != "" {
 		// Soft-delete: UPDATE SET deleted_at = NOW() WHERE pk = ?
-		query = fmt.Sprintf(
+		query := fmt.Sprintf(
 			"UPDATE %s SET %s = %s WHERE %s",
 			r.Meta.TableName,
 			r.Meta.SoftDeleteColumn,
 			r.Flavor.TimestampFunc,
 			r.Flavor.WhereEq(r.Meta.PKColumn, 1),
 		)
-	} else {
-		// Hard delete
-		query = fmt.Sprintf(
-			"DELETE FROM %s WHERE %s",
-			r.Meta.TableName,
-			r.Flavor.WhereEq(r.Meta.PKColumn, 1),
-		)
+		res, err := r.Executor.ExecContext(ctx, query, id)
+		if err != nil {
+			return err
+		}
+		return r.requireUpdatedRow(ctx, res, id)
 	}
 
-	_, err := r.Executor.ExecContext(ctx, query, id)
-	return err
+	// Hard delete
+	query := fmt.Sprintf(
+		"DELETE FROM %s WHERE %s",
+		r.Meta.TableName,
+		r.Flavor.WhereEq(r.Meta.PKColumn, 1),
+	)
+	res, err := r.Executor.ExecContext(ctx, query, id)
+	if err != nil {
+		return err
+	}
+	return requireDeletedRow(res)
 }
 
 // Restore clears the soft-delete column, un-deleting a soft-deleted record.
@@ -493,8 +514,11 @@ func (r *BaseCRUD[T, ID]) Restore(ctx context.Context, id ID) error {
 		r.Meta.SoftDeleteColumn,
 		r.Flavor.WhereEq(r.Meta.PKColumn, 1),
 	)
-	_, err := r.Executor.ExecContext(ctx, query, id)
-	return err
+	res, err := r.Executor.ExecContext(ctx, query, id)
+	if err != nil {
+		return err
+	}
+	return r.requireUpdatedRow(ctx, res, id)
 }
 
 // HardDelete permanently removes a record, ignoring soft-delete.
@@ -504,8 +528,72 @@ func (r *BaseCRUD[T, ID]) HardDelete(ctx context.Context, id ID) error {
 		r.Meta.TableName,
 		r.Flavor.WhereEq(r.Meta.PKColumn, 1),
 	)
-	_, err := r.Executor.ExecContext(ctx, query, id)
-	return err
+	res, err := r.Executor.ExecContext(ctx, query, id)
+	if err != nil {
+		return err
+	}
+	return requireDeletedRow(res)
+}
+
+// requireDeletedRow returns r3.ErrNotFound when a DELETE matched no row. For a
+// DELETE the affected-row count equals the matched-row count on every supported
+// backend, so a zero count unambiguously means "not found". When the driver
+// cannot report RowsAffected the check is skipped (success is assumed, as before).
+func requireDeletedRow(res sql.Result) error {
+	n, err := res.RowsAffected()
+	if err != nil {
+		return nil //nolint:nilerr // driver can't report affected rows; keep prior behavior
+	}
+	if n == 0 {
+		return r3.ErrNotFound
+	}
+	return nil
+}
+
+// requireUpdatedRow returns r3.ErrNotFound when an UPDATE matched no row.
+//
+// Unlike DELETE, a zero affected-row count on an UPDATE is ambiguous on MySQL,
+// which reports *changed* rows rather than *matched* rows — a no-op update of an
+// existing row reports zero. So when the count is zero we confirm existence by
+// primary key before concluding the row is missing. On Postgres/SQLite the count
+// already reflects matched rows, so the extra lookup only runs in the rare
+// zero-count case. If the driver cannot report RowsAffected the check is skipped.
+func (r *BaseCRUD[T, ID]) requireUpdatedRow(ctx context.Context, res sql.Result, pkVal any) error {
+	n, err := res.RowsAffected()
+	if err != nil {
+		return nil //nolint:nilerr // driver can't report affected rows; keep prior behavior
+	}
+	if n > 0 {
+		return nil
+	}
+
+	exists, err := r.existsByPK(ctx, pkVal)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return r3.ErrNotFound
+	}
+	return nil
+}
+
+// existsByPK reports whether a row with the given primary key exists, regardless
+// of soft-delete state (it matches the physical row the way UPDATE does).
+func (r *BaseCRUD[T, ID]) existsByPK(ctx context.Context, pkVal any) (bool, error) {
+	query := fmt.Sprintf(
+		"SELECT 1 FROM %s WHERE %s",
+		r.Meta.TableName,
+		r.Flavor.WhereEq(r.Meta.PKColumn, 1),
+	)
+	var dummy int
+	err := r.Executor.QueryRowContext(ctx, query, pkVal).Scan(&dummy)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 // ScanEntities scans sql.Rows into a slice of T using the given StructMeta.

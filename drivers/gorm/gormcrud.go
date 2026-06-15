@@ -8,6 +8,7 @@ import (
 	"github.com/amberpixels/r3"
 	enginesql "github.com/amberpixels/r3/engine/sql"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 // GormCRUD is a CRUD repository based on gorm.DB.
@@ -221,10 +222,16 @@ func (r *GormCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 	return nil
 }
 
-// Restore un-deletes a soft-deleted record by clearing its deleted_at field.
+// Restore un-deletes a soft-deleted record by clearing its soft-delete column.
 func (r *GormCRUD[T, ID]) Restore(ctx context.Context, id ID) error {
-	return r.db.WithContext(ctx).Unscoped().Model(new(T)).Where("id = ?", id).
-		Update("deleted_at", nil).Error
+	meta := enginesql.GetStructMeta[T]()
+	softDeleteCol := meta.SoftDeleteColumn
+	if softDeleteCol == "" {
+		softDeleteCol = "deleted_at"
+	}
+	return r.db.WithContext(ctx).Unscoped().Model(new(T)).
+		Where(clause.Eq{Column: meta.PKColumn, Value: id}).
+		Update(softDeleteCol, nil).Error
 }
 
 // HardDelete permanently removes a record, bypassing GORM's soft-delete.

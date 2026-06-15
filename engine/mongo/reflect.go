@@ -46,6 +46,14 @@ type StructMeta struct {
 	// Empty string means soft-delete is not enabled.
 	SoftDeleteField string
 
+	// SoftDeleteZero is the zero value of the soft-delete field when it is a
+	// non-pointer type. A live (never-deleted) record stores this zero value
+	// rather than null — a non-pointer time.Time persists as the zero BSON Date,
+	// not as null — so the "not deleted" filter must match it as well as null.
+	// Nil when the field is a pointer (live records store null) or when
+	// soft-delete is disabled.
+	SoftDeleteZero any
+
 	// Relations holds metadata about related entities.
 	Relations []RelationMeta
 }
@@ -112,6 +120,12 @@ func buildStructMeta(typ reflect.Type, parseRelations bool) StructMeta {
 
 		if isSoftDelete {
 			meta.SoftDeleteField = bsonName
+			// A non-pointer soft-delete field (e.g. time.Time) stores its zero
+			// value for live records, not null; capture it so the "not deleted"
+			// filter can match it. Pointer fields store null and need no zero.
+			if field.Type.Kind() != reflect.Pointer {
+				meta.SoftDeleteZero = reflect.Zero(field.Type).Interface()
+			}
 		}
 	}
 

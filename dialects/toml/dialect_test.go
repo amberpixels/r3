@@ -73,10 +73,11 @@ func TestFilterToTOML(t *testing.T) {
 }
 
 func TestFilterToTOML_NilValue(t *testing.T) {
-	// TOML does not support null values
+	// TOML does not support null values: a value-carrying operator with a nil
+	// value must be rejected.
 	filter := &r3.FilterSpec{
 		Field:    r3.NewFieldSpec("status"),
-		Operator: r3.OperatorExists,
+		Operator: r3.OperatorEq,
 		Value:    nil,
 	}
 
@@ -84,6 +85,29 @@ func TestFilterToTOML_NilValue(t *testing.T) {
 	require.Error(t, err)
 	require.ErrorIs(t, err, r3toml.ErrTOMLNullValue)
 	assert.True(t, r3toml.IsErrDialectorFailure(err))
+}
+
+func TestFilterToTOML_ExistsHasNoValue(t *testing.T) {
+	// "exists" carries no value and must NOT be rejected by the null guard —
+	// it has to round-trip like every other serialization dialect.
+	filter := &r3.FilterSpec{
+		Field:    r3.NewFieldSpec("status"),
+		Operator: r3.OperatorExists,
+		Value:    nil,
+	}
+
+	tf, err := r3toml.FilterToTOML(filter)
+	require.NoError(t, err)
+	assert.Equal(t, "status", tf.Field)
+	assert.Equal(t, "exists", tf.Operator)
+	assert.Nil(t, tf.Value)
+
+	// Round-trip back to a FilterSpec.
+	back, err := tf.ToFilterSpec()
+	require.NoError(t, err)
+	assert.Equal(t, r3.OperatorExists, back.Operator)
+	assert.Equal(t, "status", back.Field.String())
+	assert.Nil(t, back.Value)
 }
 
 func TestFilterToTOML_SimpleFilter(t *testing.T) {

@@ -99,7 +99,10 @@ func evaluateOperator(fieldVal any, op r3.FilterOperatorSpec, filterVal any) (bo
 		return !compareEqual(fieldVal, filterVal), nil
 
 	case r3.OperatorExists:
-		return !isZero(fieldVal), nil
+		// exists == SQL "IS NOT NULL": present non-null value. A non-pointer zero
+		// (0, "", false, zero time) is a real value and DOES exist; only an
+		// absent field or a nil pointer is NULL.
+		return !isNullValue(fieldVal), nil
 
 	case r3.OperatorGt:
 		return compareOrdered(fieldVal, filterVal) > 0, nil
@@ -340,11 +343,21 @@ func toTime(v any) (time.Time, bool) {
 	return time.Time{}, false
 }
 
-// isZero checks if a value is the zero value for its type.
-func isZero(v any) bool {
+// isNullValue reports whether a value represents SQL NULL: an absent field, a
+// nil interface, or a nil pointer (and nil maps/slices). A present non-pointer
+// zero value (0, "", false, the zero time) is NOT null — it is a real value, so
+// nulls-ordering and the `exists` operator must treat it as present, matching
+// SQL and Mongo semantics. (The reflection layer returns the raw field value, so
+// a nil pointer arrives here as a typed nil whose reflect Kind is Pointer.)
+func isNullValue(v any) bool {
 	if v == nil {
 		return true
 	}
 	rv := reflect.ValueOf(v)
-	return rv.IsZero()
+	switch rv.Kind() {
+	case reflect.Pointer, reflect.Interface, reflect.Map, reflect.Slice, reflect.Chan, reflect.Func:
+		return rv.IsNil()
+	default:
+		return false
+	}
 }

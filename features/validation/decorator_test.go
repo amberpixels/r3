@@ -272,6 +272,54 @@ func TestPatch_InvalidEntity_ReturnsValidationError(t *testing.T) {
 	}
 }
 
+// TestPatch_MergedReflectsFullEntity verifies M8: a whole-entity validator sees
+// the patch merged over existing state (req.Merged), not the sparse zeroed input.
+// A "name required" rule applied to a status-only patch must pass because the
+// merged entity still carries the existing name.
+func TestPatch_MergedReflectsFullEntity(t *testing.T) {
+	inner := newMemoryCRUD()
+	inner.data[1] = Pet{ID: 1, Name: "Buddy", Status: "available", Price: 100}
+	inner.nextID = 2
+
+	var seenMerged *Pet
+	mergedNameRequired := validation.ValidatorFunc[Pet, int64](
+		func(_ context.Context, req validation.Request[Pet, int64]) error {
+			// Validate the post-patch state, not the sparse input.
+			if req.Merged == nil {
+				t.Fatal("expected Merged to be populated for Patch with IDFunc")
+			}
+			seenMerged = req.Merged
+			if req.Merged.Name == "" {
+				return validation.NewError(req.Operation,
+					validation.NewFieldError("name", "is required", "required"),
+				)
+			}
+			return nil
+		},
+	)
+
+	repo := validation.WithValidation[Pet, int64](inner, mergedNameRequired,
+		validation.WithIDFunc[Pet, int64](petIDFunc))
+
+	ctx := context.Background()
+	// Patch only status; Name is absent from the sparse input.
+	fields := r3.Fields{r3.NewFieldSpec("status")}
+	_, err := repo.Patch(ctx, Pet{ID: 1, Status: "sold"}, fields)
+	if err != nil {
+		t.Fatalf("Patch should pass — merged entity keeps Name=Buddy: %v", err)
+	}
+
+	if seenMerged.Name != "Buddy" {
+		t.Errorf("Merged.Name = %q, want preserved %q", seenMerged.Name, "Buddy")
+	}
+	if seenMerged.Status != "sold" {
+		t.Errorf("Merged.Status = %q, want patched %q", seenMerged.Status, "sold")
+	}
+	if inner.patchCalls != 1 {
+		t.Errorf("expected 1 inner.Patch call, got %d", inner.patchCalls)
+	}
+}
+
 // ── Tests: Patch receives Fields ─────────────────────────────────────────
 
 func TestPatch_ValidatorReceivesFields(t *testing.T) {

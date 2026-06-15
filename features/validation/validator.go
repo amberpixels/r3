@@ -38,6 +38,13 @@ type Request[T any, ID comparable] struct {
 	// Populated only for Update and Patch operations when WithIDFunc is configured.
 	// Enables state-transition validation (e.g. "status can only go draft -> published").
 	Existing *T
+
+	// Merged is the full entity as it will look AFTER the patch is applied: the
+	// patched fields overlaid on Existing. Populated only for Patch when WithIDFunc
+	// is configured. Validators should prefer Merged over Entity for whole-entity
+	// rules on Patch, since Entity carries only the patched fields (the rest are
+	// zeroed) — validating Entity directly would reject otherwise-valid patches.
+	Merged *T
 }
 
 // Validator validates entities before mutation operations.

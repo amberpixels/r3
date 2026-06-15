@@ -15,6 +15,9 @@ import (
 // setOp is the MongoDB update operator for setting field values.
 const setOp = "$set"
 
+// inOp is the MongoDB query operator matching any value in a set.
+const inOp = "$in"
+
 // BaseCRUD is a generic CRUD repository backed by MongoDB.
 // It implements the full r3.CRUD[T, ID] interface using the MongoDB Go driver v2.
 //
@@ -90,7 +93,7 @@ func (r *BaseCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 	// Build filter: {_id: id} [AND soft-delete check]
 	filter := bson.D{{Key: r.Meta.IDField, Value: id}}
 	if r.Meta.SoftDeleteField != "" && !q.IncludeTrashed.Some(true) {
-		filter = append(filter, bson.E{Key: r.Meta.SoftDeleteField, Value: bson.D{{Key: "$eq", Value: nil}}})
+		filter = append(filter, bson.E{Key: r.Meta.SoftDeleteField, Value: r.Meta.liveRecordCondition()})
 	}
 
 	// Build find options
@@ -122,6 +125,19 @@ func (r *BaseCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 	return entity, nil
 }
 
+// liveRecordCondition returns the BSON predicate that matches records which are
+// NOT soft-deleted. A pointer soft-delete field stores null for live records, so
+// {$eq: nil} suffices. A non-pointer field (e.g. a plain time.Time) persists its
+// zero value — the zero BSON Date, not null — for never-deleted records, so the
+// predicate must match both null and that zero value; otherwise every live record
+// is filtered out of Get/List/Count.
+func (m *StructMeta) liveRecordCondition() bson.D {
+	if m.SoftDeleteZero == nil {
+		return bson.D{{Key: "$eq", Value: nil}}
+	}
+	return bson.D{{Key: inOp, Value: bson.A{nil, m.SoftDeleteZero}}}
+}
+
 // buildFilter assembles the BSON filter from the prepared query's user filters
 // plus the soft-delete condition. It is shared by List and Count; cursor keyset
 // filtering is layered on top by List only.
@@ -132,7 +148,7 @@ func (r *BaseCRUD[T, ID]) buildFilter(prep PreparedListQuery) bson.D {
 	}
 
 	if r.Meta.SoftDeleteField != "" && !prep.Query.IncludeTrashed.Some(true) {
-		sdFilter := bson.D{{Key: r.Meta.SoftDeleteField, Value: bson.D{{Key: "$eq", Value: nil}}}}
+		sdFilter := bson.D{{Key: r.Meta.SoftDeleteField, Value: r.Meta.liveRecordCondition()}}
 		if len(filter) == 0 {
 			filter = sdFilter
 		} else {

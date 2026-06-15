@@ -307,7 +307,7 @@ func parseSQLSortString(sortStr string) (*r3.SortSpec, error) {
 
 	// If no spaces, it's just a field name (default direction)
 	if !strings.Contains(sortStr, " ") {
-		col := r3.FieldSpec(sortStr)
+		col := r3.FieldSpec(unquoteSQLColumn(sortStr))
 		return &r3.SortSpec{Column: &col}, nil
 	}
 
@@ -316,8 +316,10 @@ func parseSQLSortString(sortStr string) (*r3.SortSpec, error) {
 		return nil, fmt.Errorf("invalid sort format: %s", sortStr)
 	}
 
-	// Parse field
-	col := r3.FieldSpec(parts[0])
+	// Parse field. SortToSQL quotes the column (e.g. `"name"`, `"user"."name"`),
+	// so strip the quoting to recover the original field name. Identifiers never
+	// contain spaces, so the column is always a single space-delimited token.
+	col := r3.FieldSpec(unquoteSQLColumn(parts[0]))
 
 	// Parse direction
 	direction := parseSQLSortDirection(parts[1])

@@ -95,6 +95,45 @@ func TestParseDjangoFilters(t *testing.T) {
 	}
 }
 
+// TestParseDjangoFilters_Deterministic verifies the filter order is stable across
+// runs. Ranging a Go map is randomized, so parsing the same query string must
+// still yield filters in a fixed (sorted-by-key) order for filter-hash/caching.
+func TestParseDjangoFilters_Deterministic(t *testing.T) {
+	cfg := r3url.DefaultConfig()
+	cfg.Filter.AllowDjangoStyle = true
+	cfg.Filter.DjangoFields = []string{"status", "age", "name", "tags", "country"}
+
+	values := url.Values{
+		"status":   {"active"},
+		"age__gte": {"18"},
+		"name":     {"John"},
+		"tags__in": {"a,b"},
+		"country":  {"US"},
+	}
+
+	first, err := r3url.ParseDjangoFilters(values, cfg)
+	require.NoError(t, err)
+	require.Len(t, first, 5)
+
+	fields := make([]string, len(first))
+	for i, f := range first {
+		fields[i] = f.Field.String()
+	}
+	// Sorted by key: "age", "country", "name", "status", "tags".
+	assert.Equal(t, []string{"age", "country", "name", "status", "tags"}, fields)
+
+	// Re-parsing many times must produce the identical order.
+	for range 50 {
+		again, err := r3url.ParseDjangoFilters(values, cfg)
+		require.NoError(t, err)
+		got := make([]string, len(again))
+		for i, f := range again {
+			got[i] = f.Field.String()
+		}
+		assert.Equal(t, fields, got)
+	}
+}
+
 func TestParseDjangoFilters_Disabled(t *testing.T) {
 	cfg := r3url.DefaultConfig() // AllowDjangoStyle = false by default
 	values := url.Values{"status": {"active"}}

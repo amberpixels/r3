@@ -41,6 +41,28 @@ func QuoteDottedIdentifier(path string) string {
 	return strings.Join(quoted, ".")
 }
 
+// unquoteSQLColumn reverses QuoteDottedIdentifier: it strips the double-quote
+// wrapping from each dotted segment and un-escapes doubled quotes, recovering the
+// original field name. A segment that is not quoted is returned unchanged, so a
+// hand-built (unquoted) sort string still parses.
+//
+// Examples:
+//
+//	unquoteSQLColumn(`"name"`)          => `name`
+//	unquoteSQLColumn(`"user"."name"`)   => `user.name`
+//	unquoteSQLColumn(`name`)            => `name`
+func unquoteSQLColumn(s string) string {
+	parts := strings.Split(s, ".")
+	for i, part := range parts {
+		if len(part) >= 2 && strings.HasPrefix(part, `"`) && strings.HasSuffix(part, `"`) {
+			part = part[1 : len(part)-1]
+			part = strings.ReplaceAll(part, `""`, `"`)
+		}
+		parts[i] = part
+	}
+	return strings.Join(parts, ".")
+}
+
 // SafeColumnExpr validates a FieldSpec as a safe SQL identifier and returns
 // the quoted SQL expression. This is the primary function used by FilterToSQL
 // and SortToSQL to prevent SQL injection via field names.

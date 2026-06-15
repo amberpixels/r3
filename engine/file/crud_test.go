@@ -40,6 +40,66 @@ type Pet struct {
 	Age  int    `json:"age"`
 }
 
+// Scored exercises NULL-vs-zero handling: Score is a non-pointer int (a 0 is a
+// real value, not NULL) and Optional is a pointer (nil is NULL).
+type Scored struct {
+	ID       int     `json:"id"       r3:"id,pk"`
+	Score    int     `json:"score"`
+	Optional *string `json:"optional"`
+}
+
+// TestExists_ZeroIsNotNull verifies M7: `exists` (IS NOT NULL) is true for a
+// present non-pointer zero value and false only for a nil pointer.
+func TestExists_ZeroIsNotNull(t *testing.T) {
+	repo := newJSONRepo[Scored, int](t, enginefile.IncrementIDGen[int]())
+	ctx := context.Background()
+
+	set := "x"
+	_, _ = repo.Create(ctx, Scored{Score: 0, Optional: nil}) // zero score, null optional
+	_, _ = repo.Create(ctx, Scored{Score: 5, Optional: &set})
+
+	// exists on a non-pointer int: a 0 still exists, so both records match.
+	scoreExists, _, err := repo.List(ctx, r3.Query{
+		Pagination: r3.NoPagination(),
+		Filters:    r3.Filters{r3.Exists("score", nil)},
+	})
+	require.NoError(t, err)
+	assert.Len(t, scoreExists, 2, "a non-pointer zero value must count as existing")
+
+	// exists on a pointer field: only the record with a non-nil pointer matches.
+	optionalExists, _, err := repo.List(ctx, r3.Query{
+		Pagination: r3.NoPagination(),
+		Filters:    r3.Filters{r3.Exists("optional", nil)},
+	})
+	require.NoError(t, err)
+	assert.Len(t, optionalExists, 1, "a nil pointer is NULL and must not exist")
+	assert.Equal(t, 5, optionalExists[0].Score)
+}
+
+// TestSort_ZeroNotTreatedAsNull verifies M7: a non-pointer zero value sorts as a
+// real value, not pushed to the NULLS position.
+func TestSort_ZeroNotTreatedAsNull(t *testing.T) {
+	repo := newJSONRepo[Scored, int](t, enginefile.IncrementIDGen[int]())
+	ctx := context.Background()
+
+	for _, s := range []int{5, 0, 3} {
+		_, err := repo.Create(ctx, Scored{Score: s})
+		require.NoError(t, err)
+	}
+
+	// ASC with NULLS LAST: 0 is a real value and must sort FIRST (0,3,5). The old
+	// behavior treated 0 as NULL and pushed it to the end (3,5,0).
+	got, _, err := repo.List(ctx, r3.Query{
+		Pagination: r3.NoPagination(),
+		Sorts: r3.Sorts{
+			r3.NewSortSpec(r3.NewFieldSpec("score"), r3.SortDirectionAsc, r3.NullsPositionLast),
+		},
+	})
+	require.NoError(t, err)
+	require.Len(t, got, 3)
+	assert.Equal(t, []int{0, 3, 5}, []int{got[0].Score, got[1].Score, got[2].Score})
+}
+
 func tempDir(t *testing.T) string {
 	t.Helper()
 	return t.TempDir()

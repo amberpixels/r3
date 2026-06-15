@@ -27,8 +27,8 @@ func sortEntities[T any](entities []T, sorts r3.Sorts, meta *StructMeta) {
 				continue
 			}
 
-			aIsNil := !aOk || isZero(aVal)
-			bIsNil := !bOk || isZero(bVal)
+			aIsNil := !aOk || isNullValue(aVal)
+			bIsNil := !bOk || isNullValue(bVal)
 
 			// Handle nulls position
 			if aIsNil || bIsNil {

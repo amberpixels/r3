@@ -33,8 +33,10 @@ func FilterToTOML(f *r3.FilterSpec) (*TOMLFilter, error) {
 
 	// Handle simple field-operator-value filters
 	if f.Field != nil {
-		// TOML-specific: reject nil values
-		if f.Value == nil {
+		// TOML-specific: reject nil values — except for value-less operators like
+		// "exists", which legitimately carry no value and must round-trip (JSON,
+		// YAML, SQL and BSON all encode them fine).
+		if f.Value == nil && !isValuelessOperator(f.Operator) {
 			return nil, newError(fmt.Errorf("%w: field %q with operator %v",
 				ErrTOMLNullValue, f.Field.String(), f.Operator))
 		}
@@ -73,6 +75,12 @@ func FilterToTOML(f *r3.FilterSpec) (*TOMLFilter, error) {
 	}
 
 	return tf, nil
+}
+
+// isValuelessOperator reports whether an operator carries no value and so is
+// exempt from the TOML null-value guard. "exists" only tests field presence.
+func isValuelessOperator(op r3.FilterOperatorSpec) bool {
+	return op == r3.OperatorExists
 }
 
 // TOMLToFilter converts a TOMLFilter to a FilterSpec.

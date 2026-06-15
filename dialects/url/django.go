@@ -3,6 +3,7 @@ package r3url
 import (
 	"fmt"
 	"net/url"
+	"sort"
 	"strings"
 
 	"github.com/amberpixels/r3"
@@ -36,8 +37,18 @@ func ParseDjangoFilters(values url.Values, cfg Config) (r3.Filters, error) {
 	reserved := cfg.reservedParamNames()
 	allowed := buildAllowedFieldsMap(cfg.Filter.DjangoFields)
 
+	// Iterate keys in sorted order: ranging a map is randomized, which would make
+	// the resulting filter order non-deterministic and break any downstream
+	// filter-hashing/caching. The dialect must be pure and deterministic.
+	keys := make([]string, 0, len(values))
+	for key := range values {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
 	var filters r3.Filters
-	for key, vals := range values {
+	for _, key := range keys {
+		vals := values[key]
 		if len(vals) == 0 {
 			continue
 		}

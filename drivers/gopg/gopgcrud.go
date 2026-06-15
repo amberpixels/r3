@@ -148,7 +148,8 @@ func (r *GoPgCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 
 	q := r.MergeGetQuery(qarg...)
 
-	query := r.db.ModelContext(ctx, &entity).Where("id = ?", id)
+	meta := enginesql.GetStructMeta[T]()
+	query := r.db.ModelContext(ctx, &entity).Where("? = ?", pg.Ident(meta.PKColumn), id)
 
 	// Apply fields selection
 	if fieldCols := r3.FieldsToStrings(q.Fields); len(fieldCols) > 0 {
@@ -207,23 +208,38 @@ func (r *GoPgCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields)
 
 func (r *GoPgCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 	var entity T
-	_, err := r.db.ModelContext(ctx, &entity).Where("id = ?", id).Delete()
+	meta := enginesql.GetStructMeta[T]()
+	_, err := r.db.ModelContext(ctx, &entity).
+		Where("? = ?", pg.Ident(meta.PKColumn), id).Delete()
 	return err
 }
 
-// Restore un-deletes a soft-deleted record by clearing its deleted_at field.
+// Restore un-deletes a soft-deleted record by clearing its soft-delete column.
 func (r *GoPgCRUD[T, ID]) Restore(ctx context.Context, id ID) error {
+	meta := enginesql.GetStructMeta[T]()
 	_, err := r.db.ModelContext(ctx, (*T)(nil)).
-		Set("deleted_at = NULL").Where("id = ?", id).
+		Set("? = NULL", pg.Ident(softDeleteColumn(meta))).
+		Where("? = ?", pg.Ident(meta.PKColumn), id).
 		AllWithDeleted().Update()
 	return err
 }
 
 // HardDelete permanently removes a record, bypassing go-pg's soft-delete.
 func (r *GoPgCRUD[T, ID]) HardDelete(ctx context.Context, id ID) error {
+	meta := enginesql.GetStructMeta[T]()
 	_, err := r.db.ModelContext(ctx, (*T)(nil)).
-		Where("id = ?", id).AllWithDeleted().ForceDelete()
+		Where("? = ?", pg.Ident(meta.PKColumn), id).AllWithDeleted().ForceDelete()
 	return err
+}
+
+// softDeleteColumn resolves the soft-delete column from struct metadata, falling
+// back to "deleted_at" when the model declares no r3 soft-delete tag (e.g. it
+// relies on the ORM's native soft-delete column).
+func softDeleteColumn(meta enginesql.StructMeta) string {
+	if meta.SoftDeleteColumn != "" {
+		return meta.SoftDeleteColumn
+	}
+	return "deleted_at"
 }
 
 // NewGoPgQuerier creates a read-only go-pg-based repository.

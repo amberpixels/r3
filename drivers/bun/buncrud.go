@@ -149,7 +149,8 @@ func (r *BunCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, e
 
 	q := r.MergeGetQuery(qarg...)
 
-	query := r.db.NewSelect().Model(&entity).Where("id = ?", id)
+	meta := enginesql.GetStructMeta[T]()
+	query := r.db.NewSelect().Model(&entity).Where("? = ?", bun.Ident(meta.PKColumn), id)
 
 	// Apply fields selection
 	if fieldCols := r3.FieldsToStrings(q.Fields); len(fieldCols) > 0 {
@@ -208,23 +209,38 @@ func (r *BunCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields) 
 
 func (r *BunCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 	var entity T
-	_, err := r.db.NewDelete().Model(&entity).Where("id = ?", id).Exec(ctx)
+	meta := enginesql.GetStructMeta[T]()
+	_, err := r.db.NewDelete().Model(&entity).
+		Where("? = ?", bun.Ident(meta.PKColumn), id).Exec(ctx)
 	return err
 }
 
-// Restore un-deletes a soft-deleted record by clearing its deleted_at field.
+// Restore un-deletes a soft-deleted record by clearing its soft-delete column.
 func (r *BunCRUD[T, ID]) Restore(ctx context.Context, id ID) error {
+	meta := enginesql.GetStructMeta[T]()
 	_, err := r.db.NewUpdate().Model((*T)(nil)).
-		Set("deleted_at = NULL").Where("id = ?", id).
+		Set("? = NULL", bun.Ident(softDeleteColumn(meta))).
+		Where("? = ?", bun.Ident(meta.PKColumn), id).
 		WhereAllWithDeleted().Exec(ctx)
 	return err
 }
 
 // HardDelete permanently removes a record, bypassing Bun's soft-delete.
 func (r *BunCRUD[T, ID]) HardDelete(ctx context.Context, id ID) error {
+	meta := enginesql.GetStructMeta[T]()
 	_, err := r.db.NewDelete().Model((*T)(nil)).
-		Where("id = ?", id).ForceDelete().Exec(ctx)
+		Where("? = ?", bun.Ident(meta.PKColumn), id).ForceDelete().Exec(ctx)
 	return err
+}
+
+// softDeleteColumn resolves the soft-delete column from struct metadata, falling
+// back to "deleted_at" when the model declares no r3 soft-delete tag (e.g. it
+// relies on the ORM's native soft-delete column).
+func softDeleteColumn(meta enginesql.StructMeta) string {
+	if meta.SoftDeleteColumn != "" {
+		return meta.SoftDeleteColumn
+	}
+	return "deleted_at"
 }
 
 // NewBunQuerier creates a read-only Bun-based repository.

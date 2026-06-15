@@ -108,6 +108,26 @@
 //	    // Full validation for Create/Update ...
 //	}
 //
+// For whole-entity rules on Patch (e.g. "name must always be non-empty"), do NOT
+// validate req.Entity directly — on a Patch it carries only the patched fields,
+// with the rest zeroed, so the rule would wrongly fire. When WithIDFunc is set the
+// request carries [Request.Merged]: the patch overlaid on the current DB state.
+// Validate that instead:
+//
+//	if req.Operation == validation.OpPatch && req.Merged != nil {
+//	    return v.validate.Struct(*req.Merged)
+//	}
+//
+// # Atomic State-Transition Validation
+//
+// The decorator fetches the existing entity (or merged state) and then writes;
+// that fetch-validate-write sequence is only atomic when the decorator runs inside
+// a transaction. Wrap the repository with the transactor feature and perform the
+// Update/Patch within InTx so the read and the write share one transaction.
+// Outside a transaction a concurrent writer can change the row between the fetch
+// and the write (a TOCTOU window), so two concurrent updates may both pass a
+// state-transition rule.
+//
 // [go-playground/validator]: https://github.com/go-playground/validator
 // [go-ozzo/ozzo-validation]: https://github.com/go-ozzo/ozzo-validation
 package validation

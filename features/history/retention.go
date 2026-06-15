@@ -85,22 +85,17 @@ func (e *RetentionEnforcer) Start(ctx context.Context, recordType string, interv
 	return cancel
 }
 
-// enforceMaxAge deletes change records older than MaxAge.
+// enforceMaxAge prunes change records older than MaxAge. Rather than deleting old
+// records outright — which would strip the v1 baseline (and intermediate diffs)
+// that Reconstruct/RevertTo replay from — it folds each entity's pruned-away
+// versions into its oldest surviving record, keeping that record a self-sufficient
+// full baseline.
 func (e *RetentionEnforcer) enforceMaxAge(ctx context.Context, recordType string) int64 {
 	cutoff := time.Now().UTC().Add(-e.policy.MaxAge)
 
-	q := r3.Query{
-		Filters: r3.Filters{
-			r3.And(
-				r3.F(fieldRecordType, recordType),
-				r3.Fop(fieldCreatedAt, r3.OperatorLte, cutoff),
-			),
-		},
-		Sorts:      r3.Sorts{r3.NewSortAscSpec(fieldCreatedAt)},
-		Pagination: r3.NoPagination(),
-	}
-
-	records, _, err := e.store.List(ctx, q)
+	// Fetch all versions of the type so we can see, per entity, both the
+	// pre-cutoff versions to prune and the survivors to compact into.
+	records, _, err := e.store.List(ctx, QueryForType(recordType))
 	if err != nil {
 		slog.ErrorContext(ctx, "r3history: retention query failed",
 			"record_type", recordType,
@@ -109,16 +104,28 @@ func (e *RetentionEnforcer) enforceMaxAge(ctx context.Context, recordType string
 		return 0
 	}
 
-	return e.deleteRecords(ctx, records)
+	var deleted int64
+	for _, recs := range groupByRecordSortedByVersion(records) {
+		// Versions are monotonic in time, so the pre-cutoff records form the
+		// oldest contiguous prefix.
+		deleteCount := 0
+		for _, rec := range recs {
+			if rec.CreatedAt.After(cutoff) {
+				break
+			}
+			deleteCount++
+		}
+		deleted += e.compactAndPrune(ctx, recs, deleteCount)
+	}
+
+	return deleted
 }
 
-// enforceMaxVersions deletes versions exceeding MaxVersions per entity.
-// It lists all entities of the type, then for each entity with more than
-// MaxVersions, deletes the oldest versions.
+// enforceMaxVersions prunes versions exceeding MaxVersions per entity, folding the
+// pruned-away versions into the oldest surviving record so it remains a full
+// baseline (see compactAndPrune).
 func (e *RetentionEnforcer) enforceMaxVersions(ctx context.Context, recordType string) int64 {
-	// Get all records for this type.
-	q := QueryForType(recordType)
-	records, _, err := e.store.List(ctx, q)
+	records, _, err := e.store.List(ctx, QueryForType(recordType))
 	if err != nil {
 		slog.ErrorContext(ctx, "r3history: retention version query failed",
 			"record_type", recordType,
@@ -127,27 +134,88 @@ func (e *RetentionEnforcer) enforceMaxVersions(ctx context.Context, recordType s
 		return 0
 	}
 
-	// Group by record_id.
+	var deleted int64
+	for _, recs := range groupByRecordSortedByVersion(records) {
+		if int64(len(recs)) <= e.policy.MaxVersions {
+			continue
+		}
+		excess := int(int64(len(recs)) - e.policy.MaxVersions)
+		deleted += e.compactAndPrune(ctx, recs, excess)
+	}
+
+	return deleted
+}
+
+// groupByRecordSortedByVersion groups change records by RecordID and sorts each
+// group ascending by version.
+func groupByRecordSortedByVersion(records []ChangeRecord) map[string][]ChangeRecord {
 	groups := make(map[string][]ChangeRecord)
 	for _, rec := range records {
 		groups[rec.RecordID] = append(groups[rec.RecordID], rec)
 	}
-
-	var deleted int64
 	for _, recs := range groups {
-		if int64(len(recs)) <= e.policy.MaxVersions {
-			continue
-		}
-		// Sort by version ascending so we can delete the oldest.
-		sort.Slice(recs, func(i, j int) bool {
-			return recs[i].Version < recs[j].Version
-		})
-		// Keep the latest MaxVersions, delete the rest.
-		excess := int64(len(recs)) - e.policy.MaxVersions
-		deleted += e.deleteRecords(ctx, recs[:excess])
+		sort.Slice(recs, func(i, j int) bool { return recs[i].Version < recs[j].Version })
+	}
+	return groups
+}
+
+// compactAndPrune removes the oldest deleteCount versions from a single entity's
+// version-ascending history without breaking diff-based reconstruction.
+//
+// Reconstruct replays field diffs from a full baseline (normally v1, the create),
+// so deleting the baseline — or any intermediate version — would leave the oldest
+// survivor as a partial diff and corrupt every revert. To avoid that, the pruned
+// versions are folded (together with the oldest survivor) into a single full-state
+// baseline that replaces the survivor's diff. The survivor keeps its own version,
+// id and timestamp; only its Changes become a complete baseline.
+//
+// If the baseline write fails, nothing is deleted — it is safer to keep redundant
+// history than to prune into a corrupt chain. Returns the number of records deleted.
+func (e *RetentionEnforcer) compactAndPrune(ctx context.Context, recs []ChangeRecord, deleteCount int) int64 {
+	if deleteCount <= 0 {
+		return 0
+	}
+	if deleteCount >= len(recs) {
+		// The whole history expired — no survivor to preserve a baseline for.
+		return e.deleteRecords(ctx, recs)
 	}
 
-	return deleted
+	survivor := recs[deleteCount]
+	survivor.Changes = r3.NewJSONColumn(foldBaseline(recs[:deleteCount+1]))
+	if _, err := e.store.Update(ctx, survivor); err != nil {
+		slog.ErrorContext(ctx,
+			"r3history: retention compaction failed; skipping prune to keep reconstruction intact",
+			"record_type", survivor.RecordType,
+			"record_id", survivor.RecordID,
+			"error", err,
+		)
+		return 0
+	}
+
+	return e.deleteRecords(ctx, recs[:deleteCount])
+}
+
+// foldBaseline collapses a version-ascending slice of one entity's change records
+// into a single full-state baseline: every field that ever held a value appears
+// once with OldValue=nil and NewValue set to its latest value across the slice.
+// This mirrors a v1 create record, so Reconstruct can replay from it unchanged.
+func foldBaseline(recs []ChangeRecord) []FieldChange {
+	state := make(map[string]any)
+	order := make([]string, 0)
+	for _, rec := range recs {
+		for _, ch := range rec.Changes.Val {
+			if _, seen := state[ch.Field]; !seen {
+				order = append(order, ch.Field)
+			}
+			state[ch.Field] = ch.NewValue
+		}
+	}
+
+	baseline := make([]FieldChange, 0, len(order))
+	for _, field := range order {
+		baseline = append(baseline, FieldChange{Field: field, OldValue: nil, NewValue: state[field]})
+	}
+	return baseline
 }
 
 // deleteRecords deletes the given records one by one.

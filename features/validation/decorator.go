@@ -107,6 +107,10 @@ func (v *CRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, error
 
 // Update optionally fetches the existing entity (if IDFunc is set),
 // validates, then delegates to inner.Update.
+//
+// As with Patch, the fetch-validate-write sequence is atomic only when this
+// decorator runs inside a transaction (see the transactor feature); otherwise
+// the read-before-validate has a TOCTOU window against concurrent writers.
 func (v *CRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	req := Request[T, ID]{
 		Operation: OpUpdate,
@@ -133,6 +137,15 @@ func (v *CRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 
 // Patch optionally fetches the existing entity (if IDFunc is set),
 // validates with the Fields list populated, then delegates to inner.Patch.
+//
+// When IDFunc is set the request also carries Merged — the patch overlaid on the
+// current state — so whole-entity validators don't see the sparse (zeroed) input.
+//
+// The fetch-validate-write sequence is only atomic when this decorator runs
+// inside a transaction: wrap the repo with the transactor feature and call Patch
+// within InTx so the Get and the write share one transaction. Outside a
+// transaction the read-before-validate is best-effort (a concurrent writer can
+// change the row between the Get and the Patch — a TOCTOU window).
 func (v *CRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields) (T, error) {
 	req := Request[T, ID]{
 		Operation: OpPatch,
@@ -148,6 +161,8 @@ func (v *CRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields) (T,
 			return zero, err
 		}
 		req.Existing = &existing
+		merged := mergePatch(existing, entity, fields)
+		req.Merged = &merged
 	}
 
 	if err := v.validator.Validate(ctx, req); err != nil {
