@@ -5,6 +5,7 @@ import (
 
 	"github.com/amberpixels/r3"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // A per-query Unpaginated()/NoPagination() must clear an inherited default page
@@ -40,6 +41,49 @@ func TestQueryMergeWith_UnpaginatedClearsDefault(t *testing.T) {
 		merged := base.MergeWith(r3.Query{})
 		assert.True(t, merged.Pagination.IsPaginated())
 		assert.Equal(t, 100, merged.Pagination.GetPageSize())
+	})
+}
+
+// A per-query sort must REPLACE the inherited default sort, not stack under it.
+// Otherwise a default "created_at DESC" stays the primary key and the requested
+// "price ASC" is silently demoted to a tie-breaker (the petstore sort bug).
+func TestQueryMergeWith_SortOverridesDefault(t *testing.T) {
+	base := r3.Query{
+		Sorts: r3.Sorts{r3.NewSortDescSpec(r3.NewFieldSpec("created_at"))},
+	}
+
+	t.Run("requested sort replaces the default", func(t *testing.T) {
+		merged := base.MergeWith(r3.Query{
+			Sorts: r3.Sorts{r3.NewSortAscSpec(r3.NewFieldSpec("price"))},
+		})
+		require.Len(t, merged.Sorts, 1, "default sort must not remain")
+		assert.Equal(t, "price", merged.Sorts[0].Column.String())
+		assert.Equal(t, r3.SortDirectionAsc, merged.Sorts[0].Direction)
+	})
+
+	t.Run("no requested sort inherits the default", func(t *testing.T) {
+		merged := base.MergeWith(r3.Query{})
+		require.Len(t, merged.Sorts, 1)
+		assert.Equal(t, "created_at", merged.Sorts[0].Column.String())
+		assert.Equal(t, r3.SortDirectionDesc, merged.Sorts[0].Direction)
+	})
+
+	t.Run("multi-key requested sort replaces the default entirely", func(t *testing.T) {
+		merged := base.MergeWith(r3.Query{
+			Sorts: r3.Sorts{
+				r3.NewSortAscSpec(r3.NewFieldSpec("status")),
+				r3.NewSortDescSpec(r3.NewFieldSpec("price")),
+			},
+		})
+		require.Len(t, merged.Sorts, 2)
+		assert.Equal(t, "status", merged.Sorts[0].Column.String())
+		assert.Equal(t, "price", merged.Sorts[1].Column.String())
+	})
+
+	t.Run("merge does not mutate the base default", func(t *testing.T) {
+		_ = base.MergeWith(r3.Query{Sorts: r3.Sorts{r3.NewSortAscSpec(r3.NewFieldSpec("price"))}})
+		require.Len(t, base.Sorts, 1)
+		assert.Equal(t, "created_at", base.Sorts[0].Column.String())
 	})
 }
 

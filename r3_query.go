@@ -27,14 +27,28 @@ func NewQuery() Query { return Query{} }
 // DefaultQuery returns the default Query (with reasonable params).
 func DefaultQuery() Query { q := NewQuery(); q.Pagination = DefaultPagination(); return q }
 
-// MergeWith merges given GetParams with some other GetParams.
+// MergeWith merges this query with another, returning a new Query (no mutation).
+//
+// Fields, Filters, and Preloads accumulate (the union of both). Sorts and
+// Pagination OVERRIDE: when other specifies them, they replace the inherited
+// values rather than stacking under them. This makes other the higher-precedence
+// layer — typically a per-call query merged over a repo's defaults.
 func (q Query) MergeWith(other Query) Query {
 	result := q.Clone()
 
 	result.Fields = result.Fields.MergeWith(other.Fields)
 	result.Filters = result.Filters.MergeWith(other.Filters)
-	result.Sorts = result.Sorts.MergeWith(other.Sorts)
 	result.Preloads = result.Preloads.MergeWith(other.Preloads)
+
+	// Sorts OVERRIDE rather than accumulate: an explicit sort from the
+	// higher-precedence query REPLACES the inherited (default) ordering. Appending
+	// — as Fields/Filters/Preloads do — would keep the default sort as the primary
+	// key and silently demote the requested sort to a tie-breaker (e.g. a default
+	// "created_at DESC" would dominate a requested "price ASC"). This mirrors the
+	// Pagination override below. A query with no sorts inherits the default.
+	if len(other.Sorts) > 0 {
+		result.Sorts = other.Sorts.Clone()
+	}
 
 	// For pagination merging.
 	//

@@ -229,7 +229,6 @@ func TestPetStoreAPI(t *testing.T) {
 	// GET /pets?sort=... - sort by price ascending
 	// ---------------------------------------------------
 	t.Run("sort pets by price asc", func(t *testing.T) {
-		skipPetstoreSortBug(t)
 		sort := `[{"field":"price","direction":"asc"}]`
 		resp, err := client.Get(ts.URL + "/pets?sort=" + sort)
 		require.NoError(t, err)
@@ -405,7 +404,6 @@ func TestPetStoreAPI(t *testing.T) {
 	// Combined: filter + sort + pagination
 	// ---------------------------------------------------
 	t.Run("filter sort paginate combined", func(t *testing.T) {
-		skipPetstoreSortBug(t)
 		filters := `[{"f":"status","op":"eq","v":"available"}]`
 		sort := `[{"field":"price","direction":"desc"}]`
 		url := fmt.Sprintf("%s/pets?filters=%s&sort=%s&page=1&per_page=2", ts.URL, filters, sort)
@@ -429,19 +427,4 @@ func TestPetStoreAPI(t *testing.T) {
 			assert.GreaterOrEqual(t, body.Data[0].Price, body.Data[1].Price)
 		}
 	})
-}
-
-// skipPetstoreSortBug quarantines subtests blocked on a known, pre-existing bug:
-// requesting a sort via the petstore HTTP API (JSON `sort=` param) returns rows
-// in the wrong order. This example runs on the gorm backend (Postgres), so the
-// bug is in the gorm driver's sort translation or the handler's query building —
-// not the raw SQL engine (the pq/pgx driver suites, which build SortSpec
-// directly, pass). The JSON direction parsing itself is unit-tested and correct.
-//
-// Root cause not yet pinned down; remove this skip once the sort path is fixed.
-func skipPetstoreSortBug(t *testing.T) {
-	t.Helper()
-	t.Skip(
-		"known pre-existing bug: HTTP API sort returns wrong order on the gorm backend (sort translation; under investigation)",
-	)
 }
