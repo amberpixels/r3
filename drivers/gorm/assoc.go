@@ -1,12 +1,19 @@
 package r3gorm
 
 import (
+	"fmt"
 	"reflect"
 
 	"github.com/amberpixels/r3"
 	enginesql "github.com/amberpixels/r3/engine/sql"
 	"gorm.io/gorm"
 )
+
+// pkKey normalizes a primary/foreign key value to a string so keys of any
+// comparable type (int, int64, string/UUID, ...) group consistently — including
+// across the int/int64 differences that arise between struct fields and values
+// scanned back from the database.
+func pkKey(v any) string { return fmt.Sprintf("%v", v) }
 
 // splitPreloads separates preloads into R3-managed (have RelationMeta with r3 tags)
 // and GORM-managed (no r3 relation tag — use GORM's native Preload).
@@ -67,12 +74,9 @@ func preloadM2M[T any](db *gorm.DB, entities []T, meta enginesql.StructMeta, rel
 		return nil
 	}
 
-	// Query join table: SELECT fk, ref FROM join_table WHERE fk IN (?)
-	type joinRow struct {
-		FK  int64 `gorm:"column:fk"`
-		Ref int64 `gorm:"column:ref"`
-	}
-	var rows []joinRow
+	// Query join table: SELECT fk, ref FROM join_table WHERE fk IN (?).
+	// Scan into maps so keys of any type (int, string/UUID, ...) are preserved.
+	var rows []map[string]any
 	if err := db.Raw(
 		"SELECT "+rel.FKColumn+" as fk, "+rel.RefColumn+" as ref FROM "+rel.JoinTable+" WHERE "+rel.FKColumn+" IN (?)",
 		parentIDs,
@@ -84,14 +88,16 @@ func preloadM2M[T any](db *gorm.DB, entities []T, meta enginesql.StructMeta, rel
 		return nil
 	}
 
-	// Collect unique child IDs
-	childIDSet := make(map[int64]bool)
+	// Collect unique child ref values (raw, for the IN query).
+	childIDs := make([]any, 0, len(rows))
+	seenChild := make(map[string]struct{}, len(rows))
 	for _, row := range rows {
-		childIDSet[row.Ref] = true
-	}
-	childIDs := make([]int64, 0, len(childIDSet))
-	for id := range childIDSet {
-		childIDs = append(childIDs, id)
+		k := pkKey(row["ref"])
+		if _, ok := seenChild[k]; ok {
+			continue
+		}
+		seenChild[k] = struct{}{}
+		childIDs = append(childIDs, row["ref"])
 	}
 
 	// Query children: SELECT * FROM children WHERE pk IN (?)
@@ -106,37 +112,33 @@ func preloadM2M[T any](db *gorm.DB, entities []T, meta enginesql.StructMeta, rel
 	}
 	loadedChildren := childPtr.Elem()
 
-	// Index children by PK
-	childByPK := make(map[int64]reflect.Value)
+	// Index children by PK (string-normalized).
+	pkFieldIdx := rel.TargetMeta.Fields[rel.TargetMeta.PKField]
+	childByPK := make(map[string]reflect.Value, loadedChildren.Len())
 	for i := range loadedChildren.Len() {
 		child := loadedChildren.Index(i)
-		pkVal := child.Field(rel.TargetMeta.Fields[rel.TargetMeta.PKField]).Interface()
-		if id, ok := pkVal.(int64); ok {
-			childByPK[id] = child
-		}
+		childByPK[pkKey(child.Field(pkFieldIdx).Interface())] = child
 	}
 
-	// Build parent→children mapping from join rows
-	parentToChildren := make(map[int64][]reflect.Value)
+	// Build parent→children mapping from join rows.
+	parentToChildren := make(map[string][]reflect.Value)
 	for _, row := range rows {
-		if child, ok := childByPK[row.Ref]; ok {
-			parentToChildren[row.FK] = append(parentToChildren[row.FK], child)
+		if child, ok := childByPK[pkKey(row["ref"])]; ok {
+			fkKey := pkKey(row["fk"])
+			parentToChildren[fkKey] = append(parentToChildren[fkKey], child)
 		}
 	}
 
-	// Assign to entities
+	// Assign to entities.
+	parentPKIdx := meta.Fields[meta.PKField]
 	for i := range entities {
 		ev := reflect.ValueOf(&entities[i]).Elem()
-		parentPK, ok := ev.Field(meta.Fields[meta.PKField]).Interface().(int64)
-		if !ok {
-			continue
-		}
-		children := parentToChildren[parentPK]
-		childSlice := reflect.MakeSlice(reflect.SliceOf(rel.TargetType), len(children), len(children))
+		children := parentToChildren[pkKey(ev.Field(parentPKIdx).Interface())]
+		cs := reflect.MakeSlice(reflect.SliceOf(rel.TargetType), len(children), len(children))
 		for j, child := range children {
-			childSlice.Index(j).Set(child)
+			cs.Index(j).Set(child)
 		}
-		ev.Field(rel.FieldIndex).Set(childSlice)
+		ev.Field(rel.FieldIndex).Set(cs)
 	}
 
 	return nil
@@ -173,25 +175,26 @@ func preloadHasMany[T any](db *gorm.DB, entities []T, meta enginesql.StructMeta,
 		return nil
 	}
 
-	// Group children by FK value
-	parentToChildren := make(map[int64][]reflect.Value)
+	// Group children by FK value (string-normalized; FK may be a pointer).
+	parentToChildren := make(map[string][]reflect.Value)
 	for i := range loadedChildren.Len() {
 		child := loadedChildren.Index(i)
-		fkVal, ok := child.Field(fkFieldIdx).Interface().(int64)
-		if !ok {
-			continue
+		fk := child.Field(fkFieldIdx)
+		if fk.Kind() == reflect.Pointer {
+			if fk.IsNil() {
+				continue
+			}
+			fk = fk.Elem()
 		}
-		parentToChildren[fkVal] = append(parentToChildren[fkVal], child)
+		key := pkKey(fk.Interface())
+		parentToChildren[key] = append(parentToChildren[key], child)
 	}
 
-	// Assign to entities
+	// Assign to entities.
+	parentPKIdx := meta.Fields[meta.PKField]
 	for i := range entities {
 		ev := reflect.ValueOf(&entities[i]).Elem()
-		parentPK, ok := ev.Field(meta.Fields[meta.PKField]).Interface().(int64)
-		if !ok {
-			continue
-		}
-		children := parentToChildren[parentPK]
+		children := parentToChildren[pkKey(ev.Field(parentPKIdx).Interface())]
 		cs := reflect.MakeSlice(reflect.SliceOf(rel.TargetType), len(children), len(children))
 		for j, child := range children {
 			cs.Index(j).Set(child)
@@ -216,7 +219,9 @@ func preloadBelongsTo[T any](db *gorm.DB, entities []T, meta enginesql.StructMet
 		return nil
 	}
 
-	fkIDs := make(map[int64]bool)
+	// Collect unique, non-zero FK values (raw, for the IN query).
+	fkIDs := make([]any, 0, len(entities))
+	seen := make(map[string]struct{}, len(entities))
 	for i := range entities {
 		ev := reflect.ValueOf(&entities[i]).Elem()
 		fkField := ev.Field(fkFieldIdx)
@@ -226,18 +231,19 @@ func preloadBelongsTo[T any](db *gorm.DB, entities []T, meta enginesql.StructMet
 			}
 			fkField = fkField.Elem()
 		}
-		if id, ok := fkField.Interface().(int64); ok && id != 0 {
-			fkIDs[id] = true
+		if fkField.IsZero() {
+			continue
 		}
+		k := pkKey(fkField.Interface())
+		if _, ok := seen[k]; ok {
+			continue
+		}
+		seen[k] = struct{}{}
+		fkIDs = append(fkIDs, fkField.Interface())
 	}
 
 	if len(fkIDs) == 0 {
 		return nil
-	}
-
-	ids := make([]int64, 0, len(fkIDs))
-	for id := range fkIDs {
-		ids = append(ids, id)
 	}
 
 	// Query targets
@@ -245,25 +251,22 @@ func preloadBelongsTo[T any](db *gorm.DB, entities []T, meta enginesql.StructMet
 	targetPtr := reflect.New(targetSlice.Type())
 	targetPtr.Elem().Set(targetSlice)
 	if err := db.Table(rel.TargetMeta.TableName).
-		Where(rel.TargetMeta.PKColumn+" IN (?)", ids).
+		Where(rel.TargetMeta.PKColumn+" IN (?)", fkIDs).
 		Find(targetPtr.Interface()).
 		Error; err != nil {
 		return err
 	}
 	loadedTargets := targetPtr.Elem()
 
-	// Index by PK
-	targetByPK := make(map[int64]reflect.Value)
+	// Index by PK (string-normalized).
+	pkFieldIdx := rel.TargetMeta.Fields[rel.TargetMeta.PKField]
+	targetByPK := make(map[string]reflect.Value, loadedTargets.Len())
 	for i := range loadedTargets.Len() {
 		t := loadedTargets.Index(i)
-		pkVal, ok := t.Field(rel.TargetMeta.Fields[rel.TargetMeta.PKField]).Interface().(int64)
-		if !ok {
-			continue
-		}
-		targetByPK[pkVal] = t
+		targetByPK[pkKey(t.Field(pkFieldIdx).Interface())] = t
 	}
 
-	// Assign to entities
+	// Assign to entities.
 	for i := range entities {
 		ev := reflect.ValueOf(&entities[i]).Elem()
 		fkField := ev.Field(fkFieldIdx)
@@ -273,31 +276,38 @@ func preloadBelongsTo[T any](db *gorm.DB, entities []T, meta enginesql.StructMet
 			}
 			fkField = fkField.Elem()
 		}
-		if id, ok := fkField.Interface().(int64); ok {
-			if target, exists := targetByPK[id]; exists {
-				relField := ev.Field(rel.FieldIndex)
-				if relField.Kind() == reflect.Pointer {
-					ptr := reflect.New(rel.TargetType)
-					ptr.Elem().Set(target)
-					relField.Set(ptr)
-				} else {
-					relField.Set(target)
-				}
-			}
+		target, exists := targetByPK[pkKey(fkField.Interface())]
+		if !exists {
+			continue
+		}
+		relField := ev.Field(rel.FieldIndex)
+		if relField.Kind() == reflect.Pointer {
+			ptr := reflect.New(rel.TargetType)
+			ptr.Elem().Set(target)
+			relField.Set(ptr)
+		} else {
+			relField.Set(target)
 		}
 	}
 
 	return nil
 }
 
-// collectPKs extracts PK values from a slice of entities.
-func collectPKs[T any](entities []T, meta enginesql.StructMeta) []int64 {
-	ids := make([]int64, 0, len(entities))
+// collectPKs extracts unique PK values from a slice of entities. Values are
+// returned in their native type for use as query arguments; keys of any
+// comparable type are supported.
+func collectPKs[T any](entities []T, meta enginesql.StructMeta) []any {
+	ids := make([]any, 0, len(entities))
+	seen := make(map[string]struct{}, len(entities))
 	for i := range entities {
 		ev := reflect.ValueOf(&entities[i]).Elem()
-		if pk, ok := ev.Field(meta.Fields[meta.PKField]).Interface().(int64); ok {
-			ids = append(ids, pk)
+		pk := ev.Field(meta.Fields[meta.PKField]).Interface()
+		k := pkKey(pk)
+		if _, ok := seen[k]; ok {
+			continue
 		}
+		seen[k] = struct{}{}
+		ids = append(ids, pk)
 	}
 	return ids
 }
