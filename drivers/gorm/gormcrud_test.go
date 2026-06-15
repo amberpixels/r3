@@ -177,6 +177,24 @@ func TestGormRepository(t *testing.T) {
 	})
 
 	// Subtest: Update a location's popularity
+	t.Run("Patch returns the full DB state", func(t *testing.T) {
+		created, err := cityRepo.Create(ctx, City{Name: "PatchCity", CountryName: "Origland", Popularity: 7})
+		require.NoError(t, err, "create failed")
+
+		// Patch only the name; CountryName/Popularity are left zero in the input.
+		patched, err := cityRepo.Patch(ctx,
+			City{ID: created.ID, Name: "PatchedName"},
+			r3.Fields{r3.NewFieldSpec("name")},
+		)
+		require.NoError(t, err, "patch failed")
+
+		assert.Equal(t, "PatchedName", patched.Name, "patched field should be updated")
+		// H6: the returned entity must reflect the full DB row, not the sparse
+		// input — so the unpatched fields come back populated from the database.
+		assert.Equal(t, "Origland", patched.CountryName, "unpatched field must be re-fetched from DB")
+		assert.Equal(t, 7, patched.Popularity, "unpatched field must be re-fetched from DB")
+	})
+
 	t.Run("Update location", func(t *testing.T) {
 		loc := locations[0]
 		loc.Popularity = 99

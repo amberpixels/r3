@@ -195,7 +195,14 @@ func (r *GoPgCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields)
 	if err != nil {
 		return entity, err
 	}
-	return entity, nil
+
+	// Re-fetch so the returned entity reflects DB-side changes (triggers,
+	// updated_at, defaults), honoring the documented Patch contract.
+	id, ok := meta.PKValue(entity).(ID)
+	if !ok {
+		return entity, nil
+	}
+	return r.Get(ctx, id)
 }
 
 func (r *GoPgCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
