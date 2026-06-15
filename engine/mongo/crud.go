@@ -243,9 +243,12 @@ func (r *BaseCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 
 	filter := bson.D{{Key: r.Meta.IDField, Value: idVal}}
 
-	_, err := r.Collection.UpdateOne(ctx, filter, update)
+	res, err := r.Collection.UpdateOne(ctx, filter, update)
 	if err != nil {
 		return entity, fmt.Errorf("mongo update: %w", err)
+	}
+	if res.MatchedCount == 0 {
+		return entity, r3.ErrNotFound
 	}
 	return entity, nil
 }
@@ -272,9 +275,12 @@ func (r *BaseCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields)
 
 	update := bson.D{{Key: setOp, Value: setDoc}}
 
-	_, err = r.Collection.UpdateOne(ctx, filter, update)
+	res, err := r.Collection.UpdateOne(ctx, filter, update)
 	if err != nil {
 		return entity, fmt.Errorf("mongo patch: %w", err)
+	}
+	if res.MatchedCount == 0 {
+		return entity, r3.ErrNotFound
 	}
 
 	// Re-fetch the updated entity
@@ -298,17 +304,23 @@ func (r *BaseCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 		update := bson.D{{Key: setOp, Value: bson.D{
 			{Key: r.Meta.SoftDeleteField, Value: time.Now()},
 		}}}
-		_, err := r.Collection.UpdateOne(ctx, filter, update)
+		res, err := r.Collection.UpdateOne(ctx, filter, update)
 		if err != nil {
 			return fmt.Errorf("mongo soft-delete: %w", err)
+		}
+		if res.MatchedCount == 0 {
+			return r3.ErrNotFound
 		}
 		return nil
 	}
 
 	// Hard delete
-	_, err := r.Collection.DeleteOne(ctx, filter)
+	res, err := r.Collection.DeleteOne(ctx, filter)
 	if err != nil {
 		return fmt.Errorf("mongo delete: %w", err)
+	}
+	if res.DeletedCount == 0 {
+		return r3.ErrNotFound
 	}
 	return nil
 }
@@ -323,9 +335,12 @@ func (r *BaseCRUD[T, ID]) Restore(ctx context.Context, id ID) error {
 	update := bson.D{{Key: "$unset", Value: bson.D{
 		{Key: r.Meta.SoftDeleteField, Value: ""},
 	}}}
-	_, err := r.Collection.UpdateOne(ctx, filter, update)
+	res, err := r.Collection.UpdateOne(ctx, filter, update)
 	if err != nil {
 		return fmt.Errorf("mongo restore: %w", err)
+	}
+	if res.MatchedCount == 0 {
+		return r3.ErrNotFound
 	}
 	return nil
 }
@@ -333,9 +348,12 @@ func (r *BaseCRUD[T, ID]) Restore(ctx context.Context, id ID) error {
 // HardDelete permanently removes a document, bypassing soft-delete.
 func (r *BaseCRUD[T, ID]) HardDelete(ctx context.Context, id ID) error {
 	filter := bson.D{{Key: r.Meta.IDField, Value: id}}
-	_, err := r.Collection.DeleteOne(ctx, filter)
+	res, err := r.Collection.DeleteOne(ctx, filter)
 	if err != nil {
 		return fmt.Errorf("mongo hard-delete: %w", err)
+	}
+	if res.DeletedCount == 0 {
+		return r3.ErrNotFound
 	}
 	return nil
 }
