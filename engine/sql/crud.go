@@ -194,7 +194,9 @@ func (r *BaseCRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, e
 		whereSQL = " WHERE " + strings.Join(whereParts, " AND ")
 	}
 
-	countQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s%s%s", r.Meta.TableName, joinSQL, whereSQL)
+	countQuery := r.Flavor.QuoteIdentifiers(
+		fmt.Sprintf("SELECT COUNT(*) FROM %s%s%s", r.Meta.TableName, joinSQL, whereSQL),
+	)
 
 	var total int64
 	if err := r.Executor.QueryRowContext(ctx, countQuery, whereArgs...).Scan(&total); err != nil {
@@ -220,7 +222,9 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		if len(whereParts) > 0 {
 			countWhereSQL = " WHERE " + strings.Join(whereParts, " AND ")
 		}
-		countQuery := fmt.Sprintf("SELECT COUNT(*) FROM %s%s%s", r.Meta.TableName, joinSQL, countWhereSQL)
+		countQuery := r.Flavor.QuoteIdentifiers(
+			fmt.Sprintf("SELECT COUNT(*) FROM %s%s%s", r.Meta.TableName, joinSQL, countWhereSQL),
+		)
 		err := r.Executor.QueryRowContext(ctx, countQuery, whereArgs...).Scan(&totalCount)
 		if err != nil {
 			return nil, 0, err
@@ -270,7 +274,7 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 	selectCols, _ := r.Meta.FieldIndicesForColumns(selectedCols)
 
 	// Execute the main SELECT
-	selectQuery := fmt.Sprintf(
+	selectQuery := r.Flavor.QuoteIdentifiers(fmt.Sprintf(
 		"SELECT %s FROM %s%s%s%s%s",
 		ColumnsString(selectCols),
 		r.Meta.TableName,
@@ -278,7 +282,7 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		whereSQL,
 		orderSQL,
 		limitSQL,
-	)
+	))
 
 	rows, err := r.Executor.QueryContext(ctx, selectQuery, whereArgs...)
 	if err != nil {

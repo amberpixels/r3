@@ -110,7 +110,6 @@ func TestMysqlRepository(t *testing.T) {
 	// A single "col IN ?" bound to a slice is not expanded by the underlying
 	// query layer, so this must run against a real database.
 	t.Run("List cities with IN filter", func(t *testing.T) {
-		skipMySQLIdentifierQuotingBug(t)
 		both, _, err := cityRepo.List(ctx, r3.Query{
 			Filters: r3.Filters{r3.In("name", []string{"City One", "City Two"})},
 		})
@@ -131,7 +130,6 @@ func TestMysqlRepository(t *testing.T) {
 	})
 
 	t.Run("List cities with NOT IN filter", func(t *testing.T) {
-		skipMySQLIdentifierQuotingBug(t)
 		rest, _, err := cityRepo.List(ctx, r3.Query{
 			Filters: r3.Filters{r3.NotIn("name", []string{"City One"})},
 		})
@@ -160,7 +158,6 @@ func TestMysqlRepository(t *testing.T) {
 	})
 
 	t.Run("List visible locations", func(t *testing.T) {
-		skipMySQLIdentifierQuotingBug(t)
 		result, _, err := locRepo.List(ctx, r3.Query{
 			Filters: r3.Filters{
 				r3.F(r3.NewFieldSpec("visible"), true),
@@ -180,7 +177,6 @@ func TestMysqlRepository(t *testing.T) {
 	})
 
 	t.Run("List events for a location", func(t *testing.T) {
-		skipMySQLIdentifierQuotingBug(t)
 		result, _, err := eventRepo.List(ctx, r3.Query{
 			Filters: r3.Filters{
 				r3.F(r3.NewFieldSpec("venue_id"), int64(2)),
@@ -252,24 +248,4 @@ func TestMysqlRepository(t *testing.T) {
 		assert.Len(t, result, 3, "expected 3 artists")
 		assert.Equal(t, int64(3), total, "expected 3 total artists")
 	})
-}
-
-// skipMySQLIdentifierQuotingBug quarantines subtests blocked on a known,
-// pre-existing correctness bug: filtering/sorting by column name is broken on
-// MySQL.
-//
-// Root cause: the SQL dialect quotes identifiers with ANSI double quotes
-// (`"col"` via dialects/sql.QuoteDottedIdentifier). PK-based operations emit the
-// column unquoted (engine/sql.Flavor.WhereEq) and work, but filter/sort clauses
-// go through the dialect. MySQL, unless ANSI_QUOTES mode is enabled (nothing sets
-// it), treats `"col"` as a string literal — so `WHERE "visible" = 1` becomes
-// `WHERE 'visible' = 1` (matches nothing) and `"name" NOT IN (?)` is always true.
-//
-// Fix requires flavor-aware identifier quoting (backticks / ANSI_QUOTES for
-// MySQL). Remove this skip once that lands.
-func skipMySQLIdentifierQuotingBug(t *testing.T) {
-	t.Helper()
-	t.Skip(
-		"known pre-existing bug: filter/sort by column broken on MySQL — dialect emits ANSI double-quoted identifiers that MySQL reads as string literals (needs flavor-aware quoting)",
-	)
 }

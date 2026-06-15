@@ -30,6 +30,14 @@ type Flavor struct {
 	// Used by soft-delete to set the deleted_at column.
 	// Examples: "NOW()" (PostgreSQL), "CURRENT_TIMESTAMP" (MySQL), "datetime('now')" (SQLite).
 	TimestampFunc string
+
+	// IdentifierQuote is the character this backend uses to quote SQL identifiers.
+	// The dialect layer emits ANSI double quotes (`"col"`); the engine rewrites
+	// them to this character when assembling the final query (see QuoteIdentifiers).
+	// Empty means ANSI double quotes (Postgres, SQLite). MySQL needs backticks,
+	// because without ANSI_QUOTES mode it reads `"col"` as a string literal — which
+	// silently breaks every filter and sort built from the dialect.
+	IdentifierQuote string
 }
 
 // Pre-defined flavors for common databases.
@@ -40,6 +48,7 @@ var (
 		Placeholder:       PlaceholderQuestion,
 		SupportsRETURNING: false,
 		TimestampFunc:     "CURRENT_TIMESTAMP",
+		IdentifierQuote:   "`",
 	}
 )
 
@@ -88,6 +97,23 @@ func (f Flavor) WhereEq(column string, nextIdx int) string {
 		return fmt.Sprintf("%s = $%d", column, nextIdx)
 	}
 	return column + " = ?" // fallback
+}
+
+// QuoteIdentifiers rewrites the ANSI double-quoted identifiers emitted by the
+// dialect layer (`"col"`, `"tbl"."col"`) to this flavor's identifier quote. It is
+// a no-op for flavors that use ANSI double quotes (Postgres, SQLite).
+//
+// It is safe to apply to a fully assembled query: values are always bound as
+// parameters (`?` / `$N`), never inlined, so the only double quotes in generated
+// SQL are identifier quotes. The dialect escapes an embedded quote by doubling it
+// (`""`), and a plain ReplaceAll maps that to the doubled target quote — which is
+// also the correct escape — so escaping is preserved. (In practice identifiers are
+// validated to contain no quotes, so escaping never actually occurs.)
+func (f Flavor) QuoteIdentifiers(sql string) string {
+	if f.IdentifierQuote == "" || f.IdentifierQuote == `"` {
+		return sql
+	}
+	return strings.ReplaceAll(sql, `"`, f.IdentifierQuote)
 }
 
 // ConvertPlaceholders converts `?` placeholders in clause to `$1, $2, ...`
