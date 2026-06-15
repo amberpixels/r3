@@ -9,15 +9,16 @@ import (
 	r3mongo "github.com/amberpixels/r3/drivers/mongo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
-// City is a simple Mongo-backed entity. String _id is set explicitly so the
-// engine never has to coerce a generated ObjectID into a string field.
+// City is a Mongo-backed entity. The engine generates the _id on Create, so the
+// ID field is a bson.ObjectID (the engine's supported _id type).
 type City struct {
-	ID         string `bson:"_id"`
-	Name       string `bson:"name"`
-	Country    string `bson:"country"`
-	Popularity int    `bson:"popularity"`
+	ID         bson.ObjectID `bson:"_id"`
+	Name       string        `bson:"name"`
+	Country    string        `bson:"country"`
+	Popularity int           `bson:"popularity"`
 }
 
 // SoftDoc exercises soft-delete with a NON-POINTER time.Time field — the M6
@@ -25,9 +26,9 @@ type City struct {
 // null), so the "not deleted" filter must match it. The bson tag supplies the
 // stored name; the r3 tag supplies the soft_delete flag (they agree on the name).
 type SoftDoc struct {
-	ID        string    `bson:"_id"`
-	Name      string    `bson:"name"`
-	DeletedAt time.Time `bson:"deleted_at" r3:"soft_delete"`
+	ID        bson.ObjectID `bson:"_id"`
+	Name      string        `bson:"name"`
+	DeletedAt time.Time     `bson:"deleted_at" r3:"soft_delete"`
 }
 
 func TestMongoRepository(t *testing.T) {
@@ -45,28 +46,30 @@ func TestMongoRepository(t *testing.T) {
 	}
 	defer cleanup()
 
-	cityRepo := r3mongo.NewMongoCRUD[City, string](db.Collection("cities"))
+	cityRepo := r3mongo.NewMongoCRUD[City, bson.ObjectID](db.Collection("cities"))
 
-	// Seed three cities with explicit string ids.
-	seed := []City{
-		{ID: "c1", Name: "Berlin", Country: "Germany", Popularity: 100},
-		{ID: "c2", Name: "Paris", Country: "France", Popularity: 90},
-		{ID: "c3", Name: "Munich", Country: "Germany", Popularity: 50},
-	}
-	for _, c := range seed {
-		_, err := cityRepo.Create(ctx, c)
-		require.NoError(t, err, "seed %s", c.ID)
+	// Seed three cities; the engine assigns the _id, so capture the results by name.
+	cities := map[string]City{}
+	for _, c := range []City{
+		{Name: "Berlin", Country: "Germany", Popularity: 100},
+		{Name: "Paris", Country: "France", Popularity: 90},
+		{Name: "Munich", Country: "Germany", Popularity: 50},
+	} {
+		got, err := cityRepo.Create(ctx, c)
+		require.NoError(t, err, "seed %s", c.Name)
+		require.False(t, got.ID.IsZero(), "Create must assign an _id")
+		cities[got.Name] = got
 	}
 
 	t.Run("Get by id", func(t *testing.T) {
-		got, err := cityRepo.Get(ctx, "c1")
+		got, err := cityRepo.Get(ctx, cities["Berlin"].ID)
 		require.NoError(t, err)
 		assert.Equal(t, "Berlin", got.Name)
 		assert.Equal(t, 100, got.Popularity)
 	})
 
 	t.Run("Get missing returns ErrNotFound", func(t *testing.T) {
-		_, err := cityRepo.Get(ctx, "nope")
+		_, err := cityRepo.Get(ctx, bson.NewObjectID())
 		require.ErrorIs(t, err, r3.ErrNotFound)
 	})
 
@@ -130,24 +133,23 @@ func TestMongoRepository(t *testing.T) {
 	})
 
 	t.Run("Update", func(t *testing.T) {
-		c, err := cityRepo.Get(ctx, "c2")
-		require.NoError(t, err)
+		c := cities["Paris"]
 		c.Popularity = 95
-		_, err = cityRepo.Update(ctx, c)
+		_, err := cityRepo.Update(ctx, c)
 		require.NoError(t, err)
 
-		got, err := cityRepo.Get(ctx, "c2")
+		got, err := cityRepo.Get(ctx, c.ID)
 		require.NoError(t, err)
 		assert.Equal(t, 95, got.Popularity)
 	})
 
 	t.Run("Update missing returns ErrNotFound", func(t *testing.T) {
-		_, err := cityRepo.Update(ctx, City{ID: "ghost", Name: "X"})
+		_, err := cityRepo.Update(ctx, City{ID: bson.NewObjectID(), Name: "ghost"})
 		require.ErrorIs(t, err, r3.ErrNotFound)
 	})
 
 	t.Run("Patch returns the full entity", func(t *testing.T) {
-		patched, err := cityRepo.Patch(ctx, City{ID: "c1", Popularity: 111},
+		patched, err := cityRepo.Patch(ctx, City{ID: cities["Berlin"].ID, Popularity: 111},
 			r3.Fields{r3.NewFieldSpec("popularity")})
 		require.NoError(t, err)
 		assert.Equal(t, 111, patched.Popularity)
@@ -155,27 +157,29 @@ func TestMongoRepository(t *testing.T) {
 	})
 
 	t.Run("Patch missing returns ErrNotFound", func(t *testing.T) {
-		_, err := cityRepo.Patch(ctx, City{ID: "ghost", Popularity: 1},
+		_, err := cityRepo.Patch(ctx, City{ID: bson.NewObjectID(), Popularity: 1},
 			r3.Fields{r3.NewFieldSpec("popularity")})
 		require.ErrorIs(t, err, r3.ErrNotFound)
 	})
 
 	t.Run("Delete and Delete missing", func(t *testing.T) {
-		require.NoError(t, cityRepo.Delete(ctx, "c3"))
-		_, err := cityRepo.Get(ctx, "c3")
+		munich := cities["Munich"].ID
+		require.NoError(t, cityRepo.Delete(ctx, munich))
+		_, err := cityRepo.Get(ctx, munich)
 		require.ErrorIs(t, err, r3.ErrNotFound)
 
-		require.ErrorIs(t, cityRepo.Delete(ctx, "c3"), r3.ErrNotFound, "second delete is not found")
+		require.ErrorIs(t, cityRepo.Delete(ctx, munich), r3.ErrNotFound, "second delete is not found")
 	})
 
 	t.Run("soft-delete with non-pointer time.Time (M6) + ErrNotFound (H2)", func(t *testing.T) {
-		softRepo := r3mongo.NewMongoCRUD[SoftDoc, string](db.Collection("soft_docs"))
+		softRepo := r3mongo.NewMongoCRUD[SoftDoc, bson.ObjectID](db.Collection("soft_docs"))
 
-		_, err := softRepo.Create(ctx, SoftDoc{ID: "s1", Name: "alive"})
+		live, err := softRepo.Create(ctx, SoftDoc{Name: "alive"})
 		require.NoError(t, err)
+		id := live.ID
 
 		// M6: a live record stores the zero time (not null) and MUST be visible.
-		got, err := softRepo.Get(ctx, "s1")
+		got, err := softRepo.Get(ctx, id)
 		require.NoError(t, err, "live record with zero deleted_at must be found (M6)")
 		assert.Equal(t, "alive", got.Name)
 
@@ -185,8 +189,8 @@ func TestMongoRepository(t *testing.T) {
 		assert.Equal(t, int64(1), total)
 
 		// Soft-delete hides it.
-		require.NoError(t, softRepo.Delete(ctx, "s1"))
-		_, err = softRepo.Get(ctx, "s1")
+		require.NoError(t, softRepo.Delete(ctx, id))
+		_, err = softRepo.Get(ctx, id)
 		require.ErrorIs(t, err, r3.ErrNotFound, "soft-deleted record must be hidden")
 
 		empty, total, err := softRepo.List(ctx, r3.Query{})
@@ -195,18 +199,18 @@ func TestMongoRepository(t *testing.T) {
 		assert.Equal(t, int64(0), total)
 
 		// IncludeTrashed surfaces it again.
-		trashed, err := softRepo.Get(ctx, "s1", r3.Query{IncludeTrashed: maybe.Some(true)})
+		trashed, err := softRepo.Get(ctx, id, r3.Query{IncludeTrashed: maybe.Some(true)})
 		require.NoError(t, err)
 		assert.Equal(t, "alive", trashed.Name)
 
 		// Restore makes it live again.
-		require.NoError(t, softRepo.Restore(ctx, "s1"))
-		restored, err := softRepo.Get(ctx, "s1")
+		require.NoError(t, softRepo.Restore(ctx, id))
+		restored, err := softRepo.Get(ctx, id)
 		require.NoError(t, err, "restored record must be visible again")
 		assert.Equal(t, "alive", restored.Name)
 
 		// H2: soft-delete / restore of a missing id returns ErrNotFound.
-		require.ErrorIs(t, softRepo.Delete(ctx, "missing"), r3.ErrNotFound)
-		require.ErrorIs(t, softRepo.Restore(ctx, "missing"), r3.ErrNotFound)
+		require.ErrorIs(t, softRepo.Delete(ctx, bson.NewObjectID()), r3.ErrNotFound)
+		require.ErrorIs(t, softRepo.Restore(ctx, bson.NewObjectID()), r3.ErrNotFound)
 	})
 }
