@@ -1,9 +1,16 @@
 # Default recipe: format and auto-fix everything
 default: fmt
 
+# Vet — run the real `go vet` across all packages (immutable check).
+# golangci-lint also runs govet, but CI invokes this as a standalone step so a
+# vet regression is caught even without golangci-lint installed.
+vet:
+    go vet ./...
+
 # Lint — check only, never modifies files (immutable).
-# golangci-lint runs govet (enable-all), so no separate vet step is needed.
-lint: lint-install
+# Runs the real `go vet` first (via the `vet` recipe), then golangci-lint
+# (which also runs its own govet plus many other linters).
+lint: lint-install vet
     golangci-lint run
 
 # Format & auto-fix — fixes everything that can be fixed (mutable)
