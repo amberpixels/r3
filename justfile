@@ -27,6 +27,13 @@ lint-install:
 test:
     go test ./...
 
+# Integration tests for CI: serialize packages with `-p 1` so the
+# testcontainers-backed suites (pq/pgx/mysql/gorm/bun/gopg + the petstore
+# Postgres) don't all spin up DB containers at once and exhaust the runner —
+# the source of intermittent "failed to connect" flakes. Slower but deterministic.
+test-integration:
+    go test -p 1 ./...
+
 # Test only short tests (skip integration tests requiring Docker)
 test-short:
     go test -short ./...
