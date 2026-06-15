@@ -441,5 +441,7 @@ func TestPetStoreAPI(t *testing.T) {
 // Root cause not yet pinned down; remove this skip once the sort path is fixed.
 func skipPetstoreSortBug(t *testing.T) {
 	t.Helper()
-	t.Skip("known pre-existing bug: HTTP API sort returns wrong order on the gorm backend (sort translation; under investigation)")
+	t.Skip(
+		"known pre-existing bug: HTTP API sort returns wrong order on the gorm backend (sort translation; under investigation)",
+	)
 }

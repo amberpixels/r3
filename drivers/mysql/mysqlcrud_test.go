@@ -269,5 +269,7 @@ func TestMysqlRepository(t *testing.T) {
 // MySQL). Remove this skip once that lands.
 func skipMySQLIdentifierQuotingBug(t *testing.T) {
 	t.Helper()
-	t.Skip("known pre-existing bug: filter/sort by column broken on MySQL — dialect emits ANSI double-quoted identifiers that MySQL reads as string literals (needs flavor-aware quoting)")
+	t.Skip(
+		"known pre-existing bug: filter/sort by column broken on MySQL — dialect emits ANSI double-quoted identifiers that MySQL reads as string literals (needs flavor-aware quoting)",
+	)
 }
