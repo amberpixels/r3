@@ -13,6 +13,19 @@ type Actor struct {
 
 	// Type categorizes the actor (e.g. "user", "service", "system", "cron").
 	Type string
+
+	// Claims carries optional application-defined authorization data attached to
+	// the actor (roles, group/tenant memberships, scopes, capabilities, ...).
+	// R3 itself never inspects Claims — it only propagates it on the context so
+	// policies can read it back. The permissions feature passes it through to
+	// Checker/Scoper via AccessRequest.Actor, letting an authorization policy ride
+	// entirely on the canonical actor instead of a separate, parallel context key.
+	//
+	// It is intentionally untyped (any): the application owns the shape and
+	// type-asserts it (commonly to a pointer of its own principal type). A nil
+	// Claims is the norm for system/service actors and the attribution-only
+	// features (metrics, history), which ignore it.
+	Claims any
 }
 
 // SystemActor is the default actor used when no actor is set in the context.
@@ -24,6 +37,11 @@ type actorContextKey struct{}
 // Typically called in HTTP middleware after authentication:
 //
 //	ctx := r3.WithActor(r.Context(), r3.Actor{ID: "42", Type: "user"})
+//
+// Authorization data can ride along on Claims, where policies read it back
+// (e.g. via the permissions feature's AccessRequest.Actor):
+//
+//	ctx := r3.WithActor(r.Context(), r3.Actor{ID: "42", Type: "user", Claims: principal})
 func WithActor(ctx context.Context, actor Actor) context.Context {
 	return context.WithValue(ctx, actorContextKey{}, actor)
 }

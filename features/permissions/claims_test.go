@@ -1,0 +1,86 @@
+package permissions_test
+
+import (
+	"context"
+	"errors"
+	"testing"
+
+	"github.com/amberpixels/r3"
+	"github.com/amberpixels/r3/features/permissions"
+)
+
+// claimsPrincipal is an application-defined principal carried on r3.Actor.Claims.
+// It models a tiny capability set: which owner IDs the actor may write.
+type claimsPrincipal struct {
+	writableOwners map[string]bool
+}
+
+// claimsChecker authorizes writes only for owners listed in the actor's claims,
+// reading the principal entirely off req.Actor.Claims (no separate context key).
+// Reads are always allowed.
+func claimsChecker() permissions.Checker[Post, int64] {
+	return permissions.CheckerFunc[Post, int64](
+		func(_ context.Context, req permissions.AccessRequest[Post, int64]) error {
+			if req.Operation == permissions.OpRead {
+				return nil
+			}
+
+			p, ok := req.Actor.Claims.(*claimsPrincipal)
+			if !ok || p == nil {
+				return &permissions.AccessDeniedError{
+					Operation: req.Operation,
+					Actor:     req.Actor,
+					Reason:    "no principal claims on actor",
+				}
+			}
+			if req.Entity != nil && p.writableOwners[req.Entity.OwnerID] {
+				return nil
+			}
+			return &permissions.AccessDeniedError{
+				Operation: req.Operation,
+				Actor:     req.Actor,
+				Reason:    "owner not writable for this actor",
+			}
+		},
+	)
+}
+
+func TestPermissions_PolicyReadsClaimsFromActor(t *testing.T) {
+	inner := newMemoryCRUD()
+	repo := permissions.WithPermissions[Post, int64](
+		inner,
+		claimsChecker(),
+		permissions.WithIDFunc[Post, int64](func(p Post) int64 { return p.ID }),
+	)
+
+	// Seed a post owned by "alice".
+	seedCtx := r3.WithActor(context.Background(), r3.Actor{
+		ID: "1", Type: "user",
+		Claims: &claimsPrincipal{writableOwners: map[string]bool{"alice": true}},
+	})
+	post, err := repo.Create(seedCtx, Post{Title: "hi", OwnerID: "alice"})
+	if err != nil {
+		t.Fatalf("create as alice-writer should be allowed: %v", err)
+	}
+
+	// An actor whose claims do NOT include "alice" is denied the update,
+	// purely from data carried on r3.Actor.Claims.
+	bobCtx := r3.WithActor(context.Background(), r3.Actor{
+		ID: "2", Type: "user",
+		Claims: &claimsPrincipal{writableOwners: map[string]bool{"bob": true}},
+	})
+	post.Title = "edited"
+	if _, err := repo.Update(bobCtx, post); !errors.Is(err, permissions.ErrAccessDenied) {
+		t.Fatalf("update by non-owner-writer should be denied, got: %v", err)
+	}
+
+	// The alice-writer is allowed.
+	if _, err := repo.Update(seedCtx, post); err != nil {
+		t.Fatalf("update by alice-writer should be allowed: %v", err)
+	}
+
+	// Missing claims (system/anonymous actor) is denied for writes.
+	if _, err := repo.Update(context.Background(), post); !errors.Is(err, permissions.ErrAccessDenied) {
+		t.Fatalf("update with no claims should be denied, got: %v", err)
+	}
+}

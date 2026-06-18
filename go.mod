@@ -3,7 +3,7 @@ module github.com/amberpixels/r3
 go 1.26
 
 require (
-	github.com/amberpixels/k1 v0.1.4
+	github.com/amberpixels/k1 v0.1.6
 	github.com/d3rty/json v0.0.0-20260223214742-da23dcd77ba2
 	github.com/go-pg/pg/v10 v10.15.0
 	github.com/go-sql-driver/mysql v1.9.3

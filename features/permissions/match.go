@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/amberpixels/k1/reflectish"
 	"github.com/amberpixels/r3"
 	r3tag "github.com/amberpixels/r3/internal/tag"
 )
@@ -39,13 +40,7 @@ func entityMatchesFilters(entity any, filters r3.Filters) (bool, error) {
 // columnValues builds a map of column name -> field value for the exported
 // fields of entity, using the same tag conventions as the engines.
 func columnValues(entity any) map[string]any {
-	rv := reflect.ValueOf(entity)
-	for rv.Kind() == reflect.Pointer {
-		if rv.IsNil() {
-			return map[string]any{}
-		}
-		rv = rv.Elem()
-	}
+	rv := reflectish.IndirectDeep(reflect.ValueOf(entity))
 	out := map[string]any{}
 	if rv.Kind() != reflect.Struct {
 		return out
@@ -60,7 +55,11 @@ func columnValues(entity any) map[string]any {
 		if ct.Skip {
 			continue
 		}
-		out[ct.Column] = rv.Field(i).Interface()
+		// Unwrap pointer fields so a nullable column (e.g. a *int64 foreign key)
+		// compares against scalar filter values the same way the SQL engines do.
+		// A nil pointer becomes nil (matching no scalar value; use the Exists
+		// operator to test presence).
+		out[ct.Column] = reflectish.IndirectInterface(rv.Field(i))
 	}
 	return out
 }
