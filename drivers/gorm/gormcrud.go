@@ -144,6 +144,7 @@ func (r *GormCRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, e
 func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, error) {
 	var entity T
 
+	meta := enginesql.GetStructMeta[T]()
 	q := r.MergeGetQuery(qarg...)
 
 	query := r.db.WithContext(ctx)
@@ -164,7 +165,11 @@ func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 		query = query.Unscoped()
 	}
 
-	if err := query.First(&entity, id).Error; err != nil {
+	// Match the PK explicitly (clause.Eq binds id as a parameter). Passing id as
+	// a gorm cond — First(&entity, id) — is unsafe for non-integer keys: gorm
+	// treats a string id as a raw SQL expression (e.g. "rec-1" -> rec - 1).
+	if err := query.Where(clause.Eq{Column: meta.PKColumn, Value: id}).
+		First(&entity).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return entity, r3.ErrNotFound
 		}
@@ -216,7 +221,10 @@ func (r *GormCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields)
 }
 
 func (r *GormCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
-	if err := r.db.WithContext(ctx).Delete(new(T), id).Error; err != nil {
+	meta := enginesql.GetStructMeta[T]()
+	if err := r.db.WithContext(ctx).
+		Where(clause.Eq{Column: meta.PKColumn, Value: id}).
+		Delete(new(T)).Error; err != nil {
 		return err
 	}
 	return nil
@@ -236,7 +244,10 @@ func (r *GormCRUD[T, ID]) Restore(ctx context.Context, id ID) error {
 
 // HardDelete permanently removes a record, bypassing GORM's soft-delete.
 func (r *GormCRUD[T, ID]) HardDelete(ctx context.Context, id ID) error {
-	return r.db.WithContext(ctx).Unscoped().Delete(new(T), id).Error
+	meta := enginesql.GetStructMeta[T]()
+	return r.db.WithContext(ctx).Unscoped().
+		Where(clause.Eq{Column: meta.PKColumn, Value: id}).
+		Delete(new(T)).Error
 }
 
 // syncAssociations syncs M2M and owned has-many relations after Create/Update.
