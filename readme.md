@@ -215,24 +215,24 @@ Ready-to-use constructors that wire up an engine for a specific client library.
 
 | Driver | Package | Library | Notes |
 |--------|---------|---------|-------|
-| PostgreSQL | `drivers/pq` | lib/pq | `$1` placeholders, RETURNING |
-| PostgreSQL | `drivers/pgx` | jackc/pgx | `$1` placeholders, RETURNING |
-| MySQL | `drivers/mysql` | go-sql-driver/mysql | `?` placeholders, no RETURNING |
-| SQLite | `drivers/sqlite3` | mattn/go-sqlite3 | `?` placeholders, RETURNING (3.35+) |
+| PostgreSQL | `drivers/pq` | [lib/pq](https://github.com/lib/pq) | `$1` placeholders, RETURNING |
+| PostgreSQL | `drivers/pgx` | [jackc/pgx](https://github.com/jackc/pgx) | `$1` placeholders, RETURNING |
+| MySQL | `drivers/mysql` | [go-sql-driver/mysql](https://github.com/go-sql-driver/mysql) | `?` placeholders, no RETURNING |
+| SQLite | `drivers/sqlite3` | [mattn/go-sqlite3](https://github.com/mattn/go-sqlite3) | `?` placeholders, RETURNING (3.35+) |
 
 **ORM drivers** (use ORM API natively, share `PreparedListQuery` for query translation):
 
 | Driver | Package | Library | Preloads | Soft-delete |
 |--------|---------|---------|----------|-------------|
-| GORM | `drivers/gorm` | gorm.io/gorm | Preload() | Unscoped() |
-| Bun | `drivers/bun` | uptrace/bun | Relation() | WhereAllWithDeleted() |
-| go-pg | `drivers/gopg` | go-pg/pg/v10 | Relation() | AllWithDeleted() |
+| GORM | `drivers/gorm` | [gorm.io/gorm](https://github.com/go-gorm/gorm) | Preload() | Unscoped() |
+| Bun | `drivers/bun` | [uptrace/bun](https://github.com/uptrace/bun) | Relation() | WhereAllWithDeleted() |
+| go-pg | `drivers/gopg` | [go-pg/pg/v10](https://github.com/go-pg/pg) | Relation() | AllWithDeleted() |
 
 **NoSQL drivers:**
 
 | Driver | Package | Library |
 |--------|---------|---------|
-| MongoDB | `drivers/mongo` | mongo-driver/v2 |
+| MongoDB | `drivers/mongo` | [mongo-driver/v2](https://github.com/mongodb/mongo-go-driver) |
 
 All drivers expose a `Raw()` escape hatch for queries that go beyond the r3 interface.
 
@@ -400,7 +400,7 @@ is a tool here, not the author of record:
   to read, grep, update, and extend - not primarily for human ergonomics. Clear,
   greppable names and consistent structure win over cleverness.
 
-Responsibility for the code is human. The AI just types faster.
+Responsibility for the code is human. 🤖🤝🧑
 
 ## Feedback
 
