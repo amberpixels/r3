@@ -3,7 +3,7 @@ module github.com/amberpixels/r3
 go 1.26
 
 require (
-	github.com/amberpixels/k1 v0.1.6
+	github.com/amberpixels/k1 v0.1.7
 	github.com/d3rty/json v0.0.0-20260223214742-da23dcd77ba2
 	github.com/go-pg/pg/v10 v10.15.0
 	github.com/go-sql-driver/mysql v1.9.3
@@ -89,8 +89,8 @@ require (
 	go.opentelemetry.io/otel/metric v1.41.0 // indirect
 	go.opentelemetry.io/otel/trace v1.41.0 // indirect
 	golang.org/x/crypto v0.48.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/sys v0.42.0 // indirect
-	golang.org/x/text v0.34.0 // indirect
+	golang.org/x/sync v0.21.0 // indirect
+	golang.org/x/sys v0.46.0 // indirect
+	golang.org/x/text v0.38.0 // indirect
 	mellium.im/sasl v0.3.1 // indirect
 )
