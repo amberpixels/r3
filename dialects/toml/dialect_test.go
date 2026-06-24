@@ -33,6 +33,14 @@ func TestTOMLToField(t *testing.T) {
 	assert.Equal(t, "name", result.String())
 }
 
+func TestFilterToTOML_RelationFilterRejected(t *testing.T) {
+	// A relationship ("has") filter has no serialized form; encoding must error
+	// rather than silently drop the relation into a match-all filter.
+	_, err := r3toml.FilterToTOML(r3.Has("Squads", r3.In("id", []int64{1, 3})))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Squads")
+}
+
 func TestFilterToTOML(t *testing.T) {
 	tests := []struct {
 		name    string

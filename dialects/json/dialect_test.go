@@ -148,6 +148,14 @@ func TestJSONToOperator(t *testing.T) {
 	}
 }
 
+func TestFilterToJSON_RelationFilterRejected(t *testing.T) {
+	// A relationship ("has") filter has no serialized form; encoding must error
+	// rather than silently drop the relation into a match-all filter.
+	_, err := r3json.FilterToJSON(r3.Has("Squads", r3.In("id", []int64{1, 3})))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Squads")
+}
+
 func TestFilterToJSON(t *testing.T) {
 	tests := []struct {
 		name        string

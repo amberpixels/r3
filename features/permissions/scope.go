@@ -17,6 +17,12 @@ import (
 // R3's pattern (like SoftDeleter being separate from CRUD). If a Checker
 // doesn't implement Scoper, List just checks OpRead permission without
 // filter injection.
+//
+// Plain column scope filters are enforced on single-entity Get in memory. A
+// relationship ("has") scope filter (r3.Has) can't be matched in memory, so the
+// decorator verifies Get through a backend query — which requires WithIDFunc to
+// be configured. Without it, a relationship-scoped Get fails closed (returns
+// r3.ErrNotFound) rather than risk leaking an out-of-scope row.
 type Scoper[T any, ID comparable] interface {
 	Scope(ctx context.Context, actor r3.Actor) (r3.Filters, error)
 }

@@ -34,6 +34,21 @@ type FilterSpec struct {
 	And Filters
 	// OR Children should be declared inside OR
 	Or Filters
+
+	// Relation, when non-empty, makes this a relationship ("has") filter: it
+	// matches rows whose declared relation `Relation` (by the same struct field
+	// name used for preloads) has at least one related row satisfying all of
+	// RelationFilter. Field/Operator/Value/And/Or are ignored when Relation is
+	// set.
+	//
+	// Relationship filters are resolved by the driver into a key-set In filter
+	// before SQL translation (see the GORM driver's relation lowering), so they
+	// work on any backend regardless of native subquery support. A dialect may
+	// later compile them natively (EXISTS) as an optimization.
+	// omitempty so a non-relationship filter serializes exactly as before (the
+	// relationship fields are absent unless used).
+	Relation       string  `json:",omitempty"`
+	RelationFilter Filters `json:",omitempty"`
 }
 
 // String returns just a string representation of the filter (as JSON).
@@ -53,6 +68,7 @@ func (f *FilterSpec) Clone() *FilterSpec {
 	clone.Field = f.Field.Clone()
 	clone.And = f.And.Clone()
 	clone.Or = f.Or.Clone()
+	clone.RelationFilter = f.RelationFilter.Clone()
 	return &clone
 }
 
@@ -139,6 +155,23 @@ func Exists(field string, value any) *FilterSpec {
 // Between builds an inclusive `field BETWEEN lo AND hi` filter.
 func Between(field string, lo, hi any) *FilterSpec {
 	return Fop(NewFieldSpec(field), OperatorBetween, []any{lo, hi})
+}
+
+// Has builds a relationship ("has") filter: it matches rows whose declared
+// relation `relation` (by struct field name — the same name used for preloads)
+// has at least one related row satisfying all of `inner`. Example:
+//
+//	r3.Has("Squads", r3.In("id", []int64{1, 3}))  // rows linked to squad 1 or 3
+//
+// The inner filters are evaluated against the related entity. Drivers resolve
+// the relation to a key set and rewrite this to an In filter, so it works on
+// every backend regardless of native subquery support.
+//
+// Resolution happens in the driver, so a Has filter does not round-trip through
+// the serialization dialects (json/url/yaml/toml) — build it in Go. When used
+// as a permission scope, enforcing it on Get requires permissions.WithIDFunc.
+func Has(relation string, inner ...*FilterSpec) *FilterSpec {
+	return &FilterSpec{Relation: relation, RelationFilter: inner}
 }
 
 // And is a shortcut for NewFilterSpecAndGroup.

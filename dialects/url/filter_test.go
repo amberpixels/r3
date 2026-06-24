@@ -9,6 +9,14 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestFormatFilters_RelationFilterRejected(t *testing.T) {
+	// A relationship ("has") filter can't be serialized into URL params; the
+	// JSON-backed formatter must surface an error rather than drop it silently.
+	_, err := r3url.FormatFilters(r3.Filters{r3.Has("Squads", r3.In("id", []int64{1, 3}))})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Squads")
+}
+
 func TestParseFilters(t *testing.T) {
 	tests := []struct {
 		name        string

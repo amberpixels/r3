@@ -54,8 +54,14 @@ type PreparedListQuery struct {
 // Drivers call this once at the start of List() and then consume the result
 // using their ORM-specific APIs.
 func PrepareListQuery(dm *DefaultsManager, qarg ...r3.Query) (PreparedListQuery, error) {
-	q := dm.MergeListQuery(qarg...)
+	return PrepareMergedListQuery(dm.MergeListQuery(qarg...))
+}
 
+// PrepareMergedListQuery builds the SQL components for an already-merged query
+// (defaults + user args). It is the half of PrepareListQuery after the merge,
+// exposed so a driver can transform the merged query — e.g. lower relationship
+// ("has") filters into key-set In filters — before the clauses are built.
+func PrepareMergedListQuery(q r3.Query) (PreparedListQuery, error) {
 	var p PreparedListQuery
 	p.Query = q
 

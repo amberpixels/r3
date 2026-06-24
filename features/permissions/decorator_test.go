@@ -1022,3 +1022,61 @@ func TestActorFromContext_Default(t *testing.T) {
 		t.Errorf("expected SystemActor, got {%s, %s}", capturedActor.ID, capturedActor.Type)
 	}
 }
+
+// relScoper scopes via a relationship ("has") filter, which the in-memory
+// matcher can't evaluate — so the decorator must verify Get through a query.
+type relScoper struct{}
+
+func (relScoper) Check(_ context.Context, req permissions.AccessRequest[Post, int64]) error {
+	if req.Operation == permissions.OpRead {
+		return nil
+	}
+	return &permissions.AccessDeniedError{Operation: req.Operation, Actor: req.Actor}
+}
+
+func (relScoper) Scope(_ context.Context, _ r3.Actor) (r3.Filters, error) {
+	return r3.Filters{r3.Has("Squads", r3.In("id", []int64{1, 3}))}, nil
+}
+
+// fixedScopeInner is an inner CRUD whose List returns a fixed in-scope set,
+// standing in for a backend that resolves the relationship filter. Get delegates
+// to the embedded memoryCRUD.
+type fixedScopeInner struct {
+	*memoryCRUD
+	inScopeIDs []int64
+}
+
+func (f *fixedScopeInner) List(_ context.Context, _ ...r3.Query) ([]Post, int64, error) {
+	var out []Post
+	for _, id := range f.inScopeIDs {
+		if p, ok := f.memoryCRUD.data[id]; ok {
+			out = append(out, p)
+		}
+	}
+	return out, int64(len(out)), nil
+}
+
+// TestScoper_GetWithRelationshipFilter verifies that a relationship ("has")
+// scope filter is enforced on Get via a query (not the in-memory matcher, which
+// would fail OPEN on a relationship node): the in-scope row is returned, the
+// out-of-scope row is ErrNotFound.
+func TestScoper_GetWithRelationshipFilter(t *testing.T) {
+	mem := newMemoryCRUD()
+	mem.data[1] = Post{ID: 1, Title: "In scope"}
+	mem.data[2] = Post{ID: 2, Title: "Out of scope"}
+	mem.nextID = 3
+	inner := &fixedScopeInner{memoryCRUD: mem, inScopeIDs: []int64{1}}
+
+	repo := permissions.WithPermissions[Post, int64](
+		inner, relScoper{},
+		permissions.WithIDFunc[Post, int64](func(p Post) int64 { return p.ID }),
+	)
+	ctx := r3.WithActor(context.Background(), r3.Actor{ID: "u", Type: "user"})
+
+	if _, err := repo.Get(ctx, 1); err != nil {
+		t.Fatalf("expected in-scope post 1 to be readable, got %v", err)
+	}
+	if _, err := repo.Get(ctx, 2); !errors.Is(err, r3.ErrNotFound) {
+		t.Fatalf("expected ErrNotFound for out-of-scope post 2 (no fail-open), got %v", err)
+	}
+}

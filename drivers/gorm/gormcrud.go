@@ -47,7 +47,7 @@ func (r *GormCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 }
 
 func (r *GormCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, error) {
-	prep, err := enginesql.PrepareListQuery(&r.DefaultsManager, qarg...)
+	prep, err := r.prepareList(ctx, qarg...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -116,7 +116,7 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 
 // Count returns the number of records matching the query's filters.
 func (r *GormCRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, error) {
-	prep, err := enginesql.PrepareListQuery(&r.DefaultsManager, qarg...)
+	prep, err := r.prepareList(ctx, qarg...)
 	if err != nil {
 		return 0, err
 	}
@@ -355,6 +355,26 @@ func syncOwnedHasMany[T any](db *gorm.DB, rel enginesql.RelationMeta, pkVal any,
 // Returns [r3.Querier] — a compile-time guarantee of read-only access.
 func NewGormQuerier[T any, ID comparable](db *gorm.DB, opts ...r3.Option) r3.Querier[T, ID] {
 	return NewGormCRUD[T, ID](db, opts...)
+}
+
+// prepareList merges the query args with defaults, resolves any relationship
+// ("has") filters against the DB (lowering them into key-set In filters), then
+// builds the SQL components. Relationship lowering must happen before clause
+// building, which is why this drives the merge/prepare split itself rather than
+// calling PrepareListQuery. The relation resolution is skipped entirely when the
+// query has no relationship filters, leaving the common path untouched.
+func (r *GormCRUD[T, ID]) prepareList(
+	ctx context.Context, qarg ...r3.Query,
+) (enginesql.PreparedListQuery, error) {
+	merged := r.MergeListQuery(qarg...)
+	if hasRelationFilters(merged.Filters) {
+		lowered, err := lowerRelationFilters[T](ctx, r.db, merged.Filters)
+		if err != nil {
+			return enginesql.PreparedListQuery{}, err
+		}
+		merged.Filters = lowered
+	}
+	return enginesql.PrepareMergedListQuery(merged)
 }
 
 // Raw returns the GormRaw escape hatch for custom queries.

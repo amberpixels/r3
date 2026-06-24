@@ -124,7 +124,7 @@ func (p *CRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, erro
 			return zero, err
 		}
 		if len(filters) > 0 {
-			inScope, matchErr := entityMatchesFilters(&result, filters)
+			inScope, matchErr := p.entityInScope(ctx, id, &result, filters)
 			if matchErr != nil || !inScope {
 				var zero T
 				return zero, r3.ErrNotFound
@@ -133,6 +133,49 @@ func (p *CRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, erro
 	}
 
 	return result, nil
+}
+
+// entityInScope reports whether the already-fetched entity (id/result) satisfies
+// the actor's scope filters. Plain column filters are matched in memory (fast,
+// no extra query). A relationship ("has") filter can't be evaluated in memory,
+// so scope is verified with a query that applies the same filters List/Count use
+// — consistent semantics at the cost of one extra query (bounded by the in-scope
+// row count; a future native-EXISTS path can pin by PK instead).
+func (p *CRUD[T, ID]) entityInScope(ctx context.Context, id ID, result *T, filters r3.Filters) (bool, error) {
+	if !containsRelationFilter(filters) {
+		return entityMatchesFilters(result, filters)
+	}
+	if p.opts.IDFunc == nil {
+		// Can't identify the row to verify it via query; fail closed.
+		return false, nil
+	}
+	items, _, err := p.inner.List(ctx, r3.Query{Filters: filters, Pagination: r3.Unpaginated()})
+	if err != nil {
+		return false, err
+	}
+	for i := range items {
+		if p.opts.IDFunc(items[i]) == id {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// containsRelationFilter reports whether any filter in the tree is a relationship
+// ("has") filter, which must be evaluated by the database rather than in memory.
+func containsRelationFilter(filters r3.Filters) bool {
+	for _, f := range filters {
+		if f == nil {
+			continue
+		}
+		if f.Relation != "" {
+			return true
+		}
+		if containsRelationFilter(f.And) || containsRelationFilter(f.Or) {
+			return true
+		}
+	}
+	return false
 }
 
 // List checks OpRead permission (resource-level), optionally injects scope

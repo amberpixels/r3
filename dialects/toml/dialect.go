@@ -29,6 +29,13 @@ func FilterToTOML(f *r3.FilterSpec) (*TOMLFilter, error) {
 		return nil, newError(errors.New("nil filter spec"))
 	}
 
+	// Relationship ("has") filters are resolved by the driver against the
+	// database; they have no serialized form. Fail loudly rather than silently
+	// drop the relation and emit a match-all filter.
+	if f.Relation != "" {
+		return nil, newError(fmt.Errorf("relationship filter on %q cannot be serialized to TOML", f.Relation))
+	}
+
 	tf := &TOMLFilter{}
 
 	// Handle simple field-operator-value filters

@@ -106,6 +106,15 @@ func SQLToOperator(op SQLClauseOperator) (r3.FilterOperatorSpec, error) {
 
 // FilterToSQL converts a FilterSpec to an SQLClause.
 func FilterToSQL(cf *r3.FilterSpec) (SQLClause, error) {
+	// A relationship ("has") filter has no direct SQL form: the driver must
+	// resolve it into a key-set In filter before translation. Reaching here
+	// means the driver didn't lower it — fail loudly rather than emit bad SQL.
+	if cf.Relation != "" {
+		return SQLClause{}, fmt.Errorf(
+			"relationship filter on %q must be lowered by the driver before SQL translation", cf.Relation,
+		)
+	}
+
 	// Case 1. A simple filter when Field is set.
 	if cf.Field != nil {
 		// Validate and quote the field name to prevent SQL injection.

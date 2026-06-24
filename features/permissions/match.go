@@ -97,6 +97,16 @@ func matchFilter(cols map[string]any, f *r3.FilterSpec) (bool, error) {
 		return false, nil
 	}
 
+	// A relationship ("has") filter can't be evaluated against in-memory column
+	// values — it needs the database. Fail closed so it can never silently
+	// match-all (the decorator routes relationship-scoped Get through a query).
+	if f.Relation != "" {
+		return false, fmt.Errorf(
+			"permissions: relationship scope filter %q must be evaluated by the database, not in memory",
+			f.Relation,
+		)
+	}
+
 	if f.Field == nil {
 		return true, nil
 	}
