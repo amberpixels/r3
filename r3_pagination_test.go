@@ -5,7 +5,10 @@ import (
 
 	"github.com/amberpixels/k1/maybe"
 	"github.com/amberpixels/r3"
-	"github.com/stretchr/testify/assert"
+	"github.com/expectto/be"
+	"github.com/expectto/be/be_math"
+	"github.com/expectto/be/be_struct"
+	betestify "github.com/expectto/be/x/testify"
 )
 
 func TestNewPaginationSpec(t *testing.T) {
@@ -42,8 +45,8 @@ func TestNewPaginationSpec(t *testing.T) {
 				result = r3.NewPaginationSpec(tt.pageNum)
 			}
 
-			assert.Equal(t, tt.expected.PageNum, result.PageNum)
-			assert.Equal(t, tt.expected.PageSize, result.PageSize)
+			betestify.Assert(t, result, be_struct.HavingField[r3.PaginationSpec]("PageNum", tt.expected.PageNum))
+			betestify.Assert(t, result, be_struct.HavingField[r3.PaginationSpec]("PageSize", tt.expected.PageSize))
 		})
 	}
 }
@@ -51,24 +54,24 @@ func TestNewPaginationSpec(t *testing.T) {
 func TestNewPaginationSpecWithSize(t *testing.T) {
 	result := r3.NewPaginationSpecWithSize(100)
 
-	assert.Equal(t, maybe.None[int](), result.PageNum)
-	assert.Equal(t, maybe.Some(100), result.PageSize)
+	betestify.Assert(t, result, be_struct.HavingField[r3.PaginationSpec]("PageNum", maybe.None[int]()))
+	betestify.Assert(t, result, be_struct.HavingField[r3.PaginationSpec]("PageSize", maybe.Some(100)))
 }
 
 func TestNoPagination(t *testing.T) {
 	result := r3.NoPagination()
 
-	assert.Equal(t, maybe.None[int](), result.PageNum)
-	assert.Equal(t, maybe.None[int](), result.PageSize)
-	assert.False(t, result.IsPaginated())
+	betestify.Assert(t, result, be_struct.HavingField[r3.PaginationSpec]("PageNum", maybe.None[int]()))
+	betestify.Assert(t, result, be_struct.HavingField[r3.PaginationSpec]("PageSize", maybe.None[int]()))
+	betestify.Assert(t, result.IsPaginated(), be.False())
 }
 
 func TestDefaultPagination(t *testing.T) {
 	result := r3.DefaultPagination()
 
-	assert.Equal(t, maybe.None[int](), result.PageNum)
-	assert.Equal(t, maybe.Some(r3.PageSizeDefault), result.PageSize)
-	assert.True(t, result.IsPaginated())
+	betestify.Assert(t, result, be_struct.HavingField[r3.PaginationSpec]("PageNum", maybe.None[int]()))
+	betestify.Assert(t, result, be_struct.HavingField[r3.PaginationSpec]("PageSize", maybe.Some(r3.PageSizeDefault)))
+	betestify.Assert(t, result.IsPaginated(), be.True())
 }
 
 func TestPaginationSpec_String(t *testing.T) {
@@ -109,7 +112,7 @@ func TestPaginationSpec_String(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.pageSpec.String()
-			assert.Equal(t, tt.expected, result)
+			betestify.Assert(t, result, be.Eq(tt.expected))
 		})
 	}
 }
@@ -123,11 +126,18 @@ func TestPaginationSpec_Clone(t *testing.T) {
 	cloned := original.Clone()
 
 	// Verify values are equal
-	assert.Equal(t, original.PageNum, cloned.PageNum)
-	assert.Equal(t, original.PageSize, cloned.PageSize)
+	betestify.Assert(t, cloned, be_struct.HavingField[r3.PaginationSpec]("PageNum", original.PageNum))
+	betestify.Assert(t, cloned, be_struct.HavingField[r3.PaginationSpec]("PageSize", original.PageSize))
 
 	// Verify it's a different instance
-	assert.NotSame(t, original, cloned)
+	assertNotSamePtr(t, original, cloned)
+}
+
+// assertNotSamePtr fails if a and b are the same pointer. be has no NotSame
+// matcher, so this keeps the identity check that testify's assert.NotSame gave.
+func assertNotSamePtr[T any](t *testing.T, a, b *T) {
+	t.Helper()
+	betestify.Assert(t, a != b, be.True())
 }
 
 func TestPaginationSpec_MergeWith(t *testing.T) {
@@ -183,8 +193,8 @@ func TestPaginationSpec_MergeWith(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.base.MergeWith(tt.other)
-			assert.Equal(t, tt.expected.PageNum, result.PageNum)
-			assert.Equal(t, tt.expected.PageSize, result.PageSize)
+			betestify.Assert(t, result, be_struct.HavingField[r3.PaginationSpec]("PageNum", tt.expected.PageNum))
+			betestify.Assert(t, result, be_struct.HavingField[r3.PaginationSpec]("PageSize", tt.expected.PageSize))
 		})
 	}
 }
@@ -227,7 +237,7 @@ func TestPaginationSpec_IsPaginated(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.pageSpec.IsPaginated()
-			assert.Equal(t, tt.expected, result)
+			betestify.Assert(t, result, be.Eq(tt.expected))
 		})
 	}
 }
@@ -269,7 +279,9 @@ func TestPaginationSpec_GetPageNum(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.pageSpec.GetPageNum()
-			assert.Equal(t, tt.expected, result)
+			betestify.Assert(t, result, be.Eq(tt.expected))
+			// Page numbers are 1-indexed: the getter must never return < 1.
+			betestify.Assert(t, result, be_math.Gte(1))
 		})
 	}
 }
@@ -297,7 +309,9 @@ func TestPaginationSpec_GetPageSize(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := tt.pageSpec.GetPageSize()
-			assert.Equal(t, tt.expected, result)
+			betestify.Assert(t, result, be.Eq(tt.expected))
+			// A resolved page size is always a positive count.
+			betestify.Assert(t, result, be_math.Positive())
 		})
 	}
 }
@@ -355,8 +369,11 @@ func TestPaginationSpec_ToLimitOffset(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			limit, offset := tt.pageSpec.ToLimitOffset()
-			assert.Equal(t, tt.expectedLimit, limit)
-			assert.Equal(t, tt.expectedOffset, offset)
+			betestify.Assert(t, limit, be.Eq(tt.expectedLimit))
+			betestify.Assert(t, offset, be.Eq(tt.expectedOffset))
+			// LIMIT must be a positive row count; OFFSET is non-negative.
+			betestify.Assert(t, limit, be_math.Positive())
+			betestify.Assert(t, offset, be_math.Gte(0))
 		})
 	}
 }

@@ -5,22 +5,29 @@ import (
 	"testing"
 
 	"github.com/amberpixels/r3"
+	"github.com/expectto/be"
+	"github.com/expectto/be/be_ctx"
+	betestify "github.com/expectto/be/x/testify"
 )
 
 func TestWithActor_RoundTripsIDAndType(t *testing.T) {
 	ctx := r3.WithActor(context.Background(), r3.Actor{ID: "42", Type: "user"})
 
+	// WithActor must return a real context.Context; be_ctx.Ctx() enforces that.
+	betestify.Assert(t, ctx, be_ctx.Ctx())
+
+	// The actor lives under an UNEXPORTED context key (actorContextKey{}), so the
+	// key cannot be named from this external test package. We therefore can't use
+	// be_ctx.CtxWithValue(theActorKey, ...) and must read it back via the public
+	// getter and assert the result. (See friction note in the conversion report.)
 	got := r3.GetActor(ctx)
-	if got.ID != "42" || got.Type != "user" {
-		t.Fatalf("got %+v, want ID=42 Type=user", got)
-	}
+	betestify.Assert(t, got.ID, be.Eq("42"))
+	betestify.Assert(t, got.Type, be.Eq("user"))
 }
 
 func TestGetActor_DefaultsToSystemActor(t *testing.T) {
 	got := r3.GetActor(context.Background())
-	if got != r3.SystemActor {
-		t.Fatalf("got %+v, want SystemActor %+v", got, r3.SystemActor)
-	}
+	betestify.Assert(t, got, be.Eq(r3.SystemActor))
 }
 
 func TestActor_CarriesClaims(t *testing.T) {
@@ -37,26 +44,21 @@ func TestActor_CarriesClaims(t *testing.T) {
 		Type:   "user",
 		Claims: want,
 	})
+	betestify.Assert(t, ctx, be_ctx.Ctx())
 
 	got := r3.GetActor(ctx)
-	if got.ID != "42" || got.Type != "user" {
-		t.Fatalf("identity not preserved: %+v", got)
-	}
+	betestify.Assert(t, got.ID, be.Eq("42"))
+	betestify.Assert(t, got.Type, be.Eq("user"))
 
 	p, ok := got.Claims.(*principal)
-	if !ok {
-		t.Fatalf("claims type assertion failed: %T", got.Claims)
-	}
-	if p != want {
-		t.Fatalf("claims pointer changed: got %p want %p", p, want)
-	}
-	if p.Role != "squad-editor" || len(p.Squads) != 2 {
-		t.Fatalf("claims value corrupted: %+v", p)
-	}
+	betestify.Assert(t, ok, be.True())
+
+	// Same pointer identity preserved through the round-trip.
+	betestify.Assert(t, p, be.Eq(want))
+	betestify.Assert(t, p.Role, be.Eq("squad-editor"))
+	betestify.Assert(t, p.Squads, be.Eq([]int64{3, 5}))
 }
 
 func TestSystemActor_HasNilClaims(t *testing.T) {
-	if r3.SystemActor.Claims != nil {
-		t.Fatalf("SystemActor.Claims = %v, want nil", r3.SystemActor.Claims)
-	}
+	betestify.Assert(t, r3.SystemActor.Claims, be.Nil())
 }

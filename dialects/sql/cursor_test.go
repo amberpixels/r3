@@ -5,18 +5,38 @@ import (
 
 	"github.com/amberpixels/r3"
 	r3sql "github.com/amberpixels/r3/dialects/sql"
+	"github.com/expectto/be"
+	"github.com/expectto/be/be_string"
+	betestify "github.com/expectto/be/x/testify"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
+
+// NOTE on MatchTemplate + SQL:
+// be_string.MatchTemplate turns "{{name}}" into the regex group "(?P<name>.+)" and
+// compiles the REST of the template as a raw, UNANCHORED regex. That means every SQL
+// metacharacter that is also a regex metacharacter ('(', ')', '?', '|', '.', '[', ...)
+// must be backslash-escaped in the template, and you must add ^...$ yourself if you
+// want a full-string (not substring) match. See the friction report for details.
 
 func TestCursorToSQLClause_SingleColumnDesc(t *testing.T) {
 	sorts := r3.Sorts{r3.NewSortDescSpec(r3.NewFieldSpec("created_at"))}
 	values := r3.CursorValues{"created_at": "2024-01-15T10:00:00Z"}
 
 	clause, err := r3sql.CursorToSQLClause(values, sorts, r3.CursorForward)
-	require.NoError(t, err)
-	assert.Equal(t, `"created_at" < ?`, clause.Clause)
-	assert.Equal(t, []any{"2024-01-15T10:00:00Z"}, clause.Args)
+	betestify.Require(t, err, be.Succeed())
+
+	// Exact assertion keeps correctness pinned.
+	betestify.Assert(t, clause.Clause, be.Eq(`"created_at" < ?`))
+
+	// Structural assertion: a quoted column, the comparison operator '<' and a '?'
+	// placeholder. '?' is escaped (\?) so it is a literal; ^...$ anchors the whole string.
+	betestify.Assert(t, clause.Clause, be_string.MatchTemplate(
+		`^{{col}} < \?$`,
+		be_string.V("col", be_string.MatchWildcard(`"*"`)),
+	))
+
+	betestify.Assert(t, clause.Args, be.Eq([]any{"2024-01-15T10:00:00Z"}))
 }
 
 func TestCursorToSQLClause_SingleColumnAsc(t *testing.T) {
@@ -24,9 +44,17 @@ func TestCursorToSQLClause_SingleColumnAsc(t *testing.T) {
 	values := r3.CursorValues{"name": "Alice"}
 
 	clause, err := r3sql.CursorToSQLClause(values, sorts, r3.CursorForward)
-	require.NoError(t, err)
-	assert.Equal(t, `"name" > ?`, clause.Clause)
-	assert.Equal(t, []any{"Alice"}, clause.Args)
+	betestify.Require(t, err, be.Succeed())
+
+	betestify.Assert(t, clause.Clause, be.Eq(`"name" > ?`))
+
+	// ASC forward -> '>' operator. Constrain the column to a double-quoted identifier.
+	betestify.Assert(t, clause.Clause, be_string.MatchTemplate(
+		`^{{col}} > \?$`,
+		be_string.V("col", be_string.MatchWildcard(`"*"`)),
+	))
+
+	betestify.Assert(t, clause.Args, be.Eq([]any{"Alice"}))
 }
 
 func TestCursorToSQLClause_SingleColumnBackward(t *testing.T) {
@@ -34,9 +62,16 @@ func TestCursorToSQLClause_SingleColumnBackward(t *testing.T) {
 	values := r3.CursorValues{"created_at": "2024-01-15T10:00:00Z"}
 
 	clause, err := r3sql.CursorToSQLClause(values, sorts, r3.CursorBackward)
-	require.NoError(t, err)
+	betestify.Require(t, err, be.Succeed())
+
 	// Backward on DESC -> use > (flip)
-	assert.Equal(t, `"created_at" > ?`, clause.Clause)
+	betestify.Assert(t, clause.Clause, be.Eq(`"created_at" > ?`))
+
+	// The flip is the interesting behavior: assert the operator is '>' via template.
+	betestify.Assert(t, clause.Clause, be_string.MatchTemplate(
+		`^"created_at" {{op}} \?$`,
+		be_string.V("op", be.Eq(">")),
+	))
 }
 
 func TestCursorToSQLClause_MultiColumn(t *testing.T) {
@@ -50,15 +85,32 @@ func TestCursorToSQLClause_MultiColumn(t *testing.T) {
 	}
 
 	clause, err := r3sql.CursorToSQLClause(values, sorts, r3.CursorForward)
-	require.NoError(t, err)
+	betestify.Require(t, err, be.Succeed())
 
-	// Expected: ("created_at" < ?) OR ("created_at" = ? AND "id" > ?)
+	// Expected: (("created_at" < ?) OR ("created_at" = ? AND "id" > ?))
 	expected := `(("created_at" < ?) OR ("created_at" = ? AND "id" > ?))`
-	assert.Equal(t, expected, clause.Clause)
-	assert.Equal(t, []any{
+	betestify.Assert(t, clause.Clause, be.Eq(expected))
+
+	// Structural template for the compound keyset condition. EVERY literal paren and
+	// question mark must be escaped, otherwise they are read as regex group/quantifier.
+	betestify.Assert(t, clause.Clause, be_string.MatchTemplate(
+		`^\(\({{c1}} < \?\) OR \({{c2}} = \? AND {{c3}} > \?\)\)$`,
+		be_string.V("c1", be_string.MatchWildcard(`"*"`)),
+		be_string.V("c2", be_string.MatchWildcard(`"*"`)),
+		be_string.V("c3", be_string.MatchWildcard(`"*"`)),
+	))
+
+	// Looser, far more readable structural check via wildcard.
+	betestify.Assert(t, clause.Clause, be_string.MatchWildcard(
+		`*("created_at" < ?) OR ("created_at" = ? AND "id" > ?)*`,
+	))
+
+	betestify.Assert(t, clause.Clause, be_string.ContainingSubstring(`OR`))
+
+	betestify.Assert(t, clause.Args, be.Eq([]any{
 		"2024-01-15T10:00:00Z",
 		"2024-01-15T10:00:00Z", float64(42),
-	}, clause.Args)
+	}))
 }
 
 func TestCursorToSQLClause_ThreeColumns(t *testing.T) {
@@ -74,15 +126,29 @@ func TestCursorToSQLClause_ThreeColumns(t *testing.T) {
 	}
 
 	clause, err := r3sql.CursorToSQLClause(values, sorts, r3.CursorForward)
-	require.NoError(t, err)
+	betestify.Require(t, err, be.Succeed())
 
 	expected := `(("score" < ?) OR ("score" = ? AND "name" > ?) OR ("score" = ? AND "name" = ? AND "id" > ?))`
-	assert.Equal(t, expected, clause.Clause)
-	assert.Len(t, clause.Args, 6)
+	betestify.Assert(t, clause.Clause, be.Eq(expected))
+
+	// Full structural template across three OR-branches (all metacharacters escaped).
+	betestify.Assert(t, clause.Clause, be_string.MatchTemplate(
+		`^\(\({{a}} < \?\) OR \({{b}} = \? AND {{c}} > \?\) OR `+
+			`\({{d}} = \? AND {{e}} = \? AND {{f}} > \?\)\)$`,
+		be_string.V("a", be_string.MatchWildcard(`"*"`)),
+		be_string.V("b", be_string.MatchWildcard(`"*"`)),
+		be_string.V("c", be_string.MatchWildcard(`"*"`)),
+		be_string.V("d", be_string.MatchWildcard(`"*"`)),
+		be_string.V("e", be_string.MatchWildcard(`"*"`)),
+		be_string.V("f", be_string.MatchWildcard(`"*"`)),
+	))
+
+	betestify.Assert(t, clause.Args, be.HaveLength(6))
 }
 
 func TestCursorToSQLClause_NoSorts(t *testing.T) {
 	_, err := r3sql.CursorToSQLClause(r3.CursorValues{"a": 1}, nil, r3.CursorForward)
+	// be has no direct ErrorIs equivalent; keep testify for the sentinel-error check.
 	assert.ErrorIs(t, err, r3.ErrCursorRequiresSort)
 }
 
@@ -91,13 +157,20 @@ func TestCursorToSQLClause_MissingValue(t *testing.T) {
 	values := r3.CursorValues{"wrong_col": "val"}
 
 	_, err := r3sql.CursorToSQLClause(values, sorts, r3.CursorForward)
-	assert.ErrorIs(t, err, r3.ErrInvalidCursor)
+	require.ErrorIs(t, err, r3.ErrInvalidCursor)
+
+	// The error message structure is itself a "template": exercise MatchTemplate on it.
+	betestify.Assert(t, err.Error(), be_string.ContainingSubstring("missing value for sort column"))
+	betestify.Assert(t, err.Error(), be_string.MatchTemplate(
+		`missing value for sort column {{col}}`,
+		be_string.V("col", be_string.NonEmptyString()),
+	))
 }
 
 func TestCursorToSQLClause_EmptyValues(t *testing.T) {
 	sorts := r3.Sorts{r3.NewSortDescSpec(r3.NewFieldSpec("created_at"))}
 
 	clause, err := r3sql.CursorToSQLClause(r3.CursorValues{}, sorts, r3.CursorForward)
-	require.NoError(t, err)
-	assert.Empty(t, clause.Clause)
+	betestify.Require(t, err, be.Succeed())
+	betestify.Assert(t, clause.Clause, be_string.EmptyString())
 }

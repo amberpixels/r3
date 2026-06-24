@@ -6,6 +6,11 @@ import (
 
 	"github.com/amberpixels/r3"
 	r3url "github.com/amberpixels/r3/dialects/url"
+	"github.com/expectto/be"
+	"github.com/expectto/be/be_reflected"
+	"github.com/expectto/be/be_string"
+	"github.com/expectto/be/be_url"
+	betestify "github.com/expectto/be/x/testify"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -172,8 +177,16 @@ func TestFormatDjangoFilters(t *testing.T) {
 	}
 
 	result := r3url.FormatDjangoFilters(filters, cfg)
-	assert.Equal(t, "active", result.Get("status"))
-	assert.Equal(t, "18", result.Get("age__gte"))
+
+	// Assert on the produced url.Values via be_url by wrapping them in a *url.URL.
+	u := &url.URL{RawQuery: result.Encode()}
+	betestify.Assert(t, u, be_url.URL(
+		// plain-value form: bare field for the default "eq" operator
+		be_url.HavingSearchParam("status", "active"),
+		// matcher-value form: the "__gte" suffix encodes to "age__gte"
+		// and the value "18" must read as a numeric string.
+		be_url.HavingSearchParam("age__gte", be_reflected.AsNumericString()),
+	))
 }
 
 func TestFormatDjangoFilters_SkipsGroups(t *testing.T) {
@@ -193,5 +206,62 @@ func TestFormatDjangoFilters_SkipsGroups(t *testing.T) {
 	}
 
 	result := r3url.FormatDjangoFilters(filters, cfg)
-	assert.Empty(t, result)
+
+	// AND/OR groups are not representable in Django style, so nothing is emitted.
+	u := &url.URL{RawQuery: result.Encode()}
+	betestify.Assert(t, u, be_url.URL(be_url.HavingRawQuery("")))
+}
+
+// TestFormatQuery_DjangoEndToEnd exercises the full FormatQuery -> url.Values path
+// and asserts the produced query string via be_url matchers, covering both
+// plain-value and matcher-value HavingSearchParam forms plus multi-value params.
+func TestFormatQuery_DjangoEndToEnd(t *testing.T) {
+	q := r3.Query{
+		Fields: r3.Fields{r3.NewFieldSpec("id"), r3.NewFieldSpec("name")},
+		Filters: r3.Filters{
+			&r3.FilterSpec{
+				Field:    r3.NewFieldSpec("status"),
+				Operator: r3.OperatorEq,
+				Value:    "active",
+			},
+			&r3.FilterSpec{
+				Field:    r3.NewFieldSpec("age"),
+				Operator: r3.OperatorGt,
+				Value:    18,
+			},
+			&r3.FilterSpec{
+				Field:    r3.NewFieldSpec("tags"),
+				Operator: r3.OperatorIn,
+				Value:    []any{"a", "b", "c"},
+			},
+		},
+		Sorts: r3.Sorts{
+			&r3.SortSpec{Column: r3.NewFieldSpec("name"), Direction: r3.SortDirectionAsc},
+		},
+		Pagination: r3.NewPaginationSpec(1, 25),
+	}
+
+	values, err := r3url.FormatQuery(q, r3url.WithDjangoStyleFilters("status", "age", "tags"))
+	betestify.Assert(t, err, be.Succeed())
+
+	u := &url.URL{RawQuery: values.Encode()}
+	betestify.Assert(t, u, be_url.URL(
+		// Django-style filters: bare field for eq, "__gt" suffix for gt.
+		be_url.HavingSearchParam("status", "active"),
+		be_url.HavingSearchParam("age__gt", be_reflected.AsNumericString()),
+		// "in" values are comma-joined into a single param value.
+		be_url.HavingSearchParam("tags__in", be_string.ContainingSubstring("b")),
+		// Reserved decomposed params.
+		be_url.HavingSearchParam("fields", be_string.ContainingSubstring("name")),
+		be_url.HavingSearchParam("sort", "name:asc"),
+		be_url.HavingSearchParam("page", "1"),
+		be_url.HavingSearchParam("page_size", "25"),
+	))
+
+	// HavingMultipleSearchParam reads the []string slice for a key; each Django
+	// param here is single-valued, so the slice has exactly one element.
+	betestify.Assert(t, u, be_url.HavingMultipleSearchParam("status", be.HaveLength(1)))
+
+	// be.HaveKeyWithValue works directly on url.Values (a map[string][]string).
+	betestify.Assert(t, values, be.HaveKeyWithValue("status", []string{"active"}))
 }

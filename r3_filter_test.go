@@ -4,7 +4,8 @@ import (
 	"testing"
 
 	"github.com/amberpixels/r3"
-	"github.com/stretchr/testify/assert"
+	"github.com/expectto/be"
+	betestify "github.com/expectto/be/x/testify"
 )
 
 func TestShortFormFilterHelpers(t *testing.T) {
@@ -31,25 +32,28 @@ func TestShortFormFilterHelpers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			assert.Equal(t, tt.wantField, tt.got.Field.String())
-			assert.Equal(t, tt.wantOp, tt.got.Operator)
-			assert.Equal(t, tt.wantVal, tt.got.Value)
+			betestify.Assert(t, tt.got.Field.String(), be.Eq(tt.wantField))
+			betestify.Assert(t, tt.got.Operator, be.Eq(tt.wantOp))
+			betestify.Assert(t, tt.got.Value, be.Eq(tt.wantVal))
 		})
 	}
 }
 
 func TestBetweenHelper(t *testing.T) {
 	f := r3.Between("age", 18, 65)
-	assert.Equal(t, "age", f.Field.String())
-	assert.Equal(t, r3.OperatorBetween, f.Operator)
-	assert.Equal(t, []any{18, 65}, f.Value)
+	betestify.Assert(t, f.Field.String(), be.Eq("age"))
+	betestify.Assert(t, f.Operator, be.Eq(r3.OperatorBetween))
+	// Between stores its bounds as a 2-element []any; assert both membership
+	// and exact value so the ordering/shape is pinned down.
+	betestify.Assert(t, f.Value, be.ContainElements(18, 65))
+	betestify.Assert(t, f.Value, be.Eq([]any{18, 65}))
 }
 
 func TestShortFormEquivalentToVerboseForm(t *testing.T) {
 	short := r3.Eq("name", "Berlin")
 	verbose := r3.F(r3.NewFieldSpec("name"), "Berlin")
 
-	assert.Equal(t, verbose.Field.String(), short.Field.String())
-	assert.Equal(t, verbose.Operator, short.Operator)
-	assert.Equal(t, verbose.Value, short.Value)
+	betestify.Assert(t, short.Field.String(), be.Eq(verbose.Field.String()))
+	betestify.Assert(t, short.Operator, be.Eq(verbose.Operator))
+	betestify.Assert(t, short.Value, be.Eq(verbose.Value))
 }

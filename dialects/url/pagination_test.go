@@ -6,6 +6,9 @@ import (
 
 	"github.com/amberpixels/r3"
 	r3url "github.com/amberpixels/r3/dialects/url"
+	"github.com/expectto/be/be_reflected"
+	"github.com/expectto/be/be_url"
+	betestify "github.com/expectto/be/x/testify"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -98,29 +101,30 @@ func TestParsePagination(t *testing.T) {
 func TestFormatPagination(t *testing.T) {
 	params := r3url.DefaultParamNames()
 
-	tests := []struct {
-		name     string
-		input    *r3.PaginationSpec
-		expected url.Values
-	}{
-		{
-			name:     "with page and size",
-			input:    r3.NewPaginationSpec(2, 25),
-			expected: url.Values{"page": {"2"}, "page_size": {"25"}},
-		},
-		{
-			name:     "nil pagination",
-			input:    nil,
-			expected: url.Values{},
-		},
-	}
+	t.Run("with page and size", func(t *testing.T) {
+		result := r3url.FormatPagination(r3.NewPaginationSpec(2, 25), params)
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result := r3url.FormatPagination(tt.input, params)
-			assert.Equal(t, tt.expected, result)
-		})
-	}
+		// Build a *url.URL from the produced url.Values so be_url matchers apply.
+		u := &url.URL{RawQuery: result.Encode()}
+		betestify.Assert(t, u, be_url.URL(
+			// plain-value form
+			be_url.HavingSearchParam("page", "2"),
+			// matcher-value form: page_size must be a numeric string ("25")
+			be_url.HavingSearchParam("page_size", be_reflected.AsNumericString()),
+		))
+	})
+
+	t.Run("nil pagination", func(t *testing.T) {
+		result := r3url.FormatPagination(nil, params)
+
+		// Empty url.Values -> empty raw query, no page params present.
+		u := &url.URL{RawQuery: result.Encode()}
+		betestify.Assert(t, u, be_url.URL(
+			be_url.HavingRawQuery(""),
+			be_url.HavingSearchParam("page", ""),
+			be_url.HavingSearchParam("page_size", ""),
+		))
+	})
 }
 
 func TestPaginationRoundTrip(t *testing.T) {
