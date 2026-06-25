@@ -44,6 +44,17 @@ type ChangeRecord struct {
 	// Action is the type of mutation (create, update, patch, delete, revert).
 	Action Action `json:"action" db:"action" bson:"action"`
 
+	// ActorID identifies who performed the change (e.g. user ID, API key ID).
+	// It is a first-class, indexable column — resolved from r3.GetActor(ctx) —
+	// so the activity log can be filtered/grouped by actor ("show everything
+	// user 7 did") without reaching into the Metadata JSON blob. Empty for the
+	// system/anonymous actor.
+	ActorID string `json:"actor_id,omitempty" db:"actor_id" bson:"actor_id,omitempty"`
+
+	// ActorType categorizes the actor (e.g. "user", "system", "api_key", "cron").
+	// First-class column alongside ActorID; resolved from r3.GetActor(ctx).
+	ActorType string `json:"actor_type,omitempty" db:"actor_type" bson:"actor_type,omitempty"`
+
 	// Version is a monotonically increasing counter per (record_type, record_id).
 	// Version 1 is always the initial create. This enables ordered history
 	// and "revert to version N" functionality.
@@ -97,15 +108,12 @@ func (fc FieldChange) String() string {
 	return fmt.Sprintf("%s: %v -> %v", fc.Field, fc.OldValue, fc.NewValue)
 }
 
-// Metadata carries contextual information about who made a change and why.
-// It is extracted from context.Context via a user-provided MetadataFunc.
+// Metadata carries optional contextual information about a change beyond who
+// performed it. The actor is a first-class concern and lives on ChangeRecord
+// directly (ActorID/ActorType); Metadata is for the surrounding context (where
+// it came from, request correlation, etc.). It is extracted from a
+// context.Context via a user-provided MetadataFunc.
 type Metadata struct {
-	// ActorID identifies who performed the change (e.g. user ID, API key ID).
-	ActorID string `json:"actor_id,omitempty"`
-
-	// ActorType categorizes the actor (e.g. "user", "system", "api_key", "migration").
-	ActorType string `json:"actor_type,omitempty"`
-
 	// Source describes where the change originated (e.g. "api", "admin_ui", "worker").
 	Source string `json:"source,omitempty"`
 

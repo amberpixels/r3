@@ -12,6 +12,7 @@ var (
 	fieldCreatedAt  = r3.NewFieldSpec("created_at")
 	fieldParentType = r3.NewFieldSpec("parent_type")
 	fieldParentID   = r3.NewFieldSpec("parent_id")
+	fieldActorID    = r3.NewFieldSpec("actor_id")
 )
 
 // QueryForRecord builds a Query that filters change records for a specific
@@ -39,6 +40,20 @@ func QueryForType(recordType string) r3.Query {
 	return r3.Query{
 		Filters: r3.Filters{
 			r3.F(fieldRecordType, recordType),
+		},
+		Sorts:      r3.Sorts{r3.NewSortDescSpec(fieldCreatedAt)},
+		Pagination: r3.NoPagination(),
+	}
+}
+
+// QueryForActor builds a Query that filters change records by the actor who
+// performed them, sorted by created_at descending. This answers "show me
+// everything user X did" — possible only because the actor is a first-class
+// column on ChangeRecord (not buried in the Metadata JSON blob).
+func QueryForActor(actorID string) r3.Query {
+	return r3.Query{
+		Filters: r3.Filters{
+			r3.F(fieldActorID, actorID),
 		},
 		Sorts:      r3.Sorts{r3.NewSortDescSpec(fieldCreatedAt)},
 		Pagination: r3.NoPagination(),

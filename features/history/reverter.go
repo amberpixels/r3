@@ -85,15 +85,18 @@ func (r *Reverter[T, ID]) RevertTo(ctx context.Context, id ID, version int64) (T
 		diffFn = Diff[T]
 	}
 
+	actor := r3.GetActor(ctx)
 	record := ChangeRecord{
 		RecordType: r.opts.RecordType,
 		RecordID:   recordID,
 		Action:     ActionRevert,
+		ActorID:    actor.ID,
+		ActorType:  actor.Type,
 		Changes:    r3.NewJSONColumn(diffFn(current, result)),
 		CreatedAt:  time.Now(),
 	}
 
-	meta := buildMetadata(ctx, r.opts.MetadataFunc)
+	meta := metadataFromCtx(ctx, r.opts.MetadataFunc)
 	meta.Extra = mergeExtra(meta.Extra, map[string]string{
 		"reverted_to_version": strconv.FormatInt(version, 10),
 	})
@@ -123,13 +126,10 @@ func (r *Reverter[T, ID]) RevertTo(ctx context.Context, id ID, version int64) (T
 		evaluateSnapshotRules(
 			ctx,
 			r.opts.SnapshotRules,
-			record.RecordType,
-			record.RecordID,
-			record.Version,
+			record,
 			ActionRevert,
 			current,
 			result,
-			record.Metadata.Val,
 		)
 	}
 

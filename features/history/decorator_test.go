@@ -669,9 +669,7 @@ func TestCRUD_MetadataFunc(t *testing.T) {
 		history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
 		history.WithMetadataFunc[Order, int64](func(_ context.Context) history.Metadata {
 			return history.Metadata{
-				ActorID:   "user_42",
-				ActorType: "user",
-				Source:    "api",
+				Source: "api",
 			}
 		}),
 	)
@@ -684,12 +682,8 @@ func TestCRUD_MetadataFunc(t *testing.T) {
 		t.Fatal("expected at least 1 record")
 	}
 
-	meta := records[0].Metadata.Val
-	if meta.ActorID != "user_42" {
-		t.Errorf("expected ActorID 'user_42', got %q", meta.ActorID)
-	}
-	if meta.Source != "api" {
-		t.Errorf("expected Source 'api', got %q", meta.Source)
+	if records[0].Metadata.Val.Source != "api" {
+		t.Errorf("expected Source 'api', got %q", records[0].Metadata.Val.Source)
 	}
 }
 
@@ -710,12 +704,11 @@ func TestCRUD_ActorContext_AutoPopulate(t *testing.T) {
 		t.Fatal("expected at least 1 record")
 	}
 
-	meta := records[0].Metadata.Val
-	if meta.ActorID != "42" {
-		t.Errorf("expected ActorID '42', got %q", meta.ActorID)
+	if records[0].ActorID != "42" {
+		t.Errorf("expected ActorID '42', got %q", records[0].ActorID)
 	}
-	if meta.ActorType != "user" {
-		t.Errorf("expected ActorType 'user', got %q", meta.ActorType)
+	if records[0].ActorType != "user" {
+		t.Errorf("expected ActorType 'user', got %q", records[0].ActorType)
 	}
 }
 
@@ -736,57 +729,21 @@ func TestCRUD_ActorContext_SystemDefault(t *testing.T) {
 		t.Fatal("expected at least 1 record")
 	}
 
-	meta := records[0].Metadata.Val
-	if meta.ActorID != "" {
-		t.Errorf("expected empty ActorID for SystemActor, got %q", meta.ActorID)
+	if records[0].ActorID != "" {
+		t.Errorf("expected empty ActorID for SystemActor, got %q", records[0].ActorID)
 	}
-	if meta.ActorType != "system" {
-		t.Errorf("expected ActorType 'system', got %q", meta.ActorType)
-	}
-}
-
-func TestCRUD_ActorContext_MetadataFuncTakesPrecedence(t *testing.T) {
-	crud := newMemoryCRUD()
-	store := newMemoryChangeRecordCRUD()
-
-	// MetadataFunc explicitly sets ActorID/ActorType — these should win over context.
-	repo := history.WithHistory[Order, int64](crud, store,
-		history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
-		history.WithMetadataFunc[Order, int64](func(_ context.Context) history.Metadata {
-			return history.Metadata{
-				ActorID:   "api_key_99",
-				ActorType: "api_key",
-				Source:    "api",
-			}
-		}),
-	)
-
-	// Context has a different actor — should be overridden by MetadataFunc.
-	ctx := r3.WithActor(context.Background(), r3.Actor{ID: "42", Type: "user"})
-	order, _ := repo.Create(ctx, Order{Name: "Test", Total: 100, Status: "ok"})
-
-	records, _, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
-	if len(records) == 0 {
-		t.Fatal("expected at least 1 record")
-	}
-
-	meta := records[0].Metadata.Val
-	if meta.ActorID != "api_key_99" {
-		t.Errorf("expected ActorID 'api_key_99', got %q", meta.ActorID)
-	}
-	if meta.ActorType != "api_key" {
-		t.Errorf("expected ActorType 'api_key', got %q", meta.ActorType)
-	}
-	if meta.Source != "api" {
-		t.Errorf("expected Source 'api', got %q", meta.Source)
+	if records[0].ActorType != "system" {
+		t.Errorf("expected ActorType 'system', got %q", records[0].ActorType)
 	}
 }
 
-func TestCRUD_ActorContext_MetadataFuncPartialFillFromContext(t *testing.T) {
+func TestCRUD_ActorContext_IsSourceOfTruth(t *testing.T) {
 	crud := newMemoryCRUD()
 	store := newMemoryChangeRecordCRUD()
 
-	// MetadataFunc sets Source but leaves ActorID/ActorType empty — should be filled from context.
+	// MetadataFunc supplies only surrounding context (Source); the actor always
+	// comes from r3.GetActor(ctx) and lands on the first-class ChangeRecord
+	// fields — MetadataFunc can no longer override it.
 	repo := history.WithHistory[Order, int64](crud, store,
 		history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
 		history.WithMetadataFunc[Order, int64](func(_ context.Context) history.Metadata {
@@ -804,15 +761,14 @@ func TestCRUD_ActorContext_MetadataFuncPartialFillFromContext(t *testing.T) {
 		t.Fatal("expected at least 1 record")
 	}
 
-	meta := records[0].Metadata.Val
-	if meta.ActorID != "7" {
-		t.Errorf("expected ActorID '7' from context, got %q", meta.ActorID)
+	if records[0].ActorID != "7" {
+		t.Errorf("expected ActorID '7' from context, got %q", records[0].ActorID)
 	}
-	if meta.ActorType != "admin" {
-		t.Errorf("expected ActorType 'admin' from context, got %q", meta.ActorType)
+	if records[0].ActorType != "admin" {
+		t.Errorf("expected ActorType 'admin' from context, got %q", records[0].ActorType)
 	}
-	if meta.Source != "admin_ui" {
-		t.Errorf("expected Source 'admin_ui' from MetadataFunc, got %q", meta.Source)
+	if records[0].Metadata.Val.Source != "admin_ui" {
+		t.Errorf("expected Source 'admin_ui' from MetadataFunc, got %q", records[0].Metadata.Val.Source)
 	}
 }
 
@@ -844,12 +800,11 @@ func TestReverter_ActorContext(t *testing.T) {
 
 	// All records should have the Actor info.
 	for _, rec := range records {
-		meta := rec.Metadata.Val
-		if meta.ActorID != "admin_1" {
-			t.Errorf("record %s: expected ActorID 'admin_1', got %q", rec.Action, meta.ActorID)
+		if rec.ActorID != "admin_1" {
+			t.Errorf("record %s: expected ActorID 'admin_1', got %q", rec.Action, rec.ActorID)
 		}
-		if meta.ActorType != "admin" {
-			t.Errorf("record %s: expected ActorType 'admin', got %q", rec.Action, meta.ActorType)
+		if rec.ActorType != "admin" {
+			t.Errorf("record %s: expected ActorType 'admin', got %q", rec.Action, rec.ActorType)
 		}
 	}
 

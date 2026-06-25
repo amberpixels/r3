@@ -6,17 +6,17 @@ import (
 	r3utils "github.com/amberpixels/r3/internal/utils"
 )
 
-// MetadataFunc extracts Metadata from a context.Context.
-// Typically this reads actor info from middleware-injected context values.
+// MetadataFunc extracts surrounding-context Metadata (Source, Extra) from a
+// context.Context. The actor is NOT set here — it is a first-class ChangeRecord
+// field resolved from r3.GetActor(ctx). Use this for where-it-came-from and
+// request-correlation data.
 //
 // Example:
 //
 //	func metadataFromCtx(ctx context.Context) Metadata {
-//	    user := auth.UserFromContext(ctx)
 //	    return r3history.Metadata{
-//	        ActorID:   user.ID,
-//	        ActorType: "user",
-//	        Source:    "api",
+//	        Source: "admin_ui",
+//	        Extra:  map[string]string{"request_id": reqID(ctx)},
 //	    }
 //	}
 type MetadataFunc func(ctx context.Context) Metadata
@@ -50,10 +50,10 @@ type Options[T any, ID comparable] struct {
 	// (e.g. Order -> "orders", CampaignAdset -> "campaign_adsets").
 	RecordType string
 
-	// MetadataFunc extracts actor/context metadata from the request context.
-	// If nil, the history decorator still populates ActorID and ActorType
-	// from r3.GetActor(ctx) automatically. If MetadataFunc is set but
-	// leaves ActorID/ActorType empty, those are filled from the Actor context.
+	// MetadataFunc extracts surrounding-context metadata (Source, Extra) from the
+	// request context. The actor is always recorded independently as the
+	// first-class ChangeRecord.ActorID/ActorType fields, resolved from
+	// r3.GetActor(ctx) — MetadataFunc does not affect it.
 	MetadataFunc MetadataFunc
 
 	// DiffFunc provides a custom diff implementation.

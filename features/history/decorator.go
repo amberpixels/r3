@@ -270,16 +270,22 @@ func (h *CRUD[T, ID]) record(ctx context.Context, info recordInfo[T], diffFn fun
 			recordID = fmt.Sprint(h.opts.IDFunc(info.entity))
 		}
 
+		actor := r3.GetActor(ctx)
 		record := ChangeRecord{
 			RecordType: h.opts.RecordType,
 			RecordID:   recordID,
 			Action:     info.action,
+			ActorID:    actor.ID,
+			ActorType:  actor.Type,
 			Changes:    r3.NewJSONColumn(diffFn()),
 			CreatedAt:  time.Now(),
 		}
 
-		// Metadata: merge user-provided metadata with Actor from context.
-		record.Metadata = r3.NewJSONColumn(buildMetadata(ctx, h.opts.MetadataFunc))
+		// Metadata carries only the surrounding context (Source, Extra); the
+		// actor is a first-class field, resolved above from r3.GetActor(ctx).
+		if h.opts.MetadataFunc != nil {
+			record.Metadata = r3.NewJSONColumn(h.opts.MetadataFunc(ctx))
+		}
 
 		// Parent reference
 		if h.opts.ParentRef != nil {
@@ -331,13 +337,10 @@ func (h *CRUD[T, ID]) evaluateSnapshots(ctx context.Context, record ChangeRecord
 	evaluateSnapshotRules(
 		ctx,
 		h.opts.SnapshotRules,
-		record.RecordType,
-		record.RecordID,
-		record.Version,
+		record,
 		info.action,
 		info.old,
 		info.entity,
-		record.Metadata.Val,
 	)
 }
 
@@ -351,31 +354,14 @@ func (h *CRUD[T, ID]) handleError(ctx context.Context, err error) {
 	slog.ErrorContext(ctx, "r3history: record failed", "record_type", h.opts.RecordType, "error", err)
 }
 
-// buildMetadata constructs a Metadata value by combining the user-provided
-// MetadataFunc (if any) with the r3.Actor from the context. The Actor's ID
-// and Type are used as fallback defaults — if the MetadataFunc already sets
-// ActorID or ActorType, those values take precedence.
-//
-// This ensures that r3.WithActor(ctx, actor) automatically populates history
-// metadata without requiring an explicit MetadataFunc.
-func buildMetadata(ctx context.Context, metadataFunc MetadataFunc) Metadata {
-	var meta Metadata
-	if metadataFunc != nil {
-		meta = metadataFunc(ctx)
+// metadataFromCtx returns the surrounding-context Metadata (Source, Extra) from
+// the user-provided MetadataFunc, or a zero Metadata if none is configured. The
+// actor is resolved separately as a first-class field via r3.GetActor(ctx).
+func metadataFromCtx(ctx context.Context, metadataFunc MetadataFunc) Metadata {
+	if metadataFunc == nil {
+		return Metadata{}
 	}
-
-	// Fill ActorID/ActorType from context if not already set by MetadataFunc.
-	if meta.ActorID == "" || meta.ActorType == "" {
-		actor := r3.GetActor(ctx)
-		if meta.ActorID == "" {
-			meta.ActorID = actor.ID
-		}
-		if meta.ActorType == "" {
-			meta.ActorType = actor.Type
-		}
-	}
-
-	return meta
+	return metadataFunc(ctx)
 }
 
 // nextVersion computes the next version number for a (recordType, recordID) pair

@@ -38,6 +38,11 @@ type Snapshot struct {
 	// Useful when multiple rules exist for the same entity type.
 	RuleName string `json:"rule_name,omitempty" db:"rule_name" bson:"rule_name,omitempty"`
 
+	// ActorID / ActorType identify who triggered the snapshot, mirrored from the
+	// change record that produced it (resolved from r3.GetActor(ctx)).
+	ActorID   string `json:"actor_id,omitempty"   db:"actor_id"   bson:"actor_id,omitempty"`
+	ActorType string `json:"actor_type,omitempty" db:"actor_type" bson:"actor_type,omitempty"`
+
 	// Data is the full serialized state of the entity at snapshot time.
 	// Stored as JSON bytes for portability across storage backends.
 	Data json.RawMessage `json:"data" db:"data" bson:"data"`
@@ -120,12 +125,9 @@ func UnmarshalSnapshot[T any](data json.RawMessage) (T, error) {
 func evaluateSnapshotRules[T any](
 	ctx context.Context,
 	rules []SnapshotRule[T],
-	recordType string,
-	recordID string,
-	version int64,
+	rec ChangeRecord,
 	action Action,
 	old, cur T,
-	meta Metadata,
 ) {
 	for _, rule := range rules {
 		if rule.Condition == nil || rule.Store == nil {
@@ -146,12 +148,14 @@ func evaluateSnapshotRules[T any](
 
 		snapshot := Snapshot{
 			ID:         generateID(),
-			RecordType: recordType,
-			RecordID:   recordID,
-			Version:    version,
+			RecordType: rec.RecordType,
+			RecordID:   rec.RecordID,
+			Version:    rec.Version,
 			RuleName:   rule.Name,
+			ActorID:    rec.ActorID,
+			ActorType:  rec.ActorType,
 			Data:       MarshalSnapshot(entity),
-			Metadata:   r3.NewJSONColumn(meta),
+			Metadata:   rec.Metadata,
 			CreatedAt:  time.Now(),
 		}
 
@@ -164,9 +168,9 @@ func evaluateSnapshotRules[T any](
 				"rule",
 				rule.Name,
 				"record_type",
-				recordType,
+				rec.RecordType,
 				"record_id",
-				recordID,
+				rec.RecordID,
 				"error",
 				err,
 			)
