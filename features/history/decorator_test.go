@@ -712,6 +712,82 @@ func TestCRUD_ActorContext_AutoPopulate(t *testing.T) {
 	}
 }
 
+func TestCRUD_RecordEvent(t *testing.T) {
+	crud := newMemoryCRUD()
+	store := newMemoryChangeRecordCRUD()
+	repo := history.WithHistory[Order, int64](crud, store,
+		history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
+	)
+
+	ctx := r3.WithActor(context.Background(), r3.Actor{ID: "5", Type: "user"})
+	order, _ := repo.Create(ctx, Order{Name: "X", Total: 1, Status: "ok"})
+
+	ev, err := repo.RecordEvent(ctx, order.ID, "comment_added", map[string]any{"text": "hi"})
+	if err != nil {
+		t.Fatalf("RecordEvent: %v", err)
+	}
+	if ev.Action != history.ActionEvent || ev.EventType != "comment_added" {
+		t.Errorf("event shape wrong: action=%q type=%q", ev.Action, ev.EventType)
+	}
+	if ev.EventData.Val["text"] != "hi" {
+		t.Errorf("event data not stored: %+v", ev.EventData.Val)
+	}
+	// The event shares the timeline: create (v1) + event (v2).
+	records, _, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
+	if len(records) != 2 {
+		t.Fatalf("expected create + event = 2 records, got %d", len(records))
+	}
+}
+
+func TestCRUD_RecordSyntheticCreate(t *testing.T) {
+	crud := newMemoryCRUD()
+	store := newMemoryChangeRecordCRUD()
+	repo := history.WithHistory[Order, int64](crud, store,
+		history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
+		history.WithFixedActor[Order, int64](r3.Actor{ID: "1", Type: "system"}),
+	)
+
+	born := time.Date(2025, 12, 1, 9, 0, 0, 0, time.UTC)
+	old := Order{ID: 7, Name: "Old", Total: 9, Status: "ok"}
+	rec, err := repo.RecordSyntheticCreate(context.Background(), old, born)
+	if err != nil {
+		t.Fatalf("RecordSyntheticCreate: %v", err)
+	}
+	if rec.Action != history.ActionCreate || !rec.Synthetic {
+		t.Errorf("expected synthetic create, got action=%q synthetic=%v", rec.Action, rec.Synthetic)
+	}
+	if !rec.CreatedAt.Equal(born) {
+		t.Errorf("synthetic create should be dated %v, got %v", born, rec.CreatedAt)
+	}
+	if rec.ActorID != "1" || rec.Note == "" || len(rec.Changes.Val) == 0 {
+		t.Errorf("synthetic create missing actor/note/changes: %+v", rec)
+	}
+}
+
+func TestCRUD_FixedActor(t *testing.T) {
+	crud := newMemoryCRUD()
+	store := newMemoryChangeRecordCRUD()
+
+	// A system/worker repo: every change is attributed to the fixed actor,
+	// ignoring whatever (if anything) is on the context.
+	repo := history.WithHistory[Order, int64](crud, store,
+		history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
+		history.WithFixedActor[Order, int64](r3.Actor{ID: "1", Type: "system"}),
+	)
+
+	ctx := r3.WithActor(context.Background(), r3.Actor{ID: "99", Type: "user"})
+	order, _ := repo.Create(ctx, Order{Name: "Test", Total: 1, Status: "ok"})
+
+	records, _, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
+	if len(records) == 0 {
+		t.Fatal("expected at least 1 record")
+	}
+	if records[0].ActorID != "1" || records[0].ActorType != "system" {
+		t.Errorf("fixed actor not applied: got id=%q type=%q, want 1/system",
+			records[0].ActorID, records[0].ActorType)
+	}
+}
+
 func TestCRUD_ActorContext_SystemDefault(t *testing.T) {
 	crud := newMemoryCRUD()
 	store := newMemoryChangeRecordCRUD()

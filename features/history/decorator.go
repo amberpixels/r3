@@ -247,6 +247,58 @@ func (h *CRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 	return nil
 }
 
+// RecordEvent appends a domain or synthetic event to an entity's activity
+// timeline (Action ActionEvent), separate from field-level changes. eventType
+// names the event (e.g. "comment_added", "activity_logging_started"); data is an
+// optional structured payload. The actor is resolved like any change (the fixed
+// actor if configured, else the context actor). The event takes the next
+// timeline version and is skipped by state reconstruction (it carries no diff).
+func (h *CRUD[T, ID]) RecordEvent(
+	ctx context.Context, id ID, eventType string, data map[string]any,
+) (ChangeRecord, error) {
+	actor := resolveActor(ctx, h.opts.FixedActor)
+	rec := ChangeRecord{
+		RecordType: h.opts.RecordType,
+		RecordID:   fmt.Sprint(id),
+		Action:     ActionEvent,
+		EventType:  eventType,
+		EventData:  r3.NewJSONColumn(data),
+		ActorID:    actor.ID,
+		ActorType:  actor.Type,
+		Metadata:   r3.NewJSONColumn(metadataFromCtx(ctx, h.opts.MetadataFunc)),
+		CreatedAt:  time.Now(),
+	}
+	return persistVersioned(ctx, h.store, h.versionLocks, rec)
+}
+
+// RecordSyntheticCreate writes a best-effort "create" for an entity that already
+// existed before tracking began: it captures the entity's CURRENT state as the
+// create diff, dated `at` (the entity's real creation time), and flags the
+// record Synthetic with an explanatory Note. Use during backfill so an entity
+// with no recorded history still shows an origin point.
+func (h *CRUD[T, ID]) RecordSyntheticCreate(
+	ctx context.Context, entity T, at time.Time,
+) (ChangeRecord, error) {
+	actor := resolveActor(ctx, h.opts.FixedActor)
+	recordID := ""
+	if h.opts.IDFunc != nil {
+		recordID = fmt.Sprint(h.opts.IDFunc(entity))
+	}
+	rec := ChangeRecord{
+		RecordType: h.opts.RecordType,
+		RecordID:   recordID,
+		Action:     ActionCreate,
+		Synthetic:  true,
+		Note:       "Reconstructed from current data — the values at creation are not known.",
+		Changes:    r3.NewJSONColumn(DiffCreate(entity)),
+		ActorID:    actor.ID,
+		ActorType:  actor.Type,
+		Metadata:   r3.NewJSONColumn(metadataFromCtx(ctx, h.opts.MetadataFunc)),
+		CreatedAt:  at,
+	}
+	return persistVersioned(ctx, h.store, h.versionLocks, rec)
+}
+
 // recordInfo holds context for building a change record and evaluating snapshot rules.
 type recordInfo[T any] struct {
 	entity T      // the entity after mutation (or before deletion)
@@ -270,7 +322,7 @@ func (h *CRUD[T, ID]) record(ctx context.Context, info recordInfo[T], diffFn fun
 			recordID = fmt.Sprint(h.opts.IDFunc(info.entity))
 		}
 
-		actor := r3.GetActor(ctx)
+		actor := resolveActor(ctx, h.opts.FixedActor)
 		record := ChangeRecord{
 			RecordType: h.opts.RecordType,
 			RecordID:   recordID,
@@ -352,6 +404,16 @@ func (h *CRUD[T, ID]) handleError(ctx context.Context, err error) {
 		return
 	}
 	slog.ErrorContext(ctx, "r3history: record failed", "record_type", h.opts.RecordType, "error", err)
+}
+
+// resolveActor returns the actor to attribute a change to: the decorator's
+// fixed actor when configured (a system/worker repo), otherwise the context
+// actor (r3.GetActor, which defaults to SystemActor when none is set).
+func resolveActor(ctx context.Context, fixed *r3.Actor) r3.Actor {
+	if fixed != nil {
+		return *fixed
+	}
+	return r3.GetActor(ctx)
 }
 
 // metadataFromCtx returns the surrounding-context Metadata (Source, Extra) from

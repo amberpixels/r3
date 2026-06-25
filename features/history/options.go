@@ -3,6 +3,7 @@ package history
 import (
 	"context"
 
+	"github.com/amberpixels/r3"
 	r3utils "github.com/amberpixels/r3/internal/utils"
 )
 
@@ -55,6 +56,13 @@ type Options[T any, ID comparable] struct {
 	// first-class ChangeRecord.ActorID/ActorType fields, resolved from
 	// r3.GetActor(ctx) — MetadataFunc does not affect it.
 	MetadataFunc MetadataFunc
+
+	// FixedActor, when set, attributes every change recorded by this decorator to
+	// the given actor, ignoring r3.GetActor(ctx). Use it for a repository whose
+	// writes are always one identity — e.g. a system/worker repo where mutations
+	// run on background contexts that carry no principal. When nil (default), the
+	// actor is resolved from the context per-call.
+	FixedActor *r3.Actor
 
 	// DiffFunc provides a custom diff implementation.
 	// If nil, the default reflection-based Diff[T] is used.
@@ -115,6 +123,15 @@ func WithRecordType[T any, ID comparable](name string) Option[T, ID] {
 func WithMetadataFunc[T any, ID comparable](fn MetadataFunc) Option[T, ID] {
 	return func(o *Options[T, ID]) {
 		o.MetadataFunc = fn
+	}
+}
+
+// WithFixedActor attributes every change recorded by this decorator to actor,
+// ignoring the context actor. Use for a system/worker repo whose writes are
+// always one identity. See Options.FixedActor.
+func WithFixedActor[T any, ID comparable](actor r3.Actor) Option[T, ID] {
+	return func(o *Options[T, ID]) {
+		o.FixedActor = &actor
 	}
 }
 

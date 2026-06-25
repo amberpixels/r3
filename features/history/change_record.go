@@ -21,6 +21,9 @@ const (
 	ActionDelete Action = "delete"
 	// ActionRevert indicates the entity was reverted to a previous version.
 	ActionRevert Action = "revert"
+	// ActionEvent indicates a domain/synthetic event on the entity's timeline
+	// rather than a field-level mutation — see ChangeRecord.EventType.
+	ActionEvent Action = "event"
 )
 
 // ChangeRecord represents a single entry in the activity log.
@@ -80,6 +83,28 @@ type ChangeRecord struct {
 	// ParentID is the primary key of the parent entity, stringified.
 	// Empty if this entity has no parent.
 	ParentID string `json:"parent_id,omitempty" db:"parent_id" bson:"parent_id,omitempty"`
+
+	// EventType, when non-empty, marks this entry as a domain or synthetic
+	// *event* on the entity's timeline (Action is ActionEvent) rather than a
+	// field-level mutation — e.g. "activity_logging_started", "comment_added".
+	// Changes is usually empty for events; EventData carries any structured
+	// payload. This makes the activity log a single timeline of changes AND
+	// events, queried and ordered together.
+	EventType string `json:"event_type,omitempty" db:"event_type" bson:"event_type,omitempty"`
+
+	// EventData is an optional structured payload for an event (e.g. the comment
+	// text, the signer). Stored as a JSON blob via JSONColumn.
+	EventData r3.JSONColumn[map[string]any] `json:"event_data" db:"event_data" bson:"event_data,omitempty"`
+
+	// Synthetic marks a record that was reconstructed rather than observed — e.g.
+	// a backfilled "create" inferred from an entity's CURRENT state because
+	// tracking began after the entity already existed. Its Changes are
+	// best-effort, not the values at the original mutation.
+	Synthetic bool `json:"synthetic,omitempty" db:"synthetic" bson:"synthetic,omitempty"`
+
+	// Note is an optional human remark shown alongside the entry (e.g. why a
+	// record is synthetic).
+	Note string `json:"note,omitempty" db:"note" bson:"note,omitempty"`
 
 	// Metadata carries contextual information about who made the change and why.
 	// Stored as a JSON blob in SQL databases via JSONColumn.

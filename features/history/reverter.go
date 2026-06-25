@@ -85,7 +85,7 @@ func (r *Reverter[T, ID]) RevertTo(ctx context.Context, id ID, version int64) (T
 		diffFn = Diff[T]
 	}
 
-	actor := r3.GetActor(ctx)
+	actor := resolveActor(ctx, r.opts.FixedActor)
 	record := ChangeRecord{
 		RecordType: r.opts.RecordType,
 		RecordID:   recordID,
