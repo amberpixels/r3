@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/amberpixels/r3"
+	"github.com/amberpixels/years"
 )
 
 // RollupPolicy defines how to compact old fine-grained metric records into
@@ -69,7 +70,7 @@ type rollupKey struct {
 // Execute runs a single rollup pass for the given record type.
 // Returns the number of records deleted (compacted) and the number of summary records created.
 func (rx *RollupExecutor) Execute(ctx context.Context, recordType string) (int64, int64) {
-	cutoff := time.Now().UTC().Add(-rx.policy.MinAge)
+	cutoff := years.Now().UTC().Add(-rx.policy.MinAge)
 
 	// Query old records.
 	q := r3.Query{
@@ -137,9 +138,9 @@ func (rx *RollupExecutor) Execute(ctx context.Context, recordType string) (int64
 		})
 
 		// Parse the target bucket as a timestamp for CreatedAt.
-		bucketTime, parseErr := time.Parse(time.RFC3339, key.Bucket)
+		bucketTime, parseErr := years.Parse(time.RFC3339, key.Bucket)
 		if parseErr != nil {
-			bucketTime = time.Now().UTC()
+			bucketTime = years.Now().UTC()
 		}
 
 		summary := MetricRecord{

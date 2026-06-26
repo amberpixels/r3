@@ -1,6 +1,10 @@
 package metrics
 
-import "time"
+import (
+	"time"
+
+	"github.com/amberpixels/years"
+)
 
 // BucketSize defines the granularity of time-based metric bucketing.
 type BucketSize string
@@ -14,30 +18,27 @@ const (
 )
 
 // ComputeBucket truncates a timestamp to the given bucket boundary
-// and returns it as an ISO8601/RFC3339 string.
+// and returns it as an ISO8601/RFC3339 string. Truncation is delegated to the
+// years library so the boundary semantics stay consistent across the codebase.
 func ComputeBucket(t time.Time, size BucketSize) string {
 	t = t.UTC()
+	mt := years.Mutate(&t)
 	switch size {
 	case BucketMinutely:
-		return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), 0, 0, time.UTC).Format(time.RFC3339)
+		mt.TruncateToMinute()
 	case BucketHourly:
-		return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), 0, 0, 0, time.UTC).Format(time.RFC3339)
+		mt.TruncateToHour()
 	case BucketDaily:
-		return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+		mt.TruncateToDay()
 	case BucketWeekly:
-		// ISO week: Monday is day 0.
-		weekday := int(t.Weekday())
-		if weekday == 0 {
-			weekday = 7 // Sunday
-		}
-		monday := t.AddDate(0, 0, -(weekday - 1))
-		return time.Date(monday.Year(), monday.Month(), monday.Day(), 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+		// ISO-8601 weeks start on Monday.
+		mt.TruncateToWeek(time.Monday)
 	case BucketMonthly:
-		return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+		mt.TruncateToMonth()
 	default:
-		// Default to daily
-		return time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC).Format(time.RFC3339)
+		mt.TruncateToDay()
 	}
+	return mt.Time().Format(time.RFC3339)
 }
 
 // TimeRange defines a time window for querying metrics.
@@ -48,19 +49,19 @@ type TimeRange struct {
 
 // LastMinutes returns a TimeRange covering the last n minutes.
 func LastMinutes(n int) TimeRange {
-	now := time.Now().UTC()
+	now := years.Now().UTC()
 	return TimeRange{From: now.Add(-time.Duration(n) * time.Minute), To: now}
 }
 
 // LastHours returns a TimeRange covering the last n hours.
 func LastHours(n int) TimeRange {
-	now := time.Now().UTC()
+	now := years.Now().UTC()
 	return TimeRange{From: now.Add(-time.Duration(n) * time.Hour), To: now}
 }
 
 // LastDays returns a TimeRange covering the last n days.
 func LastDays(n int) TimeRange {
-	now := time.Now().UTC()
+	now := years.Now().UTC()
 	return TimeRange{From: now.AddDate(0, 0, -n), To: now}
 }
 
@@ -83,7 +84,7 @@ func Last30Days() TimeRange { return LastDays(daysPerMonth) }
 
 // LastMonth returns a TimeRange covering the last calendar month.
 func LastMonth() TimeRange {
-	now := time.Now().UTC()
+	now := years.Now().UTC()
 	return TimeRange{From: now.AddDate(0, -1, 0), To: now}
 }
 

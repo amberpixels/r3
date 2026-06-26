@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/amberpixels/r3"
+	"github.com/amberpixels/years"
 )
 
 // RetentionPolicy defines rules for automatic cleanup of old change records.
@@ -91,7 +92,7 @@ func (e *RetentionEnforcer) Start(ctx context.Context, recordType string, interv
 // versions into its oldest surviving record, keeping that record a self-sufficient
 // full baseline.
 func (e *RetentionEnforcer) enforceMaxAge(ctx context.Context, recordType string) int64 {
-	cutoff := time.Now().UTC().Add(-e.policy.MaxAge)
+	cutoff := years.Now().UTC().Add(-e.policy.MaxAge)
 
 	// Fetch all versions of the type so we can see, per entity, both the
 	// pre-cutoff versions to prune and the survivors to compact into.

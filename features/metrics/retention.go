@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/amberpixels/r3"
+	"github.com/amberpixels/years"
 )
 
 // RetentionPolicy defines rules for automatic cleanup of old metric records.
@@ -96,7 +97,7 @@ func (e *RetentionEnforcer) Start(ctx context.Context, recordType string, interv
 
 // enforceMaxAge deletes records older than the configured MaxAge.
 func (e *RetentionEnforcer) enforceMaxAge(ctx context.Context, recordType string) int64 {
-	cutoff := time.Now().UTC().Add(-e.policy.MaxAge)
+	cutoff := years.Now().UTC().Add(-e.policy.MaxAge)
 
 	// Query for records older than the cutoff.
 	q := r3.Query{
@@ -127,7 +128,7 @@ func (e *RetentionEnforcer) enforceMaxRecords(ctx context.Context, recordType st
 	// Fetch all records for this type (sorted by created_at desc via QueryByType).
 	q := QueryByType(recordType, TimeRange{
 		From: time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC),
-		To:   time.Now().UTC().Add(time.Hour), // generous future bound
+		To:   years.Now().UTC().Add(time.Hour), // generous future bound
 	})
 	records, _, err := e.store.List(ctx, q)
 	if err != nil {
