@@ -3,11 +3,17 @@ package enginesql
 import (
 	"fmt"
 	"reflect"
+	"sync"
 
 	"github.com/amberpixels/r3"
 	r3tag "github.com/amberpixels/r3/internal/tag"
 	r3utils "github.com/amberpixels/r3/internal/utils"
 )
+
+// structMetaCache memoizes StructMeta per type. Derivation reflects over the
+// whole struct (and its relation targets), so without caching every CRUD op
+// would re-reflect; drivers used to call GetStructMeta on each call.
+var structMetaCache sync.Map // reflect.Type -> StructMeta
 
 // RelationKind describes the type of relationship between two entities.
 // Alias of r3tag.RelationKind.
@@ -61,12 +67,18 @@ type StructMeta struct {
 // Pointer-to-basic types are kept (nullable columns); slices, maps, and
 // struct fields (except time.Time) are treated as relation fields.
 func GetStructMeta[T any]() StructMeta {
-	var t T
-	typ := reflect.TypeOf(t)
+	typ := reflect.TypeFor[T]()
 	if typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 	}
-	return buildStructMeta(typ, true)
+	if cached, ok := structMetaCache.Load(typ); ok {
+		if meta, ok := cached.(StructMeta); ok {
+			return meta
+		}
+	}
+	meta := buildStructMeta(typ, true)
+	structMetaCache.Store(typ, meta)
+	return meta
 }
 
 // getStructMetaForType derives StructMeta from a reflect.Type.

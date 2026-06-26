@@ -42,6 +42,7 @@ configRepo  r3.CRUD[Config, string]   // YAML files on disk
 - [Quick Start](#quick-start)
 - [Architecture](#architecture)
 - [Filters](#filters)
+- [Schema & Capabilities](#schema--capabilities)
 - [Pagination](#pagination)
 - [Transactions](#transactions)
 - [URL Query Parsing](#url-query-parsing)
@@ -316,6 +317,55 @@ r3.Eq("deleted_at", nil)  // IS NULL
 
 **Available operators:** `Eq`, `Ne`, `Gt`, `Gte`, `Lt`, `Lte`, `In`, `NotIn`,
 `Like`, `NotLike`, `ILike`, `Between`, `BetweenEx`, `BetweenExInc`, `BetweenIncEx`, `Exists`.
+
+## Schema & Capabilities
+
+`r3.SchemaOf[T]()` reflects an entity's struct tags into a **`Schema`** — an
+ordered set of capability-bearing **`Attribute`s**. Each attribute declares what
+it may do via five capabilities: `Filterable`, `Sortable`, `Queryable` (select &
+output), `Creatable`, and `Mutable`. Defaults are permissive — a plain scalar
+column gets all five — and tags only ever *tighten* them:
+
+```go
+type Campaign struct {
+    ID        int64     `r3:"id,pk"`                          // read-only identity
+    Title     string    `r3:"title"`                          // all capabilities
+    Status    string    `r3:"status,enum:draft|active|paused"` // enum + allowed values
+    Slug      string    `r3:"slug,immutable"`                 // creatable once, then read-only
+    Spend     int       `r3:"spend,readonly"`                 // feed-synced; users can't write
+    Secret    string    `r3:"secret,no-filter,no-sort,no-output"` // hidden everywhere
+    CreatedAt time.Time `r3:"created_at"`                     // server-managed (read-only)
+}
+```
+
+The SQL engines consume the schema automatically:
+
+- **Reads are validated.** An unknown or disallowed filter/sort/select field
+  becomes a typed error *before any SQL runs* — `ErrUnknownField`,
+  `ErrFieldNotFilterable`, `ErrFieldNotSortable`, `ErrFieldNotQueryable` — instead
+  of a backend 500. Each error wraps the offending field name.
+- **Writes are shaped.** `Create` writes only `Creatable` columns; `Update`/`Patch`
+  write only `Mutable` columns. A full `Update` can no longer clobber `created_at`
+  or resurrect a soft-deleted row. The `created_at`/`updated_at` timestamps are
+  *system-managed*: the engine stamps them with server time (read-only to callers,
+  written by the system), so `created_at` is set on create and `updated_at` bumps
+  on every write.
+
+Capabilities are the **public ceiling**: the `permissions` feature only narrows
+them per-actor/row, never widens. For an audited system/worker write of a
+user-immutable column (e.g. a nightly feed sync), open the explicit door — it
+skips only the capability check, never the structural floor (the PK and computed
+attributes stay unwritable), and the write still passes through `history`/`metrics`:
+
+```go
+r3.SystemWriter(repo).Update(ctx, feedRow)          // ergonomic wrapper
+repo.Update(r3.WithoutWriteGuard(ctx), feedRow)     // or the raw context marker
+```
+
+A schema serializes to a stable, public-only JSON shape via
+`dialects/schema.MarshalSchema` (non-queryable attributes are omitted), so a
+consumer can describe an entity to a frontend for column pickers and a dynamic
+filter UI.
 
 ## Pagination
 

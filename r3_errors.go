@@ -16,3 +16,17 @@ import "errors"
 //	    // respond 404, etc.
 //	}
 var ErrNotFound = errors.New("r3: record not found")
+
+// Schema validation errors. Schema.ValidateQuery wraps the offending field name
+// (fmt.Errorf("%w: %q", err, name)) so a consumer can surface a useful 400-class
+// message instead of leaking a backend driver error (which would otherwise be a 500).
+var (
+	// ErrUnknownField is returned when a referenced field is not declared by the schema.
+	ErrUnknownField = errors.New("unknown field")
+	// ErrFieldNotFilterable is returned when a non-filterable field appears in Query.Filters.
+	ErrFieldNotFilterable = errors.New("field is not filterable")
+	// ErrFieldNotSortable is returned when a non-sortable field appears in Query.Sorts.
+	ErrFieldNotSortable = errors.New("field is not sortable")
+	// ErrFieldNotQueryable is returned when a non-queryable field appears in Query.Fields.
+	ErrFieldNotQueryable = errors.New("field is not queryable")
+)

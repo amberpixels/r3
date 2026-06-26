@@ -1,0 +1,196 @@
+{
+  "version": 1,
+  "attributes": [
+    {
+      "name": "id",
+      "type": "int",
+      "caps": {
+        "filterable": true,
+        "sortable": true,
+        "queryable": true,
+        "creatable": false,
+        "mutable": false
+      },
+      "ops": [
+        "eq",
+        "ne",
+        "in",
+        "nin",
+        "exists",
+        "gt",
+        "gte",
+        "lt",
+        "lte",
+        "between",
+        "between_exc",
+        "between_exc_inc",
+        "between_inc_exc"
+      ],
+      "computed": false
+    },
+    {
+      "name": "title",
+      "type": "string",
+      "caps": {
+        "filterable": true,
+        "sortable": true,
+        "queryable": true,
+        "creatable": true,
+        "mutable": true
+      },
+      "ops": [
+        "eq",
+        "ne",
+        "in",
+        "nin",
+        "like",
+        "notlike",
+        "ilike",
+        "exists"
+      ],
+      "computed": false
+    },
+    {
+      "name": "status",
+      "type": "enum",
+      "caps": {
+        "filterable": true,
+        "sortable": true,
+        "queryable": true,
+        "creatable": true,
+        "mutable": true
+      },
+      "ops": [
+        "eq",
+        "ne",
+        "in",
+        "nin"
+      ],
+      "enum": [
+        "draft",
+        "active",
+        "paused"
+      ],
+      "computed": false
+    },
+    {
+      "name": "budget",
+      "type": "float",
+      "caps": {
+        "filterable": true,
+        "sortable": true,
+        "queryable": true,
+        "creatable": true,
+        "mutable": true
+      },
+      "ops": [
+        "eq",
+        "ne",
+        "in",
+        "nin",
+        "exists",
+        "gt",
+        "gte",
+        "lt",
+        "lte",
+        "between",
+        "between_exc",
+        "between_exc_inc",
+        "between_inc_exc"
+      ],
+      "computed": false
+    },
+    {
+      "name": "slug",
+      "type": "string",
+      "caps": {
+        "filterable": true,
+        "sortable": true,
+        "queryable": true,
+        "creatable": true,
+        "mutable": false
+      },
+      "ops": [
+        "eq",
+        "ne",
+        "in",
+        "nin",
+        "like",
+        "notlike",
+        "ilike",
+        "exists"
+      ],
+      "computed": false
+    },
+    {
+      "name": "spend",
+      "type": "int",
+      "caps": {
+        "filterable": true,
+        "sortable": true,
+        "queryable": true,
+        "creatable": false,
+        "mutable": false
+      },
+      "ops": [
+        "eq",
+        "ne",
+        "in",
+        "nin",
+        "exists",
+        "gt",
+        "gte",
+        "lt",
+        "lte",
+        "between",
+        "between_exc",
+        "between_exc_inc",
+        "between_inc_exc"
+      ],
+      "computed": false
+    },
+    {
+      "name": "created_at",
+      "type": "time",
+      "caps": {
+        "filterable": true,
+        "sortable": true,
+        "queryable": true,
+        "creatable": false,
+        "mutable": false
+      },
+      "ops": [
+        "eq",
+        "ne",
+        "in",
+        "nin",
+        "exists",
+        "gt",
+        "gte",
+        "lt",
+        "lte",
+        "between",
+        "between_exc",
+        "between_exc_inc",
+        "between_inc_exc"
+      ],
+      "computed": false
+    },
+    {
+      "name": "adsets",
+      "type": "relation",
+      "caps": {
+        "filterable": false,
+        "sortable": false,
+        "queryable": true,
+        "creatable": false,
+        "mutable": false
+      },
+      "relation": {
+        "target": "adset",
+        "kind": "has-many"
+      },
+      "computed": false
+    }
+  ]
+}

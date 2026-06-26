@@ -12,8 +12,9 @@ var ErrInvalidIdentifier = errors.New("invalid identifier")
 // ErrNoPatchFields is returned by Patch when the Fields list is empty or nil.
 var ErrNoPatchFields = errors.New("patch requires at least one field")
 
-// ErrInvalidPatchField is returned by Patch when a field name does not match
-// any column in the model, or refers to a non-patchable column (e.g. PK, soft-delete).
+// ErrInvalidPatchField is returned by a write (Patch, or full Update SET-shaping)
+// when a field name does not match any attribute in the schema, or names an
+// attribute that is not mutable (e.g. PK, created_at, soft-delete, immutable).
 var ErrInvalidPatchField = errors.New("invalid patch field")
 
 // ValidateIdentifier checks that s is a safe SQL identifier or dotted identifier path.

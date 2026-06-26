@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/amberpixels/r3"
 )
@@ -38,6 +39,7 @@ type BaseCRUD[T any, ID comparable] struct {
 	DefaultsManager
 
 	Meta   StructMeta
+	Schema r3.Schema // logical schema for read validation and write-shaping
 	Flavor Flavor
 	Config r3.Config
 	Raw    *BaseRaw[T, ID]
@@ -59,6 +61,7 @@ func NewBaseCRUD[T any, ID comparable](db *sql.DB, flavor Flavor, opts ...r3.Opt
 		sqlDB:           db,
 		DefaultsManager: r3.NewDefaultsManagerWithConfig(resolved.Config),
 		Meta:            meta,
+		Schema:          r3.SchemaOf[T](r3.WithSchemaNaming(resolved.Config.Naming)),
 		Flavor:          flavor,
 		Config:          resolved.Config,
 		Raw:             NewBaseRaw[T, ID](db, meta),
@@ -83,8 +86,8 @@ func (r *BaseCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 		return r.createWithLastInsertID(ctx, entity)
 	}
 
-	cols := r.Meta.NonPKColumns()
-	vals := r.Meta.NonPKFieldValues(entity)
+	cols := r.createColumns(ctx, &entity)
+	vals := r.Meta.FieldValuesForColumns(entity, cols)
 
 	query := fmt.Sprintf(
 		"INSERT INTO %s (%s) VALUES (%s) RETURNING %s",
@@ -102,10 +105,50 @@ func (r *BaseCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 	return entity, nil
 }
 
+// createColumns returns the columns an INSERT writes and stamps the entity with
+// server time on the managed timestamp columns (created_at/updated_at). The
+// caller-writable set is the Creatable columns (or all non-PK under a bypass);
+// the managed timestamps are appended on top — they are system-written, not
+// caller-written — unless the caller already supplies them (bypass).
+func (r *BaseCRUD[T, ID]) createColumns(ctx context.Context, entityPtr *T) []string {
+	cols := WriteColumns(ctx, r.Schema, r.Meta.NonPKColumns(), r3.WriteOpCreate)
+	return append(cols, r.stampManagedTimestamps(ctx, entityPtr, cols, r3.WriteOpCreate)...)
+}
+
+// updateColumns returns the columns an UPDATE writes and stamps the entity with
+// server time on updated_at. The caller-writable set is the Mutable columns (so
+// created_at and other read-only columns are never clobbered, and a soft-deleted
+// row is not resurrected), or all non-PK columns under a bypass.
+func (r *BaseCRUD[T, ID]) updateColumns(ctx context.Context, entityPtr *T) []string {
+	cols := WriteColumns(ctx, r.Schema, r.Meta.NonPKColumns(), r3.WriteOpMutate)
+	return append(cols, r.stampManagedTimestamps(ctx, entityPtr, cols, r3.WriteOpMutate)...)
+}
+
+// stampManagedTimestamps sets server time on the managed timestamp columns the op
+// writes and returns them so the caller can add them to the write set. It is a
+// no-op under the write-guard bypass (a worker supplies explicit timestamps), for
+// a zero schema (legacy "write everything" behavior), and for any timestamp the
+// caller already lists.
+func (r *BaseCRUD[T, ID]) stampManagedTimestamps(
+	ctx context.Context, entityPtr *T, callerCols []string, op r3.WriteOp,
+) []string {
+	if r.Schema.IsZero() || r3.WriteGuardBypassed(ctx) {
+		return nil
+	}
+	var inject []string
+	for _, c := range ManagedTimestampColumns(r.Meta, r.Config.Naming, op) {
+		if !slices.Contains(callerCols, c) {
+			inject = append(inject, c)
+		}
+	}
+	SetTimeColumns(r.Meta, entityPtr, inject, time.Now())
+	return inject
+}
+
 // createWithLastInsertID is the fallback Create for databases without RETURNING (MySQL).
 func (r *BaseCRUD[T, ID]) createWithLastInsertID(ctx context.Context, entity T) (T, error) {
-	cols := r.Meta.NonPKColumns()
-	vals := r.Meta.NonPKFieldValues(entity)
+	cols := r.createColumns(ctx, &entity)
+	vals := r.Meta.FieldValuesForColumns(entity, cols)
 
 	insertQuery := fmt.Sprintf(
 		"INSERT INTO %s (%s) VALUES (%s)",
@@ -180,9 +223,21 @@ func (r *BaseCRUD[T, ID]) buildFilterSQL(
 	return whereParts, whereArgs, joinSQL, argIdx
 }
 
+// prepareList merges the query args with defaults, validates the merged query
+// against the schema (so an unknown/non-filterable/non-sortable/non-queryable
+// field is a typed error before any SQL is built), then builds the SQL
+// components. A zero schema validates nothing.
+func (r *BaseCRUD[T, ID]) prepareList(qarg ...r3.Query) (PreparedListQuery, error) {
+	merged := r.MergeListQuery(qarg...)
+	if err := r.Schema.ValidateQuery(merged); err != nil {
+		return PreparedListQuery{}, err
+	}
+	return PrepareMergedListQuery(merged)
+}
+
 // Count returns the number of records matching the query's filters.
 func (r *BaseCRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, error) {
-	prep, err := PrepareListQuery(&r.DefaultsManager, qarg...)
+	prep, err := r.prepareList(qarg...)
 	if err != nil {
 		return 0, err
 	}
@@ -207,7 +262,7 @@ func (r *BaseCRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, e
 
 // List retrieves records based on the provided query parameters.
 func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, error) {
-	prep, err := PrepareListQuery(&r.DefaultsManager, qarg...)
+	prep, err := r.prepareList(qarg...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -329,6 +384,9 @@ func (r *BaseCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 	var entity T
 
 	q := r.MergeGetQuery(qarg...)
+	if err := r.Schema.ValidateQuery(q); err != nil {
+		return entity, err
+	}
 
 	// Resolve selected columns (Fields selection)
 	selectedCols := FieldsToColumns(q.Fields)
@@ -369,9 +427,23 @@ func (r *BaseCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 }
 
 // Update modifies an existing record identified by its primary key.
+//
+// Only Mutable columns are written (schema-shaped): a full Update can no longer
+// clobber created_at or resurrect a soft-deleted row. A model with no mutable
+// columns makes Update a verified no-op. The write guard can be bypassed for
+// audited system/worker writes (see r3.WithoutWriteGuard).
 func (r *BaseCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
-	cols := r.Meta.NonPKColumns()
-	vals := r.Meta.NonPKFieldValues(entity)
+	cols := r.updateColumns(ctx, &entity)
+	if len(cols) == 0 {
+		// Nothing to write — confirm the row exists to preserve Update's
+		// not-found contract, then return the entity unchanged.
+		if err := r.requireExists(ctx, r.Meta.PKValue(entity)); err != nil {
+			return entity, err
+		}
+		return entity, nil
+	}
+
+	vals := r.Meta.FieldValuesForColumns(entity, cols)
 	pkVal := r.Meta.PKValue(entity)
 
 	query := fmt.Sprintf(
@@ -401,6 +473,11 @@ func (r *BaseCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields)
 	if err != nil {
 		return entity, err
 	}
+	if err := RequireMutableColumns(ctx, r.Schema, cols); err != nil {
+		return entity, err
+	}
+	// A partial update still bumps updated_at (server time), like a full Update.
+	cols = append(cols, r.stampManagedTimestamps(ctx, &entity, cols, r3.WriteOpMutate)...)
 
 	if !r.Flavor.SupportsRETURNING {
 		return r.patchWithoutRETURNING(ctx, entity, cols)
@@ -571,6 +648,20 @@ func (r *BaseCRUD[T, ID]) requireUpdatedRow(ctx context.Context, res sql.Result,
 		return nil
 	}
 
+	exists, err := r.existsByPK(ctx, pkVal)
+	if err != nil {
+		return err
+	}
+	if !exists {
+		return r3.ErrNotFound
+	}
+	return nil
+}
+
+// requireExists returns r3.ErrNotFound when no row has the given primary key.
+// Used by Update when there are no mutable columns to write, so the no-op still
+// honors the not-found contract.
+func (r *BaseCRUD[T, ID]) requireExists(ctx context.Context, pkVal any) error {
 	exists, err := r.existsByPK(ctx, pkVal)
 	if err != nil {
 		return err

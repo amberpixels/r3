@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"time"
 
 	"github.com/amberpixels/r3"
 	enginesql "github.com/amberpixels/r3/engine/sql"
@@ -17,6 +18,8 @@ type GormCRUD[T any, ID comparable] struct {
 
 	enginesql.DefaultsManager
 
+	meta   enginesql.StructMeta
+	schema r3.Schema // logical schema for read validation and write-shaping
 	Config r3.Config
 	raw    *GormRaw[T, ID]
 }
@@ -31,19 +34,62 @@ func NewGormCRUD[T any, ID comparable](db *gorm.DB, opts ...r3.Option) *GormCRUD
 	return &GormCRUD[T, ID]{
 		db:              db,
 		DefaultsManager: r3.NewDefaultsManagerWithConfig(resolved.Config),
+		meta:            enginesql.GetStructMeta[T](),
+		schema:          r3.SchemaOf[T](r3.WithSchemaNaming(resolved.Config.Naming)),
 		Config:          resolved.Config,
 		raw:             NewGormRaw[T, ID](db),
 	}
 }
 
 func (r *GormCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
-	if err := r.db.WithContext(ctx).Create(&entity).Error; err != nil {
+	db := r.db.WithContext(ctx)
+	// Omit non-creatable columns (readonly feed columns, the soft-delete column)
+	// so the DB fills their defaults. The PK is never omitted, so GORM keeps
+	// handling it (auto-increment or a caller-set key) exactly as before. Managed
+	// timestamps are stamped with server time and written, not omitted.
+	if omit := r.writeOmit(ctx, &entity, r3.WriteOpCreate); len(omit) > 0 {
+		db = db.Omit(omit...)
+	}
+	if err := db.Create(&entity).Error; err != nil {
 		return entity, err
 	}
 	if err := r.syncAssociations(ctx, &entity); err != nil {
 		return entity, err
 	}
 	return entity, nil
+}
+
+// writeOmit returns the non-PK columns to Omit from a GORM write for the given
+// op, and stamps the entity's managed timestamp columns (created_at/updated_at)
+// with server time. Managed timestamps are kept OUT of the omit set so GORM
+// writes the engine-set values — they are system-written, not omitted. The omit
+// set is empty (and no stamping happens) when the write guard is bypassed or no
+// schema is present, so the write proceeds unrestricted with caller values.
+func (r *GormCRUD[T, ID]) writeOmit(ctx context.Context, entityPtr *T, op r3.WriteOp) []string {
+	nonPK := r.meta.NonPKColumns()
+	writable := enginesql.WriteColumns(ctx, r.schema, nonPK, op)
+	if len(writable) == len(nonPK) {
+		return nil // unrestricted (bypass or zero schema): caller controls everything
+	}
+
+	allowed := make(map[string]bool, len(writable))
+	for _, c := range writable {
+		allowed[c] = true
+	}
+	// Managed timestamps are system-written: stamp them and treat as writable.
+	managed := enginesql.ManagedTimestampColumns(r.meta, r.Config.Naming, op)
+	enginesql.SetTimeColumns(r.meta, entityPtr, managed, time.Now())
+	for _, c := range managed {
+		allowed[c] = true
+	}
+
+	var omit []string
+	for _, c := range nonPK {
+		if !allowed[c] {
+			omit = append(omit, c)
+		}
+	}
+	return omit
 }
 
 func (r *GormCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, error) {
@@ -144,8 +190,11 @@ func (r *GormCRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, e
 func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, error) {
 	var entity T
 
-	meta := enginesql.GetStructMeta[T]()
+	meta := r.meta
 	q := r.MergeGetQuery(qarg...)
+	if err := r.schema.ValidateQuery(q); err != nil {
+		return entity, err
+	}
 
 	query := r.db.WithContext(ctx)
 
@@ -189,7 +238,17 @@ func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 }
 
 func (r *GormCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
-	if err := r.db.WithContext(ctx).Save(&entity).Error; err != nil {
+	db := r.db.WithContext(ctx)
+	// Omit non-mutable columns (created_at, readonly feed columns, the
+	// soft-delete column) so a full Update can't clobber them or resurrect a
+	// soft-deleted row, while updated_at is stamped with server time and written.
+	// This keeps Save's semantics (associations, zero-value writes) for every
+	// other column. With nothing to protect (or under a bypass), Omit is empty
+	// and this is the original full Save.
+	if omit := r.writeOmit(ctx, &entity, r3.WriteOpMutate); len(omit) > 0 {
+		db = db.Omit(omit...)
+	}
+	if err := db.Save(&entity).Error; err != nil {
 		return entity, err
 	}
 	if err := r.syncAssociations(ctx, &entity); err != nil {
@@ -201,10 +260,20 @@ func (r *GormCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 func (r *GormCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields) (T, error) {
 	cols := r3.FieldsToStrings(fields)
 
-	meta := enginesql.GetStructMeta[T]()
+	meta := r.meta
 	cols, err := meta.ValidatePatchColumns(cols)
 	if err != nil {
 		return entity, err
+	}
+	if err := enginesql.RequireMutableColumns(ctx, r.schema, cols); err != nil {
+		return entity, err
+	}
+	// A partial update still bumps updated_at (server time), like a full Update.
+	if !r.schema.IsZero() && !r3.WriteGuardBypassed(ctx) {
+		if managed := enginesql.ManagedTimestampColumns(meta, r.Config.Naming, r3.WriteOpMutate); len(managed) > 0 {
+			enginesql.SetTimeColumns(meta, &entity, managed, time.Now())
+			cols = append(cols, managed...)
+		}
 	}
 
 	if err := r.db.WithContext(ctx).Model(&entity).Select(cols).Updates(entity).Error; err != nil {
@@ -221,7 +290,7 @@ func (r *GormCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields)
 }
 
 func (r *GormCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
-	meta := enginesql.GetStructMeta[T]()
+	meta := r.meta
 	if err := r.db.WithContext(ctx).
 		Where(clause.Eq{Column: meta.PKColumn, Value: id}).
 		Delete(new(T)).Error; err != nil {
@@ -232,7 +301,7 @@ func (r *GormCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 
 // Restore un-deletes a soft-deleted record by clearing its soft-delete column.
 func (r *GormCRUD[T, ID]) Restore(ctx context.Context, id ID) error {
-	meta := enginesql.GetStructMeta[T]()
+	meta := r.meta
 	softDeleteCol := meta.SoftDeleteColumn
 	if softDeleteCol == "" {
 		softDeleteCol = "deleted_at"
@@ -244,7 +313,7 @@ func (r *GormCRUD[T, ID]) Restore(ctx context.Context, id ID) error {
 
 // HardDelete permanently removes a record, bypassing GORM's soft-delete.
 func (r *GormCRUD[T, ID]) HardDelete(ctx context.Context, id ID) error {
-	meta := enginesql.GetStructMeta[T]()
+	meta := r.meta
 	return r.db.WithContext(ctx).Unscoped().
 		Where(clause.Eq{Column: meta.PKColumn, Value: id}).
 		Delete(new(T)).Error
@@ -253,7 +322,7 @@ func (r *GormCRUD[T, ID]) HardDelete(ctx context.Context, id ID) error {
 // syncAssociations syncs M2M and owned has-many relations after Create/Update.
 // Uses direct SQL based on R3 relation metadata — no GORM association tags needed.
 func (r *GormCRUD[T, ID]) syncAssociations(ctx context.Context, entityPtr *T) error {
-	meta := enginesql.GetStructMeta[T]()
+	meta := r.meta
 	if len(meta.Relations) == 0 {
 		return nil
 	}
@@ -367,6 +436,9 @@ func (r *GormCRUD[T, ID]) prepareList(
 	ctx context.Context, qarg ...r3.Query,
 ) (enginesql.PreparedListQuery, error) {
 	merged := r.MergeListQuery(qarg...)
+	if err := r.schema.ValidateQuery(merged); err != nil {
+		return enginesql.PreparedListQuery{}, err
+	}
 	if hasRelationFilters(merged.Filters) {
 		lowered, err := lowerRelationFilters[T](ctx, r.db, merged.Filters)
 		if err != nil {

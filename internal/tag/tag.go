@@ -16,6 +16,13 @@
 //	r3:"rel:has-many,fk:city_id"
 //	r3:"rel:belongs-to,fk:city_id"
 //	r3:"rel:has-many,fk:city_id,table:translations"
+//
+// Capability flags (additive — they tighten the permissive defaults, never widen):
+//
+//	r3:"secret_token,no-filter,no-sort,no-output" // hidden from filter/sort/select
+//	r3:"population,readonly"                        // not creatable, not mutable
+//	r3:"slug,immutable"                             // creatable once, not mutable
+//	r3:"status,enum:draft|planned|published"        // enum type + allowed values
 package r3tag
 
 import (
@@ -31,6 +38,15 @@ type ColumnTag struct {
 	IsPK       bool   // field is the primary key
 	Skip       bool   // field should be skipped (tag value is "-")
 	SoftDelete bool   // r3:"soft_delete"
+
+	// Capability flags. They are additive and only ever tighten the schema's
+	// permissive defaults (see r3.SchemaOf) — never widen them.
+	NoFilter  bool     // r3:"...,no-filter"  — not allowed in Query.Filters
+	NoSort    bool     // r3:"...,no-sort"    — not allowed in Query.Sorts
+	NoOutput  bool     // r3:"...,no-output"  — hidden from SELECT and serialized output
+	ReadOnly  bool     // r3:"...,readonly"   — not creatable and not mutable
+	Immutable bool     // r3:"...,immutable"  — creatable once, then not mutable
+	Enum      []string // r3:"...,enum:a|b|c" — enum data type with the allowed values
 }
 
 // ParseColumnTag reads column metadata from struct tags.
@@ -101,14 +117,16 @@ func parseRawColumnTag(raw string) ColumnTag {
 // that should not be treated as a column name.
 func isKnownKeyword(s string) bool {
 	switch s {
-	case "pk", "soft_delete", "owned":
+	case "pk", "soft_delete", "owned",
+		"no-filter", "no-sort", "no-output", "readonly", "immutable":
 		return true
 	}
 	return strings.HasPrefix(s, "rel:") ||
 		strings.HasPrefix(s, "fk:") ||
 		strings.HasPrefix(s, "ref:") ||
 		strings.HasPrefix(s, "join:") ||
-		strings.HasPrefix(s, "table:")
+		strings.HasPrefix(s, "table:") ||
+		strings.HasPrefix(s, "enum:")
 }
 
 // applyFlag applies a known tag flag to a ColumnTag.
@@ -118,7 +136,33 @@ func applyFlag(tag *ColumnTag, flag string) {
 		tag.IsPK = true
 	case "soft_delete":
 		tag.SoftDelete = true
+	case "no-filter":
+		tag.NoFilter = true
+	case "no-sort":
+		tag.NoSort = true
+	case "no-output":
+		tag.NoOutput = true
+	case "readonly":
+		tag.ReadOnly = true
+	case "immutable":
+		tag.Immutable = true
+	default:
+		if values, ok := strings.CutPrefix(flag, "enum:"); ok {
+			tag.Enum = parseEnumValues(values)
+		}
 	}
+}
+
+// parseEnumValues splits a pipe-separated enum value list ("a|b|c") into a
+// trimmed slice, dropping empty entries.
+func parseEnumValues(raw string) []string {
+	var out []string
+	for v := range strings.SplitSeq(raw, "|") {
+		if v = strings.TrimSpace(v); v != "" {
+			out = append(out, v)
+		}
+	}
+	return out
 }
 
 // RelationKind describes the type of relationship between two entities.
