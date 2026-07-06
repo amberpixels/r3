@@ -13,11 +13,9 @@ import (
 )
 
 // NOTE on MatchTemplate + SQL:
-// be_string.MatchTemplate turns "{{name}}" into the regex group "(?P<name>.+)" and
-// compiles the REST of the template as a raw, UNANCHORED regex. That means every SQL
-// metacharacter that is also a regex metacharacter ('(', ')', '?', '|', '.', '[', ...)
-// must be backslash-escaped in the template, and you must add ^...$ yourself if you
-// want a full-string (not substring) match. See the friction report for details.
+// be_string.MatchTemplate turns "{{name}}" into a capture group and treats all
+// other template text as LITERALS (SQL metacharacters like '(', ')', '?' need no
+// escaping). The template is anchored: it must match the whole string.
 
 func TestCursorToSQLClause_SingleColumnDesc(t *testing.T) {
 	sorts := r3.Sorts{r3.NewSortDescSpec(r3.NewFieldSpec("created_at"))}
@@ -30,9 +28,9 @@ func TestCursorToSQLClause_SingleColumnDesc(t *testing.T) {
 	betestify.Assert(t, clause.Clause, be.Eq(`"created_at" < ?`))
 
 	// Structural assertion: a quoted column, the comparison operator '<' and a '?'
-	// placeholder. '?' is escaped (\?) so it is a literal; ^...$ anchors the whole string.
+	// placeholder — all literal text, matched against the whole string.
 	betestify.Assert(t, clause.Clause, be_string.MatchTemplate(
-		`^{{col}} < \?$`,
+		`{{col}} < ?`,
 		be_string.V("col", be_string.MatchWildcard(`"*"`)),
 	))
 
@@ -50,7 +48,7 @@ func TestCursorToSQLClause_SingleColumnAsc(t *testing.T) {
 
 	// ASC forward -> '>' operator. Constrain the column to a double-quoted identifier.
 	betestify.Assert(t, clause.Clause, be_string.MatchTemplate(
-		`^{{col}} > \?$`,
+		`{{col}} > ?`,
 		be_string.V("col", be_string.MatchWildcard(`"*"`)),
 	))
 
@@ -69,7 +67,7 @@ func TestCursorToSQLClause_SingleColumnBackward(t *testing.T) {
 
 	// The flip is the interesting behavior: assert the operator is '>' via template.
 	betestify.Assert(t, clause.Clause, be_string.MatchTemplate(
-		`^"created_at" {{op}} \?$`,
+		`"created_at" {{op}} ?`,
 		be_string.V("op", be.Eq(">")),
 	))
 }
@@ -91,10 +89,10 @@ func TestCursorToSQLClause_MultiColumn(t *testing.T) {
 	expected := `(("created_at" < ?) OR ("created_at" = ? AND "id" > ?))`
 	betestify.Assert(t, clause.Clause, be.Eq(expected))
 
-	// Structural template for the compound keyset condition. EVERY literal paren and
-	// question mark must be escaped, otherwise they are read as regex group/quantifier.
+	// Structural template for the compound keyset condition — parens and question
+	// marks are plain literals.
 	betestify.Assert(t, clause.Clause, be_string.MatchTemplate(
-		`^\(\({{c1}} < \?\) OR \({{c2}} = \? AND {{c3}} > \?\)\)$`,
+		`(({{c1}} < ?) OR ({{c2}} = ? AND {{c3}} > ?))`,
 		be_string.V("c1", be_string.MatchWildcard(`"*"`)),
 		be_string.V("c2", be_string.MatchWildcard(`"*"`)),
 		be_string.V("c3", be_string.MatchWildcard(`"*"`)),
@@ -131,10 +129,10 @@ func TestCursorToSQLClause_ThreeColumns(t *testing.T) {
 	expected := `(("score" < ?) OR ("score" = ? AND "name" > ?) OR ("score" = ? AND "name" = ? AND "id" > ?))`
 	betestify.Assert(t, clause.Clause, be.Eq(expected))
 
-	// Full structural template across three OR-branches (all metacharacters escaped).
+	// Full structural template across three OR-branches.
 	betestify.Assert(t, clause.Clause, be_string.MatchTemplate(
-		`^\(\({{a}} < \?\) OR \({{b}} = \? AND {{c}} > \?\) OR `+
-			`\({{d}} = \? AND {{e}} = \? AND {{f}} > \?\)\)$`,
+		`(({{a}} < ?) OR ({{b}} = ? AND {{c}} > ?) OR `+
+			`({{d}} = ? AND {{e}} = ? AND {{f}} > ?))`,
 		be_string.V("a", be_string.MatchWildcard(`"*"`)),
 		be_string.V("b", be_string.MatchWildcard(`"*"`)),
 		be_string.V("c", be_string.MatchWildcard(`"*"`)),
@@ -162,7 +160,7 @@ func TestCursorToSQLClause_MissingValue(t *testing.T) {
 	// The error message structure is itself a "template": exercise MatchTemplate on it.
 	betestify.Assert(t, err.Error(), be_string.ContainingSubstring("missing value for sort column"))
 	betestify.Assert(t, err.Error(), be_string.MatchTemplate(
-		`missing value for sort column {{col}}`,
+		`invalid cursor token: missing value for sort column {{col}}`,
 		be_string.V("col", be_string.NonEmptyString()),
 	))
 }

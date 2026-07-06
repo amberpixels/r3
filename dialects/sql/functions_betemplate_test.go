@@ -14,9 +14,9 @@ import (
 // by FilterToSQL / FiltersToSQL. They sit alongside the exact-string testify checks in
 // functions_test.go and assert the *structure* of the SQL more expressively.
 //
-// Reminder: MatchTemplate compiles the template as an unanchored regex with
-// "{{x}}" -> "(?P<x>.+)". Literal '(', ')', '?', '|' MUST be backslash-escaped, and
-// you must add ^...$ yourself to anchor.
+// Reminder: MatchTemplate turns "{{x}}" into a capture group; all other template
+// text is LITERAL (no escaping of '(', ')', '?', '.') and the match is anchored
+// to the whole string.
 
 func TestFilterToSQL_Template_SimpleComparison(t *testing.T) {
 	clauses, err := r3sql.FiltersToSQL(r3.Filters{
@@ -31,7 +31,7 @@ func TestFilterToSQL_Template_SimpleComparison(t *testing.T) {
 	// Structural: <quoted-col> <op> <placeholder>. Constrain the operator placeholder
 	// to a known comparison op, the column to a double-quoted identifier.
 	betestify.Assert(t, got, be_string.MatchTemplate(
-		`^{{col}} {{op}} \?$`,
+		`{{col}} {{op}} ?`,
 		be_string.V("col", be_string.MatchWildcard(`"*"`)),
 		be_string.V("op", be.Eq("=")),
 	))
@@ -64,7 +64,7 @@ func TestFilterToSQL_Template_AllComparisonOperators(t *testing.T) {
 		// the kind of thing MatchTemplate is meant to express: "shape is col <op> ?,
 		// and the op is THIS".
 		betestify.Assert(t, got, be_string.MatchTemplate(
-			`^"col" {{op}} \?$`,
+			`"col" {{op}} ?`,
 			be_string.V("op", be.Eq(tc.want)),
 		), "operator %s", tc.op)
 	}
@@ -80,9 +80,9 @@ func TestFilterToSQL_Template_InList(t *testing.T) {
 	betestify.Assert(t, got, be.Eq(`"status" IN (?, ?, ?)`))
 
 	// Capture the whole placeholder list as one group and assert its shape with a
-	// nested wildcard. Parens escaped; the comma-separated '?'s become {{ph}}.
+	// nested wildcard: the comma-separated '?'s become {{ph}}.
 	betestify.Assert(t, got, be_string.MatchTemplate(
-		`^{{col}} IN \({{ph}}\)$`,
+		`{{col}} IN ({{ph}})`,
 		be_string.V("col", be_string.MatchWildcard(`"*"`)),
 		be_string.V("ph", be_string.MatchWildcard(`?*?`)), // at least two placeholders
 	))
@@ -102,7 +102,7 @@ func TestFilterToSQL_Template_Between(t *testing.T) {
 
 	// Compound BETWEEN expansion: (col op1 ? AND col op2 ?). Both ops captured.
 	betestify.Assert(t, got, be_string.MatchTemplate(
-		`^\({{col}} {{lo}} \? AND {{col2}} {{hi}} \?\)$`,
+		`({{col}} {{lo}} ? AND {{col2}} {{hi}} ?)`,
 		be_string.V("col", be.Eq(`"age"`)),
 		be_string.V("col2", be.Eq(`"age"`)),
 		be_string.V("lo", be.Eq(">=")),
@@ -129,10 +129,10 @@ func TestFilterToSQL_Template_NestedAndOr(t *testing.T) {
 	got := clauses[0].Clause
 	betestify.Assert(t, got, be.Eq(`("category" = ? AND ("price" < ? OR "on_sale" = ?))`))
 
-	// Full structural template of the nested group. Note the heavy escaping cost:
-	// 4 parens + 3 question marks all need a backslash.
+	// Full structural template of the nested group — parens and question marks
+	// are plain literals.
 	betestify.Assert(t, got, be_string.MatchTemplate(
-		`^\({{a}} = \? AND \({{b}} < \? OR {{c}} = \?\)\)$`,
+		`({{a}} = ? AND ({{b}} < ? OR {{c}} = ?))`,
 		be_string.V("a", be_string.MatchWildcard(`"*"`)),
 		be_string.V("b", be_string.MatchWildcard(`"*"`)),
 		be_string.V("c", be_string.MatchWildcard(`"*"`)),
@@ -155,7 +155,7 @@ func TestFilterToSQL_Template_IsNull(t *testing.T) {
 
 	// No placeholder here: the template just constrains the column shape.
 	betestify.Assert(t, got, be_string.MatchTemplate(
-		`^{{col}} IS NULL$`,
+		`{{col}} IS NULL`,
 		be_string.V("col", be_string.MatchWildcard(`"*"`)),
 	))
 }
@@ -169,10 +169,9 @@ func TestFilterToSQL_Template_QualifiedColumnWithJoin(t *testing.T) {
 	got := clauses[0].Clause
 	betestify.Assert(t, got, be.Eq(`"user"."name" = ?`))
 
-	// Qualified column "table"."col": '.' is a regex metachar, so it is escaped between
-	// the two placeholders.
+	// Qualified column "table"."col": the '.' between the placeholders is a literal.
 	betestify.Assert(t, got, be_string.MatchTemplate(
-		`^{{tbl}}\.{{col}} = \?$`,
+		`{{tbl}}.{{col}} = ?`,
 		be_string.V("tbl", be_string.MatchWildcard(`"*"`)),
 		be_string.V("col", be_string.MatchWildcard(`"*"`)),
 	))
