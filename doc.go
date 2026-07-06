@@ -62,7 +62,7 @@
 //     gopg) use their own ORM API but share engine/sql.PreparedListQuery for
 //     filter/sort/pagination translation. The mongo driver wraps engine/mongo.
 //   - features/: Composable decorators (permissions, history, metrics, validation,
-//     softdelete, transactor) that wrap any r3.CRUD regardless of backend.
+//     i18n, softdelete, transactor) that wrap any r3.CRUD regardless of backend.
 //
 // # Key design principle
 //

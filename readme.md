@@ -150,7 +150,7 @@ r3 (core)           Interfaces + query model. Zero dependencies.
   |
   +-- features/     Composable decorators that wrap ANY r3.CRUD[T, ID].
                       permissions, history, metrics, validation,
-                      softdelete, transactor
+                      i18n, softdelete, transactor
 ```
 
 ### Core (`r3` package)
@@ -275,6 +275,11 @@ repo := permissions.WithPermissions(
 - **validation** - Pre-mutation validation. Bring your own validator
   (go-playground/validator, ozzo-validation, plain Go). Patch-aware and
   state-transition-aware (can compare new vs existing entity).
+
+- **i18n** - Entity-content translations. Reads (Get/List) overlay translated
+  field values for the locale carried in the context (`r3.WithLocale`); writes
+  mark translations of changed source text stale for re-translation workers.
+  The translation store is itself an `r3.CRUD[Translation, string]`.
 
 - **softdelete** - Adds `Restore()` and `HardDelete()` to any CRUD that supports soft-delete.
 
