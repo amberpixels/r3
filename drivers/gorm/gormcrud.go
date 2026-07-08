@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/amberpixels/r3"
@@ -25,6 +26,7 @@ type GormCRUD[T any, ID comparable] struct {
 }
 
 var _ r3.CRUD[any, any] = &GormCRUD[any, any]{}
+var _ r3.Aggregator = &GormCRUD[any, any]{}
 
 // NewGormCRUD creates a new GORM-based CRUD repository.
 //
@@ -185,6 +187,61 @@ func (r *GormCRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, e
 		return 0, err
 	}
 	return total, nil
+}
+
+// Aggregate computes grouped aggregates over the records matching the query.
+// See r3.Aggregator for the query semantics.
+func (r *GormCRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.AggregateRow, error) {
+	merged := r.MergeListQuery(qarg...)
+	if hasRelationFilters(merged.Filters) {
+		lowered, err := lowerRelationFilters[T](ctx, r.db, merged.Filters)
+		if err != nil {
+			return nil, err
+		}
+		merged.Filters = lowered
+	}
+	prep, err := enginesql.PrepareMergedAggregateQuery(r.schema, merged)
+	if err != nil {
+		return nil, err
+	}
+
+	var entity T
+	query := r.db.WithContext(ctx).Model(&entity)
+
+	if prep.Query.IncludeTrashed.Some(true) {
+		query = query.Unscoped()
+	}
+	for _, join := range prep.Joins() {
+		query = query.Joins(join.String())
+	}
+	for _, clause := range prep.Clauses {
+		query = query.Where(clause.Clause, clause.Args...)
+	}
+
+	query = query.Select(strings.Join(prep.SelectList, ", "))
+	// Group by raw field names one at a time: gorm quotes each per its dialect
+	// (a pre-quoted name would be quoted twice; a joined "a, b" string only
+	// works by accident of gorm's raw-string comma heuristic).
+	for _, g := range prep.Query.GroupBy {
+		query = query.Group(g.String())
+	}
+	if prep.Having.Clause != "" {
+		query = query.Having(prep.Having.Clause, prep.Having.Args...)
+	}
+	for _, sort := range prep.Sorts {
+		query = query.Order(sort.String())
+	}
+	if prep.IsPaginated {
+		query = query.Limit(prep.Limit).Offset(prep.Offset)
+	}
+
+	rows, err := query.Rows()
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return enginesql.ScanAggregateRows(rows)
 }
 
 func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, error) {

@@ -34,8 +34,8 @@ func CRUDActionCollector[T any, ID comparable]() Collector[T, ID] {
 		switch opCtx.Operation {
 		case OpCreate, OpGet, OpUpdate, OpPatch, OpDelete:
 			entry.RecordID = fmt.Sprint(opCtx.EntityID)
-		case OpList, OpCount:
-			// List and Count are type-level; RecordID stays empty.
+		case OpList, OpCount, OpAggregate:
+			// List, Count, and Aggregate are type-level; RecordID stays empty.
 		}
 
 		return []MetricEntry{entry}

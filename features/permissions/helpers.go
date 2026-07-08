@@ -12,11 +12,7 @@ func AllowAll[T any, ID comparable]() Checker[T, ID] {
 // DenyAll returns a checker that denies everything.
 func DenyAll[T any, ID comparable]() Checker[T, ID] {
 	return CheckerFunc[T, ID](func(_ context.Context, req AccessRequest[T, ID]) error {
-		return &AccessDeniedError{
-			Operation: req.Operation,
-			Actor:     req.Actor,
-			Reason:    "all operations are denied",
-		}
+		return NewAccessDeniedError(req.Operation, req.Actor, "all operations are denied")
 	})
 }
 
@@ -27,11 +23,7 @@ func ReadOnly[T any, ID comparable]() Checker[T, ID] {
 		if req.Operation == OpRead {
 			return nil
 		}
-		return &AccessDeniedError{
-			Operation: req.Operation,
-			Actor:     req.Actor,
-			Reason:    "read-only access",
-		}
+		return NewAccessDeniedError(req.Operation, req.Actor, "read-only access")
 	})
 }
 
@@ -42,11 +34,7 @@ func ByActorType[T any, ID comparable](rules map[string]Checker[T, ID]) Checker[
 	return CheckerFunc[T, ID](func(ctx context.Context, req AccessRequest[T, ID]) error {
 		checker, ok := rules[req.Actor.Type]
 		if !ok {
-			return &AccessDeniedError{
-				Operation: req.Operation,
-				Actor:     req.Actor,
-				Reason:    "no rules for actor type: " + req.Actor.Type,
-			}
+			return NewAccessDeniedError(req.Operation, req.Actor, "no rules for actor type: "+req.Actor.Type)
 		}
 		return checker.Check(ctx, req)
 	})
@@ -89,10 +77,7 @@ func OperationCheckers[T any, ID comparable](
 		if len(fallback) > 0 {
 			return fallback[0].Check(ctx, req)
 		}
-		return &AccessDeniedError{
-			Operation: req.Operation,
-			Actor:     req.Actor,
-			Reason:    "no checker configured for operation: " + string(req.Operation),
-		}
+		return NewAccessDeniedError(req.Operation, req.Actor,
+			"no checker configured for operation: "+string(req.Operation))
 	})
 }

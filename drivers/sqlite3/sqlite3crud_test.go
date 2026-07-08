@@ -118,6 +118,78 @@ func TestSqlite3Repository(t *testing.T) {
 		assert.Equal(t, int64(1), n, "expected 1 matching city")
 	})
 
+	// The p44-shaped stats query: GROUP BY a key, COUNT + MIN/MAX, HAVING,
+	// ordered by an aggregate alias. Seeded events per venue:
+	// 1→(101,106), 2→(102,107), 3→(103,108), 4→(104), 5→(105).
+	t.Run("Aggregate events per venue", func(t *testing.T) {
+		rows, err := eventRepo.Aggregate(ctx, r3.Query{
+			GroupBy: r3.GroupBy("venue_id"),
+			Aggregates: r3.Aggregates{
+				r3.AggCount("n"),
+				r3.AggMin("weight", "min_weight"),
+				r3.AggMax("weight", "max_weight"),
+				r3.AggMax("happened_at", "last_at"),
+			},
+			Having: r3.Filters{r3.Gt("n", 1)},
+			Sorts:  r3.Sorts{r3.NewSortAscSpec(r3.NewFieldSpec("venue_id"))},
+		})
+		require.NoError(t, err, "failed to aggregate events")
+		require.Len(t, rows, 3, "venues 1-3 have two events each")
+
+		venue, ok := rows[0].Int64("venue_id")
+		require.True(t, ok)
+		assert.Equal(t, int64(1), venue)
+
+		n, _ := rows[0].Int64("n")
+		minW, _ := rows[0].Int64("min_weight")
+		maxW, _ := rows[0].Int64("max_weight")
+		assert.Equal(t, int64(2), n)
+		assert.Equal(t, int64(101), minW)
+		assert.Equal(t, int64(106), maxW)
+
+		// SQLite returns MAX over a datetime column as TEXT; the accessor
+		// must still parse it into a real time.
+		lastAt, ok := rows[0].Time("last_at")
+		require.True(t, ok, "Time() must parse SQLite's textual MAX(datetime), got %#v", rows[0].Value("last_at"))
+		assert.False(t, lastAt.IsZero())
+	})
+
+	t.Run("Aggregate whole-set row and IN restriction", func(t *testing.T) {
+		rows, err := eventRepo.Aggregate(ctx, r3.Query{
+			Filters: r3.Filters{r3.In("venue_id", []int64{4, 5})},
+			Aggregates: r3.Aggregates{
+				r3.AggCount("n"),
+				r3.AggSum("weight", "total"),
+				r3.AggCountDistinct("venue_id", "venues"),
+			},
+		})
+		require.NoError(t, err, "failed to aggregate with filter")
+		require.Len(t, rows, 1, "no GroupBy = one whole-set row")
+
+		n, _ := rows[0].Int64("n")
+		total, _ := rows[0].Int64("total")
+		venues, _ := rows[0].Int64("venues")
+		assert.Equal(t, int64(2), n)
+		assert.Equal(t, int64(209), total, "104 + 105")
+		assert.Equal(t, int64(2), venues)
+	})
+
+	t.Run("Aggregate sorted by aggregate alias with pagination", func(t *testing.T) {
+		rows, err := eventRepo.Aggregate(ctx, r3.Query{
+			GroupBy:    r3.GroupBy("venue_id"),
+			Aggregates: r3.Aggregates{r3.AggMax("weight", "max_weight")},
+			Sorts:      r3.Sorts{r3.NewSortDescSpec(r3.NewFieldSpec("max_weight"))},
+			Pagination: r3.NewPaginationSpecWithSize(2),
+		})
+		require.NoError(t, err, "failed to aggregate sorted by alias")
+		require.Len(t, rows, 2, "pagination limits grouped rows")
+
+		first, _ := rows[0].Int64("max_weight")
+		second, _ := rows[1].Int64("max_weight")
+		assert.Equal(t, int64(108), first, "venue 3 has the heaviest event")
+		assert.Equal(t, int64(107), second)
+	})
+
 	// C1 regression: IN / NOT IN must expand to one placeholder per value.
 	// A single "col IN ?" placeholder bound to a slice is NOT expanded by
 	// database/sql and fails at execution, so these must run against a real DB.

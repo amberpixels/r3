@@ -67,7 +67,7 @@ func FieldChangeCollector[T any, ID comparable]() Collector[T, ID] {
 			}
 			return entries
 
-		case OpCreate, OpGet, OpList, OpCount, OpDelete:
+		case OpCreate, OpGet, OpList, OpCount, OpAggregate, OpDelete:
 			return nil
 		}
 

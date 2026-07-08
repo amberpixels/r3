@@ -17,6 +17,16 @@ type Query struct {
 	Sorts    Sorts    // []*SortSpec
 	Preloads Preloads // []*PreloadSpec
 
+	// GroupBy, Aggregates, and Having describe an aggregation and are honored
+	// only by Aggregate (see [Aggregator]); Get/List/Count ignore them, the
+	// same way Count ignores pagination. GroupBy names the grouping fields
+	// (empty = one whole-set row), Aggregates declares the computed values
+	// (required for Aggregate), and Having filters the grouped rows by
+	// aggregate alias or group field.
+	GroupBy    Fields
+	Aggregates Aggregates
+	Having     Filters
+
 	// IncludeTrashed when true will still return trashed (soft-deleted) records.
 	IncludeTrashed maybe.Bool
 }
@@ -48,6 +58,16 @@ func (q Query) MergeWith(other Query) Query {
 	// Pagination override below. A query with no sorts inherits the default.
 	if len(other.Sorts) > 0 {
 		result.Sorts = other.Sorts.Clone()
+	}
+
+	// The aggregation shape (GroupBy + Aggregates + Having) OVERRIDES as a
+	// unit, like Sorts: it defines what the result rows ARE, so stacking a
+	// default shape under a requested one would corrupt both. A query with no
+	// aggregation inherits the other's (if any) untouched.
+	if len(other.GroupBy) > 0 || len(other.Aggregates) > 0 || len(other.Having) > 0 {
+		result.GroupBy = other.GroupBy.Clone()
+		result.Aggregates = other.Aggregates.Clone()
+		result.Having = other.Having.Clone()
 	}
 
 	// For pagination merging.
@@ -92,6 +112,9 @@ func (q Query) Clone() Query {
 	clone.Filters = q.Filters.Clone()
 	clone.Sorts = q.Sorts.Clone()
 	clone.Preloads = q.Preloads.Clone()
+	clone.GroupBy = q.GroupBy.Clone()
+	clone.Aggregates = q.Aggregates.Clone()
+	clone.Having = q.Having.Clone()
 	clone.IncludeTrashed = q.IncludeTrashed
 	return clone
 }

@@ -447,11 +447,8 @@ func TestEntityAwareCheck_OwnerCanUpdate(t *testing.T) {
 			if req.Entity != nil && req.Entity.OwnerID == req.Actor.ID {
 				return nil
 			}
-			return &permissions.AccessDeniedError{
-				Operation: req.Operation,
-				Actor:     req.Actor,
-				Reason:    "only the owner can modify this post",
-			}
+			return permissions.NewAccessDeniedError(req.Operation, req.Actor,
+				"only the owner can modify this post")
 		},
 	)
 
@@ -491,11 +488,8 @@ func TestEntityAwareCheck_OwnerCanDelete(t *testing.T) {
 			if req.Entity != nil && req.Entity.OwnerID == req.Actor.ID {
 				return nil
 			}
-			return &permissions.AccessDeniedError{
-				Operation: req.Operation,
-				Actor:     req.Actor,
-				Reason:    "only the owner can modify this post",
-			}
+			return permissions.NewAccessDeniedError(req.Operation, req.Actor,
+				"only the owner can modify this post")
 		},
 	)
 
@@ -532,10 +526,7 @@ func TestEntityAwareCheck_OwnerCanPatch(t *testing.T) {
 			if req.Entity != nil && req.Entity.OwnerID == req.Actor.ID {
 				return nil
 			}
-			return &permissions.AccessDeniedError{
-				Operation: req.Operation,
-				Actor:     req.Actor,
-			}
+			return permissions.NewAccessDeniedError(req.Operation, req.Actor, "")
 		},
 	)
 
@@ -570,7 +561,7 @@ func (scopedPolicy) Check(_ context.Context, req permissions.AccessRequest[Post,
 	if req.Operation == permissions.OpRead {
 		return nil
 	}
-	return &permissions.AccessDeniedError{Operation: req.Operation, Actor: req.Actor}
+	return permissions.NewAccessDeniedError(req.Operation, req.Actor, "")
 }
 
 func (scopedPolicy) Scope(_ context.Context, actor r3.Actor) (r3.Filters, error) {
@@ -795,12 +786,8 @@ func TestOperationCheckers_WithFallback(t *testing.T) {
 // ── Tests: Error types ───────────────────────────────────────────────────
 
 func TestAccessDeniedError_Is(t *testing.T) {
-	err := &permissions.AccessDeniedError{
-		Operation:  permissions.OpCreate,
-		Actor:      r3.Actor{ID: "1", Type: "user"},
-		RecordType: "posts",
-		Reason:     "test",
-	}
+	err := permissions.NewAccessDeniedError(permissions.OpCreate, r3.Actor{ID: "1", Type: "user"}, "test")
+	err.RecordType = "posts"
 
 	if !errors.Is(err, permissions.ErrAccessDenied) {
 		t.Fatal("expected AccessDeniedError to satisfy errors.Is(err, ErrAccessDenied)")
@@ -808,13 +795,9 @@ func TestAccessDeniedError_Is(t *testing.T) {
 }
 
 func TestAccessDeniedError_ErrorMessage(t *testing.T) {
-	err := &permissions.AccessDeniedError{
-		Operation:  permissions.OpUpdate,
-		Actor:      r3.Actor{ID: "42", Type: "user"},
-		RecordType: "posts",
-		RecordID:   "7",
-		Reason:     "not the owner",
-	}
+	err := permissions.NewAccessDeniedError(permissions.OpUpdate, r3.Actor{ID: "42", Type: "user"}, "not the owner")
+	err.RecordType = "posts"
+	err.RecordID = "7"
 
 	msg := err.Error()
 	expected := "r3/permissions: access denied: update on posts (id=7) by actor user/42: not the owner"
@@ -824,11 +807,8 @@ func TestAccessDeniedError_ErrorMessage(t *testing.T) {
 }
 
 func TestAccessDeniedError_ErrorMessage_NoRecordID(t *testing.T) {
-	err := &permissions.AccessDeniedError{
-		Operation:  permissions.OpRead,
-		Actor:      r3.Actor{ID: "42", Type: "user"},
-		RecordType: "posts",
-	}
+	err := permissions.NewAccessDeniedError(permissions.OpRead, r3.Actor{ID: "42", Type: "user"}, "")
+	err.RecordType = "posts"
 
 	msg := err.Error()
 	expected := "r3/permissions: access denied: read on posts by actor user/42"
@@ -859,11 +839,7 @@ func TestGet_DoesNotLeakEntityOnDenied(t *testing.T) {
 	checker := permissions.CheckerFunc[Post, int64](
 		func(_ context.Context, req permissions.AccessRequest[Post, int64]) error {
 			if req.Entity != nil && req.Entity.OwnerID != req.Actor.ID {
-				return &permissions.AccessDeniedError{
-					Operation: req.Operation,
-					Actor:     req.Actor,
-					Reason:    "not your post",
-				}
+				return permissions.NewAccessDeniedError(req.Operation, req.Actor, "not your post")
 			}
 			return nil
 		},
@@ -1031,7 +1007,7 @@ func (relScoper) Check(_ context.Context, req permissions.AccessRequest[Post, in
 	if req.Operation == permissions.OpRead {
 		return nil
 	}
-	return &permissions.AccessDeniedError{Operation: req.Operation, Actor: req.Actor}
+	return permissions.NewAccessDeniedError(req.Operation, req.Actor, "")
 }
 
 func (relScoper) Scope(_ context.Context, _ r3.Actor) (r3.Filters, error) {

@@ -44,6 +44,7 @@ configRepo  r3.CRUD[Config, string]   // YAML files on disk
 - [Filters](#filters)
 - [Schema & Capabilities](#schema--capabilities)
 - [Pagination](#pagination)
+- [Aggregation](#aggregation)
 - [Transactions](#transactions)
 - [URL Query Parsing](#url-query-parsing)
 - [Requirements](#requirements)
@@ -409,6 +410,47 @@ if total > int64(len(items)) {
     // there are more rows than were returned
 }
 ```
+
+## Aggregation
+
+Grouped `COUNT`/`COUNT DISTINCT`/`SUM`/`AVG`/`MIN`/`MAX` without materializing
+rows, via the opt-in `Aggregator` capability. Declare the shape on the query
+(`GroupBy`, `Aggregates`, `Having`) and call it through `r3.AggregateOf`:
+
+```go
+// Raid stats per location: how many, and when the latest one happened.
+rows, err := r3.AggregateOf(ctx, raidRepo, r3.Query{
+    Filters: r3.Filters{r3.Ne("location_id", nil)},
+    GroupBy: r3.GroupBy("location_id", "squad_id"),
+    Aggregates: r3.Aggregates{
+        r3.AggCount("raids"),
+        r3.AggMax("date", "last_raid"),
+    },
+    Having: r3.Filters{r3.Gt("raids", 1)},          // filters grouped rows by alias
+    Sorts:  r3.Sorts{r3.NewSortDescSpec(r3.NewFieldSpec("raids"))},
+})
+for _, row := range rows {
+    loc, _ := row.Int64("location_id")
+    n, _ := row.Int64("raids")
+    last, _ := row.Time("last_raid") // parses backends' textual timestamps too
+    fmt.Printf("location %d: %d raids, last on %s\n", loc, n, last.Format(time.DateOnly))
+}
+```
+
+Each `AggregateRow` carries the group-field values plus one entry per declared
+alias; the typed accessors (`Int64`, `Float64`, `String`, `Time`, `Bool`)
+coerce backend-native representations (SQLite returns `MAX` over a datetime as
+TEXT, MySQL returns `SUM` as a decimal string). `Filters`, `IncludeTrashed`,
+`Sorts` (over group fields and aliases), and `Pagination` (limits grouped rows)
+apply; an empty `GroupBy` returns a single whole-set row.
+
+Every engine implements `Aggregator` — SQL lowers to `GROUP BY`/`HAVING`, Mongo
+runs a `$group` pipeline, the file engine folds in memory — and every feature
+decorator forwards it, with permissions applying its scope filters so grouped
+results only ever cover rows the actor may see. `r3.AggregateOf` deliberately
+checks only the outermost repo (never unwrapping decorators), so that scoping
+cannot be bypassed. A repo without the capability returns
+`r3.ErrAggregateNotSupported`.
 
 ## Transactions
 

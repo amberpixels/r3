@@ -21,6 +21,14 @@ type AccessDeniedError struct {
 	Reason     string // optional human-readable reason
 }
 
+// NewAccessDeniedError builds the structured denial for op by actor, with an
+// optional human-readable reason — the canonical way to construct the error
+// (mirroring validation's NewError/NewFieldError). Set RecordType/RecordID on
+// the returned value when the denial concerns a specific record.
+func NewAccessDeniedError(op Operation, actor r3.Actor, reason string) *AccessDeniedError {
+	return &AccessDeniedError{Operation: op, Actor: actor, Reason: reason}
+}
+
 // Error returns a human-readable description of the denied operation.
 func (e *AccessDeniedError) Error() string {
 	msg := fmt.Sprintf("r3/permissions: access denied: %s on %s", e.Operation, e.RecordType)

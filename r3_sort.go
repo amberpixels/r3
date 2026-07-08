@@ -123,6 +123,6 @@ func (s SortDirection) String() string {
 	case SortDirectionUnspecified:
 		fallthrough
 	default:
-		return "unspecified"
+		return strUnspecified
 	}
 }

@@ -67,7 +67,7 @@ func (op *FilterOperatorSpec) String() string {
 	case OperatorNotIn:
 		return "not in"
 	case OperatorUnspecified:
-		return "unspecified"
+		return strUnspecified
 	default:
 		return ""
 	}

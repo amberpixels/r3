@@ -81,6 +81,139 @@ func (s Schema) ValidateQuery(q Query) error {
 	return nil
 }
 
+// ValidateAggregateQuery is the aggregate counterpart of ValidateQuery, called
+// by engines before building an Aggregate. The structural checks (aggregates
+// declared, aliases valid and unique, Having references declared names) run
+// even for a zero Schema; capability checks (group and aggregated fields must
+// be Filterable, SUM/AVG need a numeric attribute) apply only when a schema is
+// present, keeping the permissive-defaults philosophy.
+//
+// It does not check Sorts: sorts that reference neither a group field nor an
+// alias are dropped by Query.AggregateSorts, not rejected — they are usually
+// inherited repo defaults, invisible to the caller.
+func (s Schema) ValidateAggregateQuery(q Query) error {
+	if err := validateAggregateShape(q); err != nil {
+		return err
+	}
+	if s.IsZero() {
+		return nil
+	}
+
+	for _, f := range q.Filters {
+		if err := s.validateFilter(f); err != nil {
+			return err
+		}
+	}
+	for _, g := range q.GroupBy {
+		if err := s.validateField(g.String(), Filterable, ErrFieldNotFilterable); err != nil {
+			return err
+		}
+	}
+	for _, a := range q.Aggregates {
+		if a == nil || a.Field == nil {
+			continue
+		}
+		name := a.Field.String()
+		if err := s.validateField(name, Filterable, ErrFieldNotFilterable); err != nil {
+			return err
+		}
+		if a.Func == AggregateSum || a.Func == AggregateAvg {
+			// Only reject when the schema KNOWS the type is non-numeric; an
+			// untyped attribute (hand-built schema) stays permissive.
+			if attr, ok := s.Lookup(name); ok && attr.Type != "" && attr.Type != TypeInt && attr.Type != TypeFloat {
+				return fmt.Errorf("%w: %s over non-numeric field %q", ErrInvalidAggregate, a.Func, name)
+			}
+		}
+	}
+	return nil
+}
+
+// validateAggregateShape enforces the schema-independent structure of an
+// aggregate query: at least one aggregate, valid unique aliases that don't
+// shadow group fields, fields where the function requires one, and Having
+// limited to declared aliases and group fields.
+func validateAggregateShape(q Query) error {
+	if len(q.Aggregates) == 0 {
+		return fmt.Errorf("%w: at least one aggregate is required", ErrInvalidAggregate)
+	}
+
+	groups := make(map[string]struct{}, len(q.GroupBy))
+	for _, g := range q.GroupBy {
+		if err := ValidateIdentifier(g.String()); err != nil {
+			return fmt.Errorf("%w: invalid group field %q", ErrInvalidAggregate, g.String())
+		}
+		groups[g.String()] = struct{}{}
+	}
+
+	names := make(map[string]struct{}, len(q.Aggregates)+len(groups))
+	for g := range groups {
+		names[g] = struct{}{}
+	}
+	for _, a := range q.Aggregates {
+		if a == nil {
+			return fmt.Errorf("%w: nil aggregate spec", ErrInvalidAggregate)
+		}
+		if !isValidIdentifierSegment(a.Alias) {
+			return fmt.Errorf("%w: invalid alias %q", ErrInvalidAggregate, a.Alias)
+		}
+		if _, dup := names[a.Alias]; dup {
+			return fmt.Errorf("%w: duplicate alias %q", ErrInvalidAggregate, a.Alias)
+		}
+		names[a.Alias] = struct{}{}
+		switch a.Func {
+		case AggregateCount:
+			// COUNT(*) — field optional.
+		case AggregateCountDistinct, AggregateSum, AggregateAvg, AggregateMin, AggregateMax:
+			if a.Field.String() == "" {
+				return fmt.Errorf("%w: %s requires a field (alias %q)", ErrInvalidAggregate, a.Func, a.Alias)
+			}
+		default:
+			return fmt.Errorf("%w: unknown aggregate function (alias %q)", ErrInvalidAggregate, a.Alias)
+		}
+		if a.Field != nil && a.Field.String() != "" {
+			if err := ValidateIdentifier(a.Field.String()); err != nil {
+				return fmt.Errorf("%w: invalid aggregate field %q", ErrInvalidAggregate, a.Field.String())
+			}
+		}
+	}
+
+	for _, h := range q.Having {
+		if err := validateHavingFilter(h, names); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// validateHavingFilter recurses AND/OR groups and requires every leaf to
+// reference a declared aggregate alias or group field. Relationship filters
+// have no meaning over grouped rows.
+func validateHavingFilter(f *FilterSpec, names map[string]struct{}) error {
+	if f == nil {
+		return nil
+	}
+	if f.Relation != "" {
+		return fmt.Errorf("%w: relationship filter in Having", ErrInvalidAggregate)
+	}
+	for _, child := range f.And {
+		if err := validateHavingFilter(child, names); err != nil {
+			return err
+		}
+	}
+	for _, child := range f.Or {
+		if err := validateHavingFilter(child, names); err != nil {
+			return err
+		}
+	}
+	if len(f.And) > 0 || len(f.Or) > 0 || f.Field == nil {
+		return nil
+	}
+	if _, ok := names[f.Field.String()]; !ok {
+		return fmt.Errorf("%w: Having references undeclared name %q", ErrInvalidAggregate, f.Field.String())
+	}
+	return nil
+}
+
 // validateFilter recurses through AND/OR groups and validates each leaf field as
 // filterable. Relationship ("has") filters are skipped (resolved by the driver
 // against the target entity).

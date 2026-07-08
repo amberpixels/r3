@@ -47,6 +47,23 @@
 // length to detect truncation. Count answers "how many match?" without
 // materializing rows — only Filters and IncludeTrashed affect its result.
 //
+// # Aggregation
+//
+// [Aggregator] is the opt-in grouped-aggregation capability: GROUP BY plus
+// COUNT/COUNT DISTINCT/SUM/AVG/MIN/MAX over the records matching a query,
+// returning [AggregateRow] values instead of entities. Declare the shape on the
+// Query ([Query.GroupBy], [Query.Aggregates], [Query.Having]) with the
+// [GroupBy], [AggCount], [AggSum], [AggMin], [AggMax], [AggAvg], and
+// [AggCountDistinct] helpers. Every r3 engine implements Aggregator and every
+// feature decorator forwards it (permissions gates and scopes it, metrics
+// instruments it), so the capability survives decoration. Reach it via
+// [AggregateOf]:
+//
+//	rows, err := r3.AggregateOf(ctx, raidRepo, r3.Query{
+//	    GroupBy:    r3.GroupBy("location_id"),
+//	    Aggregates: r3.Aggregates{r3.AggCount("raids"), r3.AggMax("date", "last_raid")},
+//	})
+//
 // # Project layout
 //
 // The project is organized in five layers, each depending only on the layers above:

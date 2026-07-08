@@ -11,13 +11,14 @@ import (
 type Operation string
 
 const (
-	OpCreate Operation = "create"
-	OpGet    Operation = "get"
-	OpList   Operation = "list"
-	OpCount  Operation = "count"
-	OpUpdate Operation = "update"
-	OpPatch  Operation = "patch"
-	OpDelete Operation = "delete"
+	OpCreate    Operation = "create"
+	OpGet       Operation = "get"
+	OpList      Operation = "list"
+	OpCount     Operation = "count"
+	OpAggregate Operation = "aggregate"
+	OpUpdate    Operation = "update"
+	OpPatch     Operation = "patch"
+	OpDelete    Operation = "delete"
 )
 
 // OperationContext carries contextual information about a CRUD operation.

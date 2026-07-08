@@ -184,6 +184,31 @@ func TestPqRepository(t *testing.T) {
 		assert.Len(t, result, 2, "expected 2 events for the location")
 	})
 
+	t.Run("Aggregate events per venue", func(t *testing.T) {
+		rows, err := eventRepo.Aggregate(ctx, r3.Query{
+			GroupBy: r3.GroupBy("venue_id"),
+			Aggregates: r3.Aggregates{
+				r3.AggCount("n"),
+				r3.AggMin("weight", "min_weight"),
+				r3.AggMax("weight", "max_weight"),
+			},
+			Having: r3.Filters{r3.Gt("n", 1)},
+			Sorts:  r3.Sorts{r3.NewSortAscSpec(r3.NewFieldSpec("venue_id"))},
+		})
+		require.NoError(t, err, "failed to aggregate events")
+		require.Len(t, rows, 3, "venues 1-3 have two events each")
+
+		venue, ok := rows[0].Int64("venue_id")
+		require.True(t, ok, "venue_id must coerce to int64, got %#v", rows[0].Value("venue_id"))
+		assert.Equal(t, int64(1), venue)
+		n, _ := rows[0].Int64("n")
+		minW, _ := rows[0].Int64("min_weight")
+		maxW, _ := rows[0].Int64("max_weight")
+		assert.Equal(t, int64(2), n)
+		assert.Equal(t, int64(101), minW)
+		assert.Equal(t, int64(106), maxW)
+	})
+
 	// Subtest: Update a location's popularity
 	t.Run("Update location", func(t *testing.T) {
 		// First get the location

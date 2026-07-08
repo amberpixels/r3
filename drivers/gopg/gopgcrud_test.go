@@ -319,6 +319,52 @@ func TestGoPgRepository(t *testing.T) {
 		assert.Len(t, result, 2, "expected 2 events for the location")
 	})
 
+	t.Run("Aggregate events per venue (native)", func(t *testing.T) {
+		// Compute the expectation from a plain List so the assertion tracks the
+		// code-seeded data rather than hard-coded values.
+		evs, _, err := eventRepo.List(ctx, r3.Query{
+			Filters: r3.Filters{r3.Eq("venue_id", locations[1].ID)},
+		})
+		require.NoError(t, err, "failed to list venue events")
+		require.NotEmpty(t, evs)
+		var wantSum, wantMax int64
+		for _, e := range evs {
+			w := int64(e.Weight)
+			wantSum += w
+			if w > wantMax {
+				wantMax = w
+			}
+		}
+
+		rows, err := eventRepo.Aggregate(ctx, r3.Query{
+			GroupBy: r3.GroupBy("venue_id"),
+			Aggregates: r3.Aggregates{
+				r3.AggCount("n"),
+				r3.AggSum("weight", "total"),
+				r3.AggMax("weight", "max_w"),
+			},
+			Sorts: r3.Sorts{r3.NewSortDescSpec(r3.NewFieldSpec("total"))},
+		})
+		require.NoError(t, err, "failed to aggregate events")
+		require.NotEmpty(t, rows)
+
+		found := false
+		for _, row := range rows {
+			venue, _ := row.Int64("venue_id")
+			if venue != locations[1].ID {
+				continue
+			}
+			found = true
+			n, _ := row.Int64("n")
+			total, _ := row.Int64("total")
+			maxW, _ := row.Int64("max_w")
+			assert.Equal(t, int64(len(evs)), n)
+			assert.Equal(t, wantSum, total)
+			assert.Equal(t, wantMax, maxW)
+		}
+		assert.True(t, found, "expected an aggregate row for the second location's venue")
+	})
+
 	t.Run("Aggregate location event weights using Raw", func(t *testing.T) {
 		// Aggregate queries return a different shape than the model,
 		// so we use Scan into a dedicated struct.

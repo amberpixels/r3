@@ -178,5 +178,16 @@ type decoratedTx[T any, ID comparable] struct {
 // into a transaction-bound CRUD.
 func (d *decoratedTx[T, ID]) Unwrap() CRUD[T, ID] { return d.CRUD }
 
+// Aggregate forwards to the rebuilt decorated chain when it supports
+// aggregation, so the capability survives BeginTxChain (the embedded CRUD
+// interface would otherwise hide it).
+func (d *decoratedTx[T, ID]) Aggregate(ctx context.Context, qarg ...Query) ([]AggregateRow, error) {
+	agg, ok := d.CRUD.(Aggregator)
+	if !ok {
+		return nil, ErrAggregateNotSupported
+	}
+	return agg.Aggregate(ctx, qarg...)
+}
+
 func (d *decoratedTx[T, ID]) Commit() error   { return d.base.Commit() }
 func (d *decoratedTx[T, ID]) Rollback() error { return d.base.Rollback() }

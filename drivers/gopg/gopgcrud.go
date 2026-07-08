@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/amberpixels/r3"
 	enginesql "github.com/amberpixels/r3/engine/sql"
 	"github.com/go-pg/pg/v10"
 	"github.com/go-pg/pg/v10/orm"
+	"github.com/go-pg/pg/v10/types"
 )
 
 // GoPgCRUD is a CRUD repository based on go-pg's *pg.DB.
@@ -23,6 +25,7 @@ type GoPgCRUD[T any, ID comparable] struct {
 }
 
 var _ r3.CRUD[any, any] = &GoPgCRUD[any, any]{}
+var _ r3.Aggregator = &GoPgCRUD[any, any]{}
 
 // NewGoPgCRUD creates a new go-pg-based CRUD repository.
 //
@@ -141,6 +144,71 @@ func (r *GoPgCRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, e
 		return 0, err
 	}
 	return int64(count), nil
+}
+
+// Aggregate computes grouped aggregates over the records matching the query.
+// See r3.Aggregator for the query semantics.
+func (r *GoPgCRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.AggregateRow, error) {
+	// go-pg repos carry no r3.Schema; a zero schema still validates the
+	// aggregate structure.
+	prep, err := enginesql.PrepareAggregateQuery(&r.DefaultsManager, r3.Schema{}, qarg...)
+	if err != nil {
+		return nil, err
+	}
+
+	var entities []T
+	query := r.db.ModelContext(ctx, &entities)
+
+	if prep.Query.IncludeTrashed.Some(true) {
+		query = query.AllWithDeleted()
+	}
+	for _, join := range prep.Joins() {
+		query = query.Join(fmt.Sprintf("JOIN %s ON TRUE", join.String()))
+	}
+	for _, clause := range prep.Clauses {
+		query = query.Where(clause.Clause, clause.Args...)
+	}
+
+	for _, item := range prep.SelectList {
+		query = query.ColumnExpr(item)
+	}
+	if len(prep.GroupBy) > 0 {
+		query = query.GroupExpr(strings.Join(prep.GroupBy, ", "))
+	}
+	if prep.Having.Clause != "" {
+		query = query.Having(prep.Having.Clause, prep.Having.Args...)
+	}
+	for _, sort := range prep.Sorts {
+		query = query.OrderExpr(sort.String())
+	}
+	if prep.IsPaginated {
+		query = query.Limit(prep.Limit).Offset(prep.Offset)
+	}
+
+	// go-pg scans dynamic columns natively into a map slice.
+	var results []map[string]any
+	if err := query.Select(&results); err != nil {
+		return nil, err
+	}
+
+	rows := make([]r3.AggregateRow, len(results))
+	for i, m := range results {
+		row := make(r3.AggregateRow, len(m))
+		for k, v := range m {
+			switch tv := v.(type) {
+			case []byte:
+				v = string(tv)
+			case types.RawValue:
+				// go-pg wraps types it has no Go mapping for (e.g. NUMERIC,
+				// which Postgres returns for SUM/AVG) in a RawValue; its
+				// textual form is what the AggregateRow accessors coerce.
+				v = tv.Value
+			}
+			row[k] = v
+		}
+		rows[i] = row
+	}
+	return rows, nil
 }
 
 func (r *GoPgCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, error) {

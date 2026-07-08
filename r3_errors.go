@@ -17,6 +17,17 @@ import "errors"
 //	}
 var ErrNotFound = errors.New("r3: record not found")
 
+// ErrAggregateNotSupported is returned by [AggregateOf] when the repository
+// (or a decorator in its chain) does not implement [Aggregator].
+var ErrAggregateNotSupported = errors.New("r3: aggregate not supported")
+
+// ErrInvalidAggregate is returned when an aggregate query is structurally
+// invalid: no aggregates declared, a missing/duplicate/invalid alias, an
+// aggregate function that requires a field called without one, an alias
+// colliding with a group field, a Having filter referencing an undeclared
+// alias, or SUM/AVG over an attribute the schema knows to be non-numeric.
+var ErrInvalidAggregate = errors.New("r3: invalid aggregate query")
+
 // Schema validation errors. Schema.ValidateQuery wraps the offending field name
 // (fmt.Errorf("%w: %q", err, name)) so a consumer can surface a useful 400-class
 // message instead of leaking a backend driver error (which would otherwise be a 500).

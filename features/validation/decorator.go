@@ -31,6 +31,7 @@ type CRUD[T any, ID comparable] struct {
 
 // Compile-time check that CRUD satisfies r3.CRUD.
 var _ r3.CRUD[any, any] = &CRUD[any, any]{}
+var _ r3.Aggregator = &CRUD[any, any]{}
 
 // WithValidation wraps an existing r3.CRUD with validation.
 // The validator parameter defines the validation logic for mutation operations.
@@ -103,6 +104,16 @@ func (v *CRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, e
 // Count delegates directly to inner.Count (no validation on reads).
 func (v *CRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, error) {
 	return v.inner.Count(ctx, qarg...)
+}
+
+// Aggregate delegates directly to the inner CRUD's Aggregate (no validation
+// on reads).
+func (v *CRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.AggregateRow, error) {
+	agg, ok := v.inner.(r3.Aggregator)
+	if !ok {
+		return nil, r3.ErrAggregateNotSupported
+	}
+	return agg.Aggregate(ctx, qarg...)
 }
 
 // Update optionally fetches the existing entity (if IDFunc is set),

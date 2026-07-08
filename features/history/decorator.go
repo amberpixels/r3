@@ -40,6 +40,7 @@ type CRUD[T any, ID comparable] struct {
 
 // Compile-time check that CRUD satisfies r3.CRUD.
 var _ r3.CRUD[any, any] = &CRUD[any, any]{}
+var _ r3.Aggregator = &CRUD[any, any]{}
 
 // WithHistory wraps an existing r3.CRUD with history tracking.
 // The IDFunc option is required — the decorator must know how to extract
@@ -144,6 +145,16 @@ func (h *CRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, e
 // Count returns the number of matching entities. No history is recorded for reads.
 func (h *CRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, error) {
 	return h.inner.Count(ctx, qarg...)
+}
+
+// Aggregate passes through to the inner CRUD's Aggregate. No history is
+// recorded for reads.
+func (h *CRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.AggregateRow, error) {
+	agg, ok := h.inner.(r3.Aggregator)
+	if !ok {
+		return nil, r3.ErrAggregateNotSupported
+	}
+	return agg.Aggregate(ctx, qarg...)
 }
 
 // Update modifies an existing entity and records an "update" change with field-level diff.

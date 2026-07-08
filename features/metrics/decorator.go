@@ -41,6 +41,7 @@ type CRUD[T any, ID comparable] struct {
 
 // Compile-time check that CRUD satisfies r3.CRUD.
 var _ r3.CRUD[any, any] = &CRUD[any, any]{}
+var _ r3.Aggregator = &CRUD[any, any]{}
 
 // WithMetrics wraps an existing r3.CRUD with metrics collection.
 //
@@ -175,6 +176,35 @@ func (m *CRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, error
 	})
 
 	return total, err
+}
+
+// Aggregate computes grouped aggregates and records metrics (OpAggregate,
+// with TotalCount = number of grouped rows returned). An inner repo without
+// aggregation support yields r3.ErrAggregateNotSupported.
+func (m *CRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.AggregateRow, error) {
+	agg, ok := m.inner.(r3.Aggregator)
+	if !ok {
+		return nil, r3.ErrAggregateNotSupported
+	}
+
+	var q r3.Query
+	if len(qarg) > 0 {
+		q = qarg[0]
+	}
+
+	start := time.Now()
+	rows, err := agg.Aggregate(ctx, qarg...)
+	duration := time.Since(start)
+
+	m.record(ctx, OperationContext[T, ID]{
+		Operation:  OpAggregate,
+		Duration:   duration,
+		TotalCount: int64(len(rows)),
+		Query:      q,
+		Err:        err,
+	})
+
+	return rows, err
 }
 
 // Update modifies an existing entity and records metrics.

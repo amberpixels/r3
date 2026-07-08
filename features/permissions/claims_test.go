@@ -27,20 +27,12 @@ func claimsChecker() permissions.Checker[Post, int64] {
 
 			p, ok := req.Actor.Claims.(*claimsPrincipal)
 			if !ok || p == nil {
-				return &permissions.AccessDeniedError{
-					Operation: req.Operation,
-					Actor:     req.Actor,
-					Reason:    "no principal claims on actor",
-				}
+				return permissions.NewAccessDeniedError(req.Operation, req.Actor, "no principal claims on actor")
 			}
 			if req.Entity != nil && p.writableOwners[req.Entity.OwnerID] {
 				return nil
 			}
-			return &permissions.AccessDeniedError{
-				Operation: req.Operation,
-				Actor:     req.Actor,
-				Reason:    "owner not writable for this actor",
-			}
+			return permissions.NewAccessDeniedError(req.Operation, req.Actor, "owner not writable for this actor")
 		},
 	)
 }

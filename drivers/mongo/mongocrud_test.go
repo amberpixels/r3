@@ -84,6 +84,30 @@ func TestMongoRepository(t *testing.T) {
 		assert.Equal(t, int64(3), n)
 	})
 
+	t.Run("Aggregate cities per country", func(t *testing.T) {
+		rows, err := cityRepo.Aggregate(ctx, r3.Query{
+			GroupBy: r3.GroupBy("country"),
+			Aggregates: r3.Aggregates{
+				r3.AggCount("n"),
+				r3.AggSum("popularity", "total_pop"),
+				r3.AggMax("popularity", "max_pop"),
+			},
+			Having: r3.Filters{r3.Gte("n", 1)},
+			Sorts:  r3.Sorts{r3.NewSortDescSpec(r3.NewFieldSpec("n"))},
+		})
+		require.NoError(t, err, "failed to aggregate cities")
+		require.Len(t, rows, 2)
+
+		country, _ := rows[0].String("country")
+		n, _ := rows[0].Int64("n")
+		totalPop, _ := rows[0].Int64("total_pop")
+		maxPop, _ := rows[0].Int64("max_pop")
+		assert.Equal(t, "Germany", country)
+		assert.Equal(t, int64(2), n)
+		assert.Equal(t, int64(150), totalPop)
+		assert.Equal(t, int64(100), maxPop)
+	})
+
 	t.Run("filter Eq", func(t *testing.T) {
 		got, _, err := cityRepo.List(ctx, r3.Query{
 			Filters: r3.Filters{r3.F(r3.NewFieldSpec("country"), "Germany")},

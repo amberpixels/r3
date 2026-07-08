@@ -457,8 +457,11 @@ The **structural floor is un-bypassable by both** — a computed/PK has no writa
 - **Computed / aggregation attributes (`Computed`, `Compute`).** Reserve the `Attribute`
   field and the JSON flag now (so the contract is stable), but do **not** implement
   execution. Future work: portable primitives (`Count(relation)`, `Sum`, `Avg`) compiled
-  per engine + a SQL-only raw-expr escape; GROUP BY/HAVING semantics; sorting/filtering on
-  computed attrs.
+  per engine + a SQL-only raw-expr escape; sorting/filtering on computed attrs.
+  Note: *query-time* aggregation (GROUP BY/HAVING over a repo's own rows) has since
+  shipped as the opt-in `r3.Aggregator` capability (`Query.GroupBy`/`Aggregates`/
+  `Having`, validated by `Schema.ValidateAggregateQuery`); what remains reserved here
+  is aggregation as a schema *attribute* of the entity itself.
 - **`DefaultsStrict()` policy** and **per-operator validation** (reject `gt` on a bool):
   the operator metadata (`Ops`, per-type defaults) is built in Phase A, but enforcing it in
   the validator can be a fast-follow if it risks rejecting currently-working queries — gate

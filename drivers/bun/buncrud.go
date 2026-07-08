@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/amberpixels/r3"
 	enginesql "github.com/amberpixels/r3/engine/sql"
@@ -24,6 +25,7 @@ type BunCRUD[T any, ID comparable] struct {
 }
 
 var _ r3.CRUD[any, any] = &BunCRUD[any, any]{}
+var _ r3.Aggregator = &BunCRUD[any, any]{}
 
 // NewBunCRUD creates a new Bun-based CRUD repository.
 //
@@ -142,6 +144,54 @@ func (r *BunCRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, er
 		return 0, err
 	}
 	return int64(count), nil
+}
+
+// Aggregate computes grouped aggregates over the records matching the query.
+// See r3.Aggregator for the query semantics.
+func (r *BunCRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.AggregateRow, error) {
+	// Bun repos carry no r3.Schema; a zero schema still validates the
+	// aggregate structure.
+	prep, err := enginesql.PrepareAggregateQuery(&r.DefaultsManager, r3.Schema{}, qarg...)
+	if err != nil {
+		return nil, err
+	}
+
+	var entities []T
+	query := r.db.NewSelect().Model(&entities)
+
+	if prep.Query.IncludeTrashed.Some(true) {
+		query = query.WhereAllWithDeleted()
+	}
+	for _, join := range prep.Joins() {
+		query = query.Join(fmt.Sprintf("JOIN %s ON TRUE", join.String()))
+	}
+	for _, clause := range prep.Clauses {
+		query = query.Where(clause.Clause, clause.Args...)
+	}
+
+	for _, item := range prep.SelectList {
+		query = query.ColumnExpr(item)
+	}
+	if len(prep.GroupBy) > 0 {
+		query = query.GroupExpr(strings.Join(prep.GroupBy, ", "))
+	}
+	if prep.Having.Clause != "" {
+		query = query.Having(prep.Having.Clause, prep.Having.Args...)
+	}
+	for _, sort := range prep.Sorts {
+		query = query.OrderExpr(sort.String())
+	}
+	if prep.IsPaginated {
+		query = query.Limit(prep.Limit).Offset(prep.Offset)
+	}
+
+	rows, err := query.Rows(ctx) //nolint:rowserrcheck // rows.Err is checked inside ScanAggregateRows
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return enginesql.ScanAggregateRows(rows)
 }
 
 func (r *BunCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, error) {

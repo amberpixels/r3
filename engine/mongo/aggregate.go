@@ -1,0 +1,176 @@
+package enginemongo
+
+import (
+	"context"
+	"fmt"
+	"strings"
+
+	"github.com/amberpixels/r3"
+	r3bson "github.com/amberpixels/r3/dialects/bson"
+	"go.mongodb.org/mongo-driver/v2/bson"
+)
+
+var _ r3.Aggregator = (*BaseCRUD[any, any])(nil)
+
+// Aggregate computes grouped aggregates via the MongoDB aggregation pipeline:
+// $match (filters + soft-delete) → $group → $project (flatten group keys) →
+// $match (having) → $sort → $skip/$limit. See r3.Aggregator for the query
+// semantics.
+//
+// Degradation notes (documented per the query-parity philosophy): dotted
+// (nested-path) group fields are not supported, and COUNT(DISTINCT field) is
+// computed via $addToSet — fine for the moderate cardinalities aggregates are
+// used for, but it materializes the value set per group.
+func (r *BaseCRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.AggregateRow, error) {
+	prep, err := PrepareListQuery(&r.DefaultsManager, qarg...)
+	if err != nil {
+		return nil, err
+	}
+	q := prep.Query
+	// The mongo engine carries no r3.Schema; structural validation still applies.
+	if err := (r3.Schema{}).ValidateAggregateQuery(q); err != nil {
+		return nil, err
+	}
+
+	groupNames := r3.FieldsToStrings(q.GroupBy)
+	for _, name := range groupNames {
+		// $project cannot emit a literal dotted key (it means a nested path),
+		// so flattened group keys must be plain names.
+		if strings.Contains(name, ".") {
+			return nil, fmt.Errorf("mongo aggregate: nested group field %q is not supported", name)
+		}
+	}
+
+	pipeline := bson.A{}
+	if filter := r.buildFilter(prep); len(filter) > 0 {
+		pipeline = append(pipeline, bson.D{{Key: "$match", Value: filter}})
+	}
+
+	group, project, err := buildGroupAndProject(groupNames, q.Aggregates)
+	if err != nil {
+		return nil, err
+	}
+	pipeline = append(pipeline,
+		bson.D{{Key: "$group", Value: group}},
+		bson.D{{Key: "$project", Value: project}},
+	)
+
+	if len(q.Having) > 0 {
+		having, err := r3bson.FiltersToBSON(q.Having)
+		if err != nil {
+			return nil, fmt.Errorf("mongo aggregate: having: %w", err)
+		}
+		pipeline = append(pipeline, bson.D{{Key: "$match", Value: having}})
+	}
+
+	if sorts := q.AggregateSorts(); len(sorts) > 0 {
+		sortDoc, err := r3bson.SortsToBSON(sorts)
+		if err != nil {
+			return nil, fmt.Errorf("mongo aggregate: sorts: %w", err)
+		}
+		pipeline = append(pipeline, bson.D{{Key: "$sort", Value: sortDoc}})
+	}
+
+	if prep.IsPaginated {
+		if prep.Offset > 0 {
+			pipeline = append(pipeline, bson.D{{Key: "$skip", Value: prep.Offset}})
+		}
+		pipeline = append(pipeline, bson.D{{Key: "$limit", Value: prep.Limit}})
+	}
+
+	cursor, err := r.Collection.Aggregate(ctx, pipeline)
+	if err != nil {
+		return nil, fmt.Errorf("mongo aggregate: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	var raw []bson.M
+	if err := cursor.All(ctx, &raw); err != nil {
+		return nil, fmt.Errorf("mongo aggregate decode: %w", err)
+	}
+
+	rows := make([]r3.AggregateRow, len(raw))
+	for i, doc := range raw {
+		row := make(r3.AggregateRow, len(doc))
+		for k, v := range doc {
+			row[k] = normalizeBSONValue(v)
+		}
+		rows[i] = row
+	}
+	return rows, nil
+}
+
+// sumOp is the MongoDB accumulator used for COUNT and SUM.
+const sumOp = "$sum"
+
+// buildGroupAndProject translates the aggregate specs into the $group document
+// (group keys under _id.g<i>, aggregates under their aliases) and the $project
+// document that flattens group keys back to their field names and finalizes
+// COUNT(DISTINCT ...) sets into sizes.
+func buildGroupAndProject(groupNames []string, aggs r3.Aggregates) (bson.D, bson.D, error) {
+	var groupID any
+	if len(groupNames) > 0 {
+		id := bson.D{}
+		for i, name := range groupNames {
+			id = append(id, bson.E{Key: fmt.Sprintf("g%d", i), Value: "$" + name})
+		}
+		groupID = id
+	}
+
+	group := bson.D{{Key: bsonIDField, Value: groupID}}
+	project := bson.D{{Key: bsonIDField, Value: 0}}
+	for i, name := range groupNames {
+		project = append(project, bson.E{Key: name, Value: fmt.Sprintf("$_id.g%d", i)})
+	}
+
+	for _, a := range aggs {
+		field := "$" + a.Field.String()
+		switch a.Func {
+		case r3.AggregateCount:
+			if a.Field == nil || a.Field.String() == "" {
+				group = append(group, bson.E{Key: a.Alias, Value: bson.D{{Key: sumOp, Value: 1}}})
+			} else {
+				// COUNT(field): count documents whose value is non-null.
+				cond := bson.D{{Key: "$cond", Value: bson.A{
+					bson.D{{Key: "$ne", Value: bson.A{field, nil}}}, 1, 0,
+				}}}
+				group = append(group, bson.E{Key: a.Alias, Value: bson.D{{Key: sumOp, Value: cond}}})
+			}
+			project = append(project, bson.E{Key: a.Alias, Value: 1})
+		case r3.AggregateCountDistinct:
+			group = append(group, bson.E{Key: a.Alias, Value: bson.D{{Key: "$addToSet", Value: field}}})
+			// Nulls are excluded to match SQL COUNT(DISTINCT col).
+			project = append(project, bson.E{Key: a.Alias, Value: bson.D{{Key: "$size", Value: bson.D{
+				{Key: "$filter", Value: bson.D{
+					{Key: "input", Value: "$" + a.Alias},
+					{Key: "cond", Value: bson.D{{Key: "$ne", Value: bson.A{"$$this", nil}}}},
+				}},
+			}}}})
+		case r3.AggregateSum:
+			group = append(group, bson.E{Key: a.Alias, Value: bson.D{{Key: sumOp, Value: field}}})
+			project = append(project, bson.E{Key: a.Alias, Value: 1})
+		case r3.AggregateAvg:
+			group = append(group, bson.E{Key: a.Alias, Value: bson.D{{Key: "$avg", Value: field}}})
+			project = append(project, bson.E{Key: a.Alias, Value: 1})
+		case r3.AggregateMin:
+			group = append(group, bson.E{Key: a.Alias, Value: bson.D{{Key: "$min", Value: field}}})
+			project = append(project, bson.E{Key: a.Alias, Value: 1})
+		case r3.AggregateMax:
+			group = append(group, bson.E{Key: a.Alias, Value: bson.D{{Key: "$max", Value: field}}})
+			project = append(project, bson.E{Key: a.Alias, Value: 1})
+		default:
+			return nil, nil, fmt.Errorf("mongo aggregate: unsupported function %v", a.Func)
+		}
+	}
+	return group, project, nil
+}
+
+// normalizeBSONValue converts BSON-native scalar types into the Go types the
+// r3.AggregateRow accessors expect (bson.DateTime → time.Time in UTC, matching
+// how entities decode time fields).
+func normalizeBSONValue(v any) any {
+	if dt, ok := v.(bson.DateTime); ok {
+		return dt.Time().UTC()
+	}
+	return v
+}

@@ -63,6 +63,14 @@ func (w systemWriter[T, ID]) Count(ctx context.Context, q ...Query) (int64, erro
 	return w.inner.Count(ctx, q...)
 }
 
+func (w systemWriter[T, ID]) Aggregate(ctx context.Context, q ...Query) ([]AggregateRow, error) {
+	agg, ok := w.inner.(Aggregator)
+	if !ok {
+		return nil, ErrAggregateNotSupported
+	}
+	return agg.Aggregate(ctx, q...)
+}
+
 func (w systemWriter[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 	return w.inner.Create(WithoutWriteGuard(ctx), entity)
 }

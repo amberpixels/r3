@@ -29,6 +29,7 @@ type CRUD[T any, ID comparable] struct {
 
 // Compile-time check that CRUD satisfies r3.CRUD.
 var _ r3.CRUD[any, any] = &CRUD[any, any]{}
+var _ r3.Aggregator = &CRUD[any, any]{}
 
 // WithPermissions wraps an existing r3.CRUD with permission checking.
 // The checker parameter is the authorization policy that gates every operation.
@@ -240,6 +241,46 @@ func (p *CRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, error
 	}
 
 	return p.inner.Count(ctx, qarg...)
+}
+
+// Aggregate checks OpRead permission (resource-level), optionally injects
+// scope filters if the checker implements Scoper — so grouped results only
+// cover rows the actor is allowed to see — then delegates to the inner repo's
+// Aggregate. An inner repo without aggregation support yields
+// r3.ErrAggregateNotSupported.
+func (p *CRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.AggregateRow, error) {
+	agg, ok := p.inner.(r3.Aggregator)
+	if !ok {
+		return nil, r3.ErrAggregateNotSupported
+	}
+
+	actor := r3.GetActor(ctx)
+
+	// Resource-level check: can this actor read this resource type at all?
+	if err := p.checker.Check(ctx, AccessRequest[T, ID]{
+		Operation: OpRead,
+		Actor:     actor,
+	}); err != nil {
+		return nil, err
+	}
+
+	// If the checker also implements Scoper, inject scope filters.
+	if scoper, ok := p.checker.(Scoper[T, ID]); ok {
+		filters, err := scoper.Scope(ctx, actor)
+		if err != nil {
+			return nil, err
+		}
+		if len(filters) > 0 {
+			scopeQuery := r3.Query{Filters: filters}
+			if len(qarg) > 0 {
+				qarg[0] = qarg[0].MergeWith(scopeQuery)
+			} else {
+				qarg = append(qarg, scopeQuery)
+			}
+		}
+	}
+
+	return agg.Aggregate(ctx, qarg...)
 }
 
 // Update fetches the existing entity (if IDFunc is set) for entity-aware
