@@ -32,10 +32,11 @@ func CRUDActionCollector[T any, ID comparable]() Collector[T, ID] {
 
 		// Set RecordID for entity-level operations
 		switch opCtx.Operation {
-		case OpCreate, OpGet, OpUpdate, OpPatch, OpDelete:
+		case OpCreate, OpGet, OpUpdate, OpPatch, OpDelete, OpUpsert:
 			entry.RecordID = fmt.Sprint(opCtx.EntityID)
-		case OpList, OpCount, OpAggregate:
-			// List, Count, and Aggregate are type-level; RecordID stays empty.
+		case OpList, OpCount, OpAggregate, OpPatchWhere:
+			// List, Count, Aggregate, and PatchWhere are type-level (they span
+			// many or no single rows); RecordID stays empty.
 		}
 
 		return []MetricEntry{entry}

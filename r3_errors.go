@@ -21,6 +21,14 @@ var ErrNotFound = errors.New("r3: record not found")
 // (or a decorator in its chain) does not implement [Aggregator].
 var ErrAggregateNotSupported = errors.New("r3: aggregate not supported")
 
+// ErrUpsertNotSupported is returned by [UpsertOf] when the repository (or a
+// decorator in its chain) does not implement [Upserter].
+var ErrUpsertNotSupported = errors.New("r3: upsert not supported")
+
+// ErrBulkPatchNotSupported is returned by [PatchWhereOf] when the repository (or
+// a decorator in its chain) does not implement [BulkPatcher].
+var ErrBulkPatchNotSupported = errors.New("r3: bulk patch not supported")
+
 // ErrInvalidAggregate is returned when an aggregate query is structurally
 // invalid: no aggregates declared, a missing/duplicate/invalid alias, an
 // aggregate function that requires a field called without one, an alias

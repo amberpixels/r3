@@ -27,6 +27,8 @@ type GormCRUD[T any, ID comparable] struct {
 
 var _ r3.CRUD[any, any] = &GormCRUD[any, any]{}
 var _ r3.Aggregator = &GormCRUD[any, any]{}
+var _ r3.Upserter[any, any] = &GormCRUD[any, any]{}
+var _ r3.BulkPatcher[any, any] = &GormCRUD[any, any]{}
 
 // NewGormCRUD creates a new GORM-based CRUD repository.
 //

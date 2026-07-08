@@ -41,8 +41,8 @@ func FieldChangeCollector[T any, ID comparable]() Collector[T, ID] {
 		}
 
 		switch opCtx.Operation {
-		case OpPatch:
-			// For Patch, we know exactly which fields were patched.
+		case OpPatch, OpPatchWhere:
+			// For Patch/PatchWhere, we know exactly which fields were written.
 			fieldNames := r3.FieldsToStrings(opCtx.Fields)
 			entries := make([]MetricEntry, 0, len(fieldNames))
 			for _, name := range fieldNames {
@@ -54,8 +54,8 @@ func FieldChangeCollector[T any, ID comparable]() Collector[T, ID] {
 			}
 			return entries
 
-		case OpUpdate:
-			// For Update, detect which fields actually changed via reflection.
+		case OpUpdate, OpUpsert:
+			// For Update/Upsert, detect which fields actually changed via reflection.
 			changed := detectChangedFields(opCtx.OldEntity, opCtx.Entity)
 			entries := make([]MetricEntry, 0, len(changed))
 			for _, name := range changed {

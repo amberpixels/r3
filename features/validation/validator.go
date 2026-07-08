@@ -14,6 +14,13 @@ const (
 	OpCreate Operation = "create"
 	OpUpdate Operation = "update"
 	OpPatch  Operation = "patch"
+	// OpUpsert validates the full entity of an Upsert (insert-or-update); the
+	// whole entity is present, as on Create.
+	OpUpsert Operation = "upsert"
+	// OpPatchWhere validates the entity/fields of a bulk conditional update. Like
+	// Patch, only Fields carry meaning; there is no single Existing row, so
+	// Existing/Merged are never populated.
+	OpPatchWhere Operation = "patch_where"
 )
 
 // Request carries all context needed for a validation decision.

@@ -38,13 +38,30 @@ type Flavor struct {
 	// because without ANSI_QUOTES mode it reads `"col"` as a string literal — which
 	// silently breaks every filter and sort built from the dialect.
 	IdentifierQuote string
+
+	// UsesOnConflictClause selects the upsert dialect. When true the backend
+	// speaks Postgres/SQLite `ON CONFLICT (cols) DO UPDATE SET ...` (the conflict
+	// target is explicit and EXCLUDED refers to the would-be-inserted row). When
+	// false it speaks MySQL `ON DUPLICATE KEY UPDATE col = VALUES(col)` (the
+	// conflict target is any unique key, so the columns are ignored).
+	UsesOnConflictClause bool
 }
 
 // Pre-defined flavors for common databases.
 var (
-	FlavorPostgres = Flavor{Placeholder: PlaceholderDollar, SupportsRETURNING: true, TimestampFunc: "NOW()"}
-	FlavorSQLite   = Flavor{Placeholder: PlaceholderQuestion, SupportsRETURNING: true, TimestampFunc: "datetime('now')"}
-	FlavorMySQL    = Flavor{
+	FlavorPostgres = Flavor{
+		Placeholder:          PlaceholderDollar,
+		SupportsRETURNING:    true,
+		TimestampFunc:        "NOW()",
+		UsesOnConflictClause: true,
+	}
+	FlavorSQLite = Flavor{
+		Placeholder:          PlaceholderQuestion,
+		SupportsRETURNING:    true,
+		TimestampFunc:        "datetime('now')",
+		UsesOnConflictClause: true,
+	}
+	FlavorMySQL = Flavor{
 		Placeholder:       PlaceholderQuestion,
 		SupportsRETURNING: false,
 		TimestampFunc:     "CURRENT_TIMESTAMP",
@@ -97,6 +114,42 @@ func (f Flavor) WhereEq(column string, nextIdx int) string {
 		return fmt.Sprintf("%s = $%d", column, nextIdx)
 	}
 	return column + " = ?" // fallback
+}
+
+// UpsertClause builds the trailing on-conflict clause of an upsert INSERT for
+// this flavor: `ON CONFLICT (target) DO UPDATE SET col = EXCLUDED.col, ...` for
+// Postgres/SQLite, `ON DUPLICATE KEY UPDATE col = VALUES(col), ...` for MySQL.
+// conflictCols is the conflict target (ignored by MySQL, which keys off any
+// unique index). An empty updateCols yields DO NOTHING (a self-assign no-op on
+// MySQL) so a conflict leaves the existing row untouched.
+func (f Flavor) UpsertClause(conflictCols, updateCols []string) string {
+	if f.UsesOnConflictClause {
+		target := strings.Join(conflictCols, ", ")
+		if len(updateCols) == 0 {
+			return fmt.Sprintf("ON CONFLICT (%s) DO NOTHING", target)
+		}
+		sets := make([]string, len(updateCols))
+		for i, c := range updateCols {
+			sets[i] = fmt.Sprintf("%s = EXCLUDED.%s", c, c)
+		}
+		return fmt.Sprintf("ON CONFLICT (%s) DO UPDATE SET %s", target, strings.Join(sets, ", "))
+	}
+
+	// MySQL: the conflict target is implicit (any unique key). With no columns to
+	// update, self-assign the first conflict column so the statement still parses
+	// and behaves as a no-op on duplicate.
+	if len(updateCols) == 0 {
+		if len(conflictCols) == 0 {
+			return ""
+		}
+		c := conflictCols[0]
+		return fmt.Sprintf("ON DUPLICATE KEY UPDATE %s = %s", c, c)
+	}
+	sets := make([]string, len(updateCols))
+	for i, c := range updateCols {
+		sets[i] = fmt.Sprintf("%s = VALUES(%s)", c, c)
+	}
+	return "ON DUPLICATE KEY UPDATE " + strings.Join(sets, ", ")
 }
 
 // QuoteIdentifiers rewrites the ANSI double-quoted identifiers emitted by the
