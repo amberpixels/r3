@@ -52,6 +52,62 @@ func TestParseColumnTag_CapabilityFlags(t *testing.T) {
 	}
 }
 
+type gormModel struct {
+	ID         int64  `gorm:"primaryKey"`
+	LocationID int64  `gorm:"column:venue_id"`
+	Name       string `gorm:"column:full_name;primary_key"`
+	Skipped    string `gorm:"-"`
+	DBWins     string `gorm:"column:gorm_name"             db:"db_name"`
+	R3Wins     string `gorm:"column:gorm_name;-"                        r3:"r3_name"`
+	Plain      string
+}
+
+func gormFieldByName(t *testing.T, name string) reflect.StructField {
+	t.Helper()
+	f, ok := reflect.TypeFor[gormModel]().FieldByName(name)
+	if !ok {
+		t.Fatalf("field %q not found", name)
+	}
+	return f
+}
+
+func TestParseColumnTag_GormFallback(t *testing.T) {
+	id := r3tag.ParseColumnTag(gormFieldByName(t, "ID"))
+	if id.Column != "id" || !id.IsPK {
+		t.Errorf("id = %+v, want column=id pk=true", id)
+	}
+
+	loc := r3tag.ParseColumnTag(gormFieldByName(t, "LocationID"))
+	if loc.Column != "venue_id" {
+		t.Errorf("location = %+v, want column=venue_id", loc)
+	}
+
+	name := r3tag.ParseColumnTag(gormFieldByName(t, "Name"))
+	if name.Column != "full_name" || !name.IsPK {
+		t.Errorf("name = %+v, want column=full_name pk=true", name)
+	}
+
+	skipped := r3tag.ParseColumnTag(gormFieldByName(t, "Skipped"))
+	if !skipped.Skip {
+		t.Errorf("skipped = %+v, want skip=true", skipped)
+	}
+
+	dbWins := r3tag.ParseColumnTag(gormFieldByName(t, "DBWins"))
+	if dbWins.Column != "db_name" {
+		t.Errorf("dbWins = %+v, want column=db_name (db tag beats gorm)", dbWins)
+	}
+
+	r3Wins := r3tag.ParseColumnTag(gormFieldByName(t, "R3Wins"))
+	if r3Wins.Column != "r3_name" || r3Wins.Skip {
+		t.Errorf("r3Wins = %+v, want column=r3_name skip=false (r3 tag beats gorm)", r3Wins)
+	}
+
+	plain := r3tag.ParseColumnTag(gormFieldByName(t, "Plain"))
+	if plain.Column != "plain" {
+		t.Errorf("plain = %+v, want column=plain (snake_case fallback)", plain)
+	}
+}
+
 func TestParseColumnTag_PreservesExistingBehavior(t *testing.T) {
 	id := r3tag.ParseColumnTag(fieldByName(t, "ID"))
 	if id.Column != "id" || !id.IsPK {

@@ -1,6 +1,8 @@
 // Package r3tag provides struct tag parsing for r3 entities.
 //
-// It handles the `r3` tag (primary) with `db` tag as fallback for column mapping.
+// It handles the `r3` tag (primary) with `db` tag as fallback for column
+// mapping, and finally the `gorm` tag (column:/primaryKey) so gorm-tagged
+// models resolve to the same physical columns the GORM driver binds.
 //
 // Column tag syntax (r3 or db):
 //
@@ -10,6 +12,7 @@
 //	r3:"-"               // skip this field
 //	r3:"soft_delete"      // column name derived from field name
 //	db:"column_name,pk"  // fallback when no r3 tag
+//	gorm:"column:name"   // fallback when neither r3 nor db names the column
 //
 // Relation tag syntax (r3 only):
 //
@@ -50,8 +53,10 @@ type ColumnTag struct {
 }
 
 // ParseColumnTag reads column metadata from struct tags.
-// Priority: `r3` tag first, `db` tag as fallback.
-// If neither tag provides a column name, snake_case of the field name is used.
+// Priority: `r3` tag first, `db` tag as fallback, then the `gorm` tag's
+// column/primaryKey info so gorm-tagged models derive the same physical
+// columns the GORM driver binds.
+// If no tag provides a column name, snake_case of the field name is used.
 func ParseColumnTag(field reflect.StructField) ColumnTag {
 	r3Raw := field.Tag.Get("r3")
 	dbRaw := field.Tag.Get("db")
@@ -83,12 +88,50 @@ func ParseColumnTag(field reflect.StructField) ColumnTag {
 		}
 	}
 
+	// Fall back to the gorm tag for gaps r3/db left: column name (gorm:"column:x")
+	// and primary key. A gorm:"-" only skips the field when no r3/db tag claims it.
+	if gormRaw := field.Tag.Get("gorm"); gormRaw != "" {
+		col, isPK, skip := parseGormColumnTag(gormRaw)
+		if skip && raw == "" {
+			return ColumnTag{Skip: true}
+		}
+		if tag.Column == "" && col != "" {
+			tag.Column = col
+		}
+		if isPK {
+			tag.IsPK = true
+		}
+	}
+
 	// Final fallback: derive column name from Go field name.
 	if tag.Column == "" {
 		tag.Column = r3utils.ToSnakeCase(field.Name)
 	}
 
 	return tag
+}
+
+// parseGormColumnTag extracts the column name and primary-key flag from a
+// `gorm` struct tag (semicolon-separated, e.g. gorm:"column:venue_id;primaryKey").
+// Only the parts relevant to column mapping are read; gorm tag keys are
+// case-insensitive.
+func parseGormColumnTag(raw string) (string, bool, bool) {
+	if raw == "-" {
+		return "", false, true
+	}
+	var column string
+	var isPK bool
+	for part := range strings.SplitSeq(raw, ";") {
+		part = strings.TrimSpace(part)
+		lower := strings.ToLower(part)
+		switch {
+		case strings.HasPrefix(lower, "column:"):
+			column = strings.TrimSpace(part[len("column:"):])
+		case lower == "primarykey" || lower == "primary_key":
+			isPK = true
+		}
+	}
+	return column, isPK, false
 }
 
 // parseRawColumnTag parses a single raw tag value (from either r3 or db tag).
