@@ -20,6 +20,7 @@ type CRUD[T any, ID comparable] struct {
 // Compile-time check that CRUD satisfies r3.CRUD.
 var _ r3.CRUD[any, any] = &CRUD[any, any]{}
 var _ r3.Aggregator = &CRUD[any, any]{}
+var _ r3.RelationAggregator = &CRUD[any, any]{}
 
 // WithTransactor wraps an existing r3.CRUD with transaction capabilities.
 // All standard CRUD methods pass through unchanged.
@@ -54,6 +55,17 @@ func (c *CRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.Agg
 		return nil, r3.ErrAggregateNotSupported
 	}
 	return agg.Aggregate(ctx, qarg...)
+}
+
+// AggregateThroughRelation passes through to the inner CRUD.
+func (c *CRUD[T, ID]) AggregateThroughRelation(
+	ctx context.Context, relation string, qarg ...r3.Query,
+) ([]r3.AggregateRow, error) {
+	agg, ok := c.inner.(r3.RelationAggregator)
+	if !ok {
+		return nil, r3.ErrRelationAggregateNotSupported
+	}
+	return agg.AggregateThroughRelation(ctx, relation, qarg...)
 }
 
 // Update passes through to the inner CRUD.

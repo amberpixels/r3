@@ -49,6 +49,12 @@ type FilterSpec struct {
 	// relationship fields are absent unless used).
 	Relation       string  `json:",omitempty"`
 	RelationFilter Filters `json:",omitempty"`
+
+	// RelationNegate inverts a relationship filter: when true (see [HasNo]), the
+	// filter matches rows whose relation has NO related row satisfying
+	// RelationFilter (an anti-join / NOT EXISTS), rather than at least one. Only
+	// meaningful when Relation is set; the driver lowers it to a NOT-IN key set.
+	RelationNegate bool `json:",omitempty"`
 }
 
 // String returns just a string representation of the filter (as JSON).
@@ -172,6 +178,21 @@ func Between(field string, lo, hi any) *FilterSpec {
 // as a permission scope, enforcing it on Get requires permissions.WithIDFunc.
 func Has(relation string, inner ...*FilterSpec) *FilterSpec {
 	return &FilterSpec{Relation: relation, RelationFilter: inner}
+}
+
+// HasNo builds a negated relationship filter (anti-join): it matches rows whose
+// declared relation `relation` has NO related row satisfying all of `inner` —
+// the "NOT EXISTS" counterpart of [Has]. With no inner filters it matches rows
+// that have no related row at all. Example:
+//
+//	r3.HasNo("Translations")                 // rows with no translation yet
+//	r3.HasNo("Squads", r3.Eq("archived", true)) // rows in no archived squad
+//
+// Like [Has], the driver resolves it to a key set (a NOT-IN filter), so it works
+// on every backend regardless of native subquery support and does not round-trip
+// through the serialization dialects — build it in Go.
+func HasNo(relation string, inner ...*FilterSpec) *FilterSpec {
+	return &FilterSpec{Relation: relation, RelationFilter: inner, RelationNegate: true}
 }
 
 // And is a shortcut for NewFilterSpecAndGroup.

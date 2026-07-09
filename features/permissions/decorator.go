@@ -30,6 +30,7 @@ type CRUD[T any, ID comparable] struct {
 // Compile-time check that CRUD satisfies r3.CRUD.
 var _ r3.CRUD[any, any] = &CRUD[any, any]{}
 var _ r3.Aggregator = &CRUD[any, any]{}
+var _ r3.RelationAggregator = &CRUD[any, any]{}
 
 // WithPermissions wraps an existing r3.CRUD with permission checking.
 // The checker parameter is the authorization policy that gates every operation.
@@ -281,6 +282,49 @@ func (p *CRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.Agg
 	}
 
 	return agg.Aggregate(ctx, qarg...)
+}
+
+// AggregateThroughRelation checks OpRead permission (resource-level) and, if the
+// checker is a Scoper, injects the actor's owner-scope filters — so relation
+// aggregates only fold related rows of owners the actor may see — then delegates
+// to the inner repo. An inner repo without relation-aggregation support yields
+// r3.ErrRelationAggregateNotSupported.
+func (p *CRUD[T, ID]) AggregateThroughRelation(
+	ctx context.Context, relation string, qarg ...r3.Query,
+) ([]r3.AggregateRow, error) {
+	agg, ok := p.inner.(r3.RelationAggregator)
+	if !ok {
+		return nil, r3.ErrRelationAggregateNotSupported
+	}
+
+	actor := r3.GetActor(ctx)
+
+	if err := p.checker.Check(ctx, AccessRequest[T, ID]{
+		Operation: OpRead,
+		Actor:     actor,
+	}); err != nil {
+		return nil, err
+	}
+
+	// Scoper filters are owner-entity filters, and relation aggregation
+	// interprets Query.Filters as filters on the owner — so scope restricts which
+	// owners' related rows are counted.
+	if scoper, ok := p.checker.(Scoper[T, ID]); ok {
+		filters, err := scoper.Scope(ctx, actor)
+		if err != nil {
+			return nil, err
+		}
+		if len(filters) > 0 {
+			scopeQuery := r3.Query{Filters: filters}
+			if len(qarg) > 0 {
+				qarg[0] = qarg[0].MergeWith(scopeQuery)
+			} else {
+				qarg = append(qarg, scopeQuery)
+			}
+		}
+	}
+
+	return agg.AggregateThroughRelation(ctx, relation, qarg...)
 }
 
 // Update fetches the existing entity (if IDFunc is set) for entity-aware

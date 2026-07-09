@@ -19,6 +19,7 @@ type CRUD[T any, ID comparable] struct {
 // Compile-time check that CRUD satisfies r3.CRUD.
 var _ r3.CRUD[any, any] = &CRUD[any, any]{}
 var _ r3.Aggregator = &CRUD[any, any]{}
+var _ r3.RelationAggregator = &CRUD[any, any]{}
 
 // WithSoftDelete wraps an existing r3.CRUD with soft-delete capabilities
 // (Restore and HardDelete). All standard CRUD methods pass through unchanged.
@@ -54,6 +55,18 @@ func (s *CRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.Agg
 		return nil, r3.ErrAggregateNotSupported
 	}
 	return agg.Aggregate(ctx, qarg...)
+}
+
+// AggregateThroughRelation passes through to the inner CRUD (trashed filtering is
+// an engine concern, like List/Count).
+func (s *CRUD[T, ID]) AggregateThroughRelation(
+	ctx context.Context, relation string, qarg ...r3.Query,
+) ([]r3.AggregateRow, error) {
+	agg, ok := s.inner.(r3.RelationAggregator)
+	if !ok {
+		return nil, r3.ErrRelationAggregateNotSupported
+	}
+	return agg.AggregateThroughRelation(ctx, relation, qarg...)
 }
 
 // Update passes through to the inner CRUD.

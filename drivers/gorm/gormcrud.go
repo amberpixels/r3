@@ -35,10 +35,14 @@ var _ r3.BulkPatcher[any, any] = &GormCRUD[any, any]{}
 // Accepts optional [r3.Option] values for framework-level configuration.
 func NewGormCRUD[T any, ID comparable](db *gorm.DB, opts ...r3.Option) *GormCRUD[T, ID] {
 	resolved := r3.ResolveOptions(opts...)
+	// Relations declared explicitly (by table+column names) supplement the ones
+	// reflected from struct tags, so filters/aggregates can resolve relations to
+	// tables the entity does not import as a Go type.
+	meta := enginesql.WithDeclaredRelations(enginesql.GetStructMeta[T](), resolved.Relations)
 	return &GormCRUD[T, ID]{
 		db:              db,
 		DefaultsManager: r3.NewDefaultsManagerWithConfig(resolved.Config),
-		meta:            enginesql.GetStructMeta[T](),
+		meta:            meta,
 		schema:          r3.SchemaOf[T](r3.WithSchemaNaming(resolved.Config.Naming)),
 		Config:          resolved.Config,
 		raw:             NewGormRaw[T, ID](db),
@@ -196,7 +200,7 @@ func (r *GormCRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, e
 func (r *GormCRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.AggregateRow, error) {
 	merged := r.MergeListQuery(qarg...)
 	if hasRelationFilters(merged.Filters) {
-		lowered, err := lowerRelationFilters[T](ctx, r.db, merged.Filters)
+		lowered, err := lowerRelationFilters(ctx, r.db, r.meta, merged.Filters)
 		if err != nil {
 			return nil, err
 		}
@@ -499,7 +503,7 @@ func (r *GormCRUD[T, ID]) prepareList(
 		return enginesql.PreparedListQuery{}, err
 	}
 	if hasRelationFilters(merged.Filters) {
-		lowered, err := lowerRelationFilters[T](ctx, r.db, merged.Filters)
+		lowered, err := lowerRelationFilters(ctx, r.db, r.meta, merged.Filters)
 		if err != nil {
 			return enginesql.PreparedListQuery{}, err
 		}

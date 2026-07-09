@@ -39,7 +39,7 @@ func (r *GormCRUD[T, ID]) PatchWhere(
 	// Lower relationship filters into key-set In filters before building clauses,
 	// exactly as List does.
 	if hasRelationFilters(filters) {
-		lowered, err := lowerRelationFilters[T](ctx, r.db, filters)
+		lowered, err := lowerRelationFilters(ctx, r.db, r.meta, filters)
 		if err != nil {
 			return 0, err
 		}

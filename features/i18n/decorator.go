@@ -29,6 +29,7 @@ type CRUD[T any, ID comparable] struct {
 // Compile-time check that CRUD satisfies r3.CRUD.
 var _ r3.CRUD[struct{}, int64] = &CRUD[struct{}, int64]{}
 var _ r3.Aggregator = &CRUD[struct{}, int64]{}
+var _ r3.RelationAggregator = &CRUD[struct{}, int64]{}
 
 // WithTranslations wraps an existing r3.CRUD with locale-aware reads and
 // staleness tracking. IDFunc and Fields are required. It panics on a
@@ -117,6 +118,18 @@ func (c *CRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.Agg
 		return nil, r3.ErrAggregateNotSupported
 	}
 	return agg.Aggregate(ctx, qarg...)
+}
+
+// AggregateThroughRelation passes through to the inner CRUD. Aggregated values
+// are not localized (they are counts/sums, not translatable text).
+func (c *CRUD[T, ID]) AggregateThroughRelation(
+	ctx context.Context, relation string, qarg ...r3.Query,
+) ([]r3.AggregateRow, error) {
+	agg, ok := c.inner.(r3.RelationAggregator)
+	if !ok {
+		return nil, r3.ErrRelationAggregateNotSupported
+	}
+	return agg.AggregateThroughRelation(ctx, relation, qarg...)
 }
 
 // Create inserts a new entity. No translations can exist yet, so it is a

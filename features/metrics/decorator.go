@@ -42,6 +42,7 @@ type CRUD[T any, ID comparable] struct {
 // Compile-time check that CRUD satisfies r3.CRUD.
 var _ r3.CRUD[any, any] = &CRUD[any, any]{}
 var _ r3.Aggregator = &CRUD[any, any]{}
+var _ r3.RelationAggregator = &CRUD[any, any]{}
 
 // WithMetrics wraps an existing r3.CRUD with metrics collection.
 //
@@ -194,6 +195,38 @@ func (m *CRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.Agg
 
 	start := time.Now()
 	rows, err := agg.Aggregate(ctx, qarg...)
+	duration := time.Since(start)
+
+	m.record(ctx, OperationContext[T, ID]{
+		Operation:  OpAggregate,
+		Duration:   duration,
+		TotalCount: int64(len(rows)),
+		Query:      q,
+		Err:        err,
+	})
+
+	return rows, err
+}
+
+// AggregateThroughRelation aggregates related rows and records metrics
+// (OpAggregate, with TotalCount = number of grouped rows returned). An inner
+// repo without relation-aggregation support yields
+// r3.ErrRelationAggregateNotSupported.
+func (m *CRUD[T, ID]) AggregateThroughRelation(
+	ctx context.Context, relation string, qarg ...r3.Query,
+) ([]r3.AggregateRow, error) {
+	agg, ok := m.inner.(r3.RelationAggregator)
+	if !ok {
+		return nil, r3.ErrRelationAggregateNotSupported
+	}
+
+	var q r3.Query
+	if len(qarg) > 0 {
+		q = qarg[0]
+	}
+
+	start := time.Now()
+	rows, err := agg.AggregateThroughRelation(ctx, relation, qarg...)
 	duration := time.Since(start)
 
 	m.record(ctx, OperationContext[T, ID]{

@@ -64,6 +64,34 @@
 //	    Aggregates: r3.Aggregates{r3.AggCount("raids"), r3.AggMax("date", "last_raid")},
 //	})
 //
+// # Relationships
+//
+// Relations between entities (has-many, belongs-to, many-to-many) are declared
+// either by struct tag (`r3:"rel:has-many,fk:city_id"`) or physically by table
+// and column names via [WithRelations] and the [HasManyRelation],
+// [BelongsToRelation], and [ManyToManyRelation] builders — the latter lets an
+// entity relate to a table it does not import as a Go type (avoiding domain
+// import cycles). Both forms are resolved the same way and need no round-trip
+// through the serialization dialects.
+//
+// A declared relation supports three operations, all reached through the normal
+// Query/helpers:
+//
+//   - [Has] — a relationship filter (EXISTS): rows whose relation has at least
+//     one related row satisfying the inner filters.
+//   - [HasNo] — the negation (NOT EXISTS / anti-join): rows whose relation has
+//     no such related row, correctly including rows with a NULL foreign key.
+//   - [AggregateThroughRelation] — grouped aggregation over the related rows
+//     (a has-many child table or a many-to-many join table), reached via
+//     [RelationAggregator]. Owner filters (including a permissions Scoper's)
+//     restrict which owners' related rows are folded, and soft-deleted related
+//     rows are excluded when the relation declares a soft-delete column.
+//
+// Backend support: relation resolution (Has/HasNo/AggregateThroughRelation) is
+// currently implemented by the GORM driver only. Other SQL drivers reject
+// relationship filters at translation, and the mongo/file engines ignore them;
+// bringing relation support to those backends is tracked work.
+//
 // # Project layout
 //
 // The project is organized in five layers, each depending only on the layers above:

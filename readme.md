@@ -45,6 +45,7 @@ configRepo  r3.CRUD[Config, string]   // YAML files on disk
 - [Schema & Capabilities](#schema--capabilities)
 - [Pagination](#pagination)
 - [Aggregation](#aggregation)
+- [Relationships](#relationships)
 - [Transactions](#transactions)
 - [URL Query Parsing](#url-query-parsing)
 - [Requirements](#requirements)
@@ -451,6 +452,50 @@ results only ever cover rows the actor may see. `r3.AggregateOf` deliberately
 checks only the outermost repo (never unwrapping decorators), so that scoping
 cannot be bypassed. A repo without the capability returns
 `r3.ErrAggregateNotSupported`.
+
+## Relationships
+
+Entities relate to each other as **has-many**, **belongs-to**, or
+**many-to-many**. Declare a relation by struct tag
+(`r3:"rel:has-many,fk:city_id"`) or physically by table and column names — the
+latter lets an entity relate to a table it does not import as a Go type, which
+sidesteps domain import cycles:
+
+```go
+// Photo relates to locations via a join table — with no Location field on Photo,
+// so package photo never imports package location.
+repo := r3gorm.NewGormCRUD[Photo, int64](db, r3.WithRelations(
+    r3.ManyToManyRelation("locations", "photo_locations", "photo_id", "location_id", "locations"),
+))
+```
+
+Either way the relation drives three operations:
+
+```go
+// Has — rows whose relation matches (EXISTS)
+repo.List(ctx, r3.Query{Filters: r3.Filters{r3.Has("locations", r3.Eq("city_id", 7))}})
+
+// HasNo — the anti-join (NOT EXISTS): rows with no matching related row,
+// correctly including rows whose foreign key is NULL
+repo.List(ctx, r3.Query{Filters: r3.Filters{r3.HasNo("Translations")}})
+
+// AggregateThroughRelation — grouped aggregation over the related rows
+// (a has-many child table or an m2m join table)
+rows, _ := r3.AggregateThroughRelation(ctx, squadRepo, "members", r3.Query{
+    GroupBy:    r3.GroupBy("squad_id"),
+    Aggregates: r3.Aggregates{r3.AggCount("members")},
+})
+```
+
+`AggregateThroughRelation` interprets `Filters` as owner filters (so a
+permissions `Scoper` restricts which owners' related rows are folded) and
+excludes soft-deleted related rows when the relation declares a soft-delete
+column. It is reached via the `RelationAggregator` capability, forwarded by
+every decorator like `Aggregator`.
+
+**Backend support:** relation resolution (`Has`/`HasNo`/`AggregateThroughRelation`)
+is implemented by the GORM driver today; other backends reject or ignore it. See
+[`docs/backend-parity.md`](docs/backend-parity.md) for the tracked gap list.
 
 ## Transactions
 
