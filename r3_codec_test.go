@@ -307,6 +307,95 @@ func upper(s string) string {
 	return string(b)
 }
 
+func TestDecodeAggregateCodecs(t *testing.T) {
+	schema := r3.SchemaOf[codecModel]()
+	tm := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC)
+
+	q := r3.Query{
+		GroupBy: r3.GroupBy("started_at"), // codec'd group-by column decodes
+		Aggregates: r3.Aggregates{
+			r3.AggMax("started_at", "last_started"),  // MIN/MAX over codec'd field decodes
+			r3.AggMin("started_at", "first_started"), // ditto
+			r3.AggSum("started_at", "sum_started"),   // SUM never decodes
+			r3.AggAvg("started_at", "avg_started"),   // AVG never decodes
+			r3.AggCount("n"),                         // COUNT never decodes
+		},
+	}
+	rows := []r3.AggregateRow{{
+		"started_at":    tm.Unix(),
+		"last_started":  tm.Unix(),
+		"first_started": tm.Add(-time.Hour).Unix(),
+		"sum_started":   tm.Unix() * 2,
+		"avg_started":   tm.Unix(),
+		"n":             int64(2),
+	}}
+
+	require.NoError(t, r3.DecodeAggregateCodecs(schema, q, rows))
+
+	// Group-by column and MIN/MAX aliases decode to time.Time.
+	assertTimeEqual(t, tm, rows[0]["started_at"])
+	assertTimeEqual(t, tm, rows[0]["last_started"])
+	assertTimeEqual(t, tm.Add(-time.Hour), rows[0]["first_started"])
+	// SUM/AVG/COUNT stay raw ints — decoding them would be nonsense.
+	assert.Equal(t, tm.Unix()*2, rows[0]["sum_started"])
+	assert.Equal(t, tm.Unix(), rows[0]["avg_started"])
+	assert.Equal(t, int64(2), rows[0]["n"])
+}
+
+func TestDecodeAggregateCodecsNilAndNonCodec(t *testing.T) {
+	schema := r3.SchemaOf[codecModel]()
+
+	q := r3.Query{
+		GroupBy: r3.GroupBy("name"), // non-codec'd group-by is untouched
+		Aggregates: r3.Aggregates{
+			r3.AggMax("started_at", "last_started"),
+			r3.AggMax("id", "max_id"), // non-codec'd field: passes through
+		},
+	}
+	rows := []r3.AggregateRow{{
+		"name":         "launch",
+		"last_started": nil, // MAX over an empty/all-NULL group
+		"max_id":       int64(7),
+	}}
+
+	require.NoError(t, r3.DecodeAggregateCodecs(schema, q, rows))
+
+	assert.Equal(t, "launch", rows[0]["name"], "non-codec group key untouched")
+	assert.Nil(t, rows[0]["last_started"], "NULL extremum stays nil, not the zero time")
+	assert.Equal(t, int64(7), rows[0]["max_id"], "non-codec aggregate untouched")
+
+	// The nil result still reads back as ok=false through the accessor.
+	_, ok := rows[0].Time("last_started")
+	assert.False(t, ok)
+}
+
+func TestDecodeAggregateCodecsNoCodecSchemaIsNoop(t *testing.T) {
+	type plain struct {
+		ID        int64     `r3:"id,pk"`
+		StartedAt time.Time `r3:"started_at"`
+	}
+	tm := time.Date(2026, 7, 9, 12, 0, 0, 0, time.UTC)
+	q := r3.Query{Aggregates: r3.Aggregates{r3.AggMax("started_at", "last_started")}}
+	rows := []r3.AggregateRow{{"last_started": tm.Unix()}}
+
+	require.NoError(t, r3.DecodeAggregateCodecs(r3.SchemaOf[plain](), q, rows))
+	assert.Equal(t, tm.Unix(), rows[0]["last_started"], "no codecs -> values untouched")
+
+	// A fully zero schema is likewise a no-op.
+	require.NoError(t, r3.DecodeAggregateCodecs(r3.Schema{}, q, rows))
+	assert.Equal(t, tm.Unix(), rows[0]["last_started"])
+}
+
+// assertTimeEqual asserts that got is a time.Time equal (same instant) to want.
+// It compares with time.Time.Equal, not reflect.DeepEqual, since equal instants
+// can carry different internal representations.
+func assertTimeEqual(t *testing.T, want time.Time, got any) {
+	t.Helper()
+	gt, ok := got.(time.Time)
+	require.Truef(t, ok, "want time.Time, got %T", got)
+	assert.Truef(t, want.Equal(gt), "want %s, got %s", want, gt)
+}
+
 // recoverErr runs f and returns any panicked error (nil if it did not panic).
 func recoverErr(f func()) (err error) {
 	defer func() {

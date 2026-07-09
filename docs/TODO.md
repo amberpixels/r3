@@ -50,9 +50,12 @@ increments:
   domain values.
 - **`drivers/bun`, `drivers/gopg`.** Prefer real per-field support; otherwise
   query-prep encode + post-scan decode. Must not silently skip.
-- **Aggregate `min`/`max` on a codec'd field** returns the raw stored int rather
-  than a decoded domain value (all backends, GORM included). Decode aggregate
-  result values for codec'd group/aggregate columns in `engine/*/aggregate.go`.
+- **Aggregate `min`/`max` on a codec'd field.** Done for GORM: the shared core
+  helper `r3.DecodeAggregateCodecs` decodes codec'd group-by columns and
+  `MIN`/`MAX` aggregates back to the domain value (`SUM`/`AVG`/`COUNT` stay raw).
+  Each remaining backend calls it right before returning rows in the same
+  increment that removes its `RequireCodecSupport` guard (a backend that can't
+  store a codec can't aggregate one).
 - **Dialect serialization** (`dialects/json|url|yaml|toml`) does not yet encode
   codec'd fields for REST bodies / query params.
 

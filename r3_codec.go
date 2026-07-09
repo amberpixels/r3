@@ -38,7 +38,10 @@ type Codec interface {
 	// whose type is target (which may be a pointer for a nullable field). It must
 	// tolerate the representation variance across backends — the same logical
 	// value can arrive as int64, int32, float64, []byte, or string — and map a
-	// NULL (nil) back to the zero value (or nil pointer) for target.
+	// NULL (nil) back to the zero value (or nil pointer) for target. A nil target
+	// means "no destination shape is known" (e.g. decoding an aggregate result
+	// into an [AggregateRow], which has no struct field): decode to the codec's
+	// natural domain type — the value [DecodeAggregateCodecs] relies on.
 	Decode(stored any, target reflect.Type) (any, error)
 
 	// Stored reports the logical DataType of the stored representation (e.g.
@@ -241,6 +244,74 @@ func EncodeCursorCodecs(s Schema, values CursorValues) (CursorValues, error) {
 		out[col] = ev
 	}
 	return out, nil
+}
+
+// DecodeAggregateCodecs decodes, in place, every [AggregateRow] value that still
+// carries a codec'd attribute's domain meaning back to the domain value:
+//   - a group-by column that maps to a codec'd attribute (the grouped value IS
+//     the field's domain value), and
+//   - a MIN/MAX aggregate over a codec'd attribute (the extremum is a real field
+//     value).
+//
+// SUM/AVG/COUNT/COUNT(DISTINCT) are never decoded: a sum of unix seconds is not a
+// time.Time and a count is always an integer, so decoding them would be nonsense.
+// A NULL result (nil — e.g. MIN/MAX over an empty group) is left as nil so
+// [AggregateRow.Time] still reports ok=false for a genuinely absent extremum
+// rather than fabricating the codec's zero value.
+//
+// It is a no-op when the schema declares no codecs. Backends that implement
+// [Aggregator] and apply codecs call it once, just before returning rows, so the
+// "which columns decode" rule lives in exactly one place and cannot drift.
+func DecodeAggregateCodecs(s Schema, q Query, rows []AggregateRow) error {
+	if !s.hasCodecs() || len(rows) == 0 {
+		return nil
+	}
+	decoders := aggregateCodecDecoders(s, q)
+	if len(decoders) == 0 {
+		return nil
+	}
+	for _, row := range rows {
+		for key, c := range decoders {
+			v, ok := row[key]
+			if !ok || v == nil { // absent or SQL NULL (e.g. MAX over an empty group)
+				continue
+			}
+			// target=nil: an AggregateRow has no destination struct field, and
+			// Attribute carries no reflect.Type — so decode to the codec's
+			// natural domain type (e.g. a bare time.Time).
+			decoded, err := c.Decode(v, nil)
+			if err != nil {
+				return err
+			}
+			row[key] = decoded
+		}
+	}
+	return nil
+}
+
+// aggregateCodecDecoders maps each result key that must be decoded to the codec
+// that decodes it: codec'd group-by columns and MIN/MAX aggregates over codec'd
+// fields. Everything else is omitted, so the returned map is empty when nothing
+// in the query touches a codec.
+func aggregateCodecDecoders(s Schema, q Query) map[string]Codec {
+	decoders := make(map[string]Codec)
+	for _, g := range q.GroupBy {
+		if attr, ok := s.Lookup(g.String()); ok && attr.Codec != nil {
+			decoders[g.String()] = attr.Codec
+		}
+	}
+	for _, a := range q.Aggregates {
+		if a == nil || a.Field == nil {
+			continue
+		}
+		if a.Func != AggregateMin && a.Func != AggregateMax {
+			continue // SUM/AVG/COUNT/COUNT_DISTINCT never preserve the domain type
+		}
+		if attr, ok := s.Lookup(a.Field.String()); ok && attr.Codec != nil {
+			decoders[a.Alias] = attr.Codec
+		}
+	}
+	return decoders
 }
 
 // codecEncodableOp reports whether an operator carries a field-domain value that

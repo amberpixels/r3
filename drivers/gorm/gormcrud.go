@@ -251,7 +251,18 @@ func (r *GormCRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3
 	}
 	defer rows.Close()
 
-	return enginesql.ScanAggregateRows(rows)
+	scanned, err := enginesql.ScanAggregateRows(rows)
+	if err != nil {
+		return nil, err
+	}
+	// Decode aggregate results that still carry a codec'd field's domain meaning
+	// (a codec'd group-by column, MIN/MAX over a codec'd field) back to the
+	// domain value, so row.Time on a codec:unixtime column returns the instant
+	// rather than the raw stored int.
+	if err := r3.DecodeAggregateCodecs(r.schema, prep.Query, scanned); err != nil {
+		return nil, err
+	}
+	return scanned, nil
 }
 
 func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, error) {

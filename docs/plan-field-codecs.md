@@ -227,7 +227,10 @@ hint for binding/cursor encoding.
   (`r3_cursor.go`, `dialects/*/cursor.go`). A codec'd field must Encode/Decode
   symmetrically or cursors corrupt.
 - **Aggregation** — min/max/group-by on a codec'd field: group keys in stored
-  form, Decode results (`engine/*/aggregate.go`).
+  form, Decode results (`engine/*/aggregate.go`). Done via the shared core helper
+  `r3.DecodeAggregateCodecs` (decodes codec'd group-by columns and `MIN`/`MAX`;
+  `SUM`/`AVG`/`COUNT` stay raw), wired into GORM; other backends wire it as their
+  codec support lands. See [`plan-aggregate-codec-decode.md`](./plan-aggregate-codec-decode.md).
 - **Schema validation** — `schema_validate.go`: a `time.Time` arg against a
   `unixtime` field must validate (domain type), not be rejected for "type
   mismatch" against an int column.

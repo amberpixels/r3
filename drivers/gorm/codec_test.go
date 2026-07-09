@@ -170,6 +170,109 @@ func TestGormCodec_Sort(t *testing.T) {
 	assert.True(t, got[1].StartedAt.After(got[2].StartedAt))
 }
 
+func TestGormCodec_AggregateMinMaxDecode(t *testing.T) {
+	repo, _ := newCodecRepo(t)
+	ctx := context.Background()
+
+	// Two groups keyed by name, timestamps stored as INTEGER unix seconds.
+	base := time.Date(2026, 7, 9, 10, 0, 0, 0, time.UTC)
+	seed := []codecEvent{
+		{ID: 1, Name: "a", StartedAt: base},
+		{ID: 2, Name: "a", StartedAt: base.Add(2 * time.Hour)},
+		{ID: 3, Name: "b", StartedAt: base.Add(1 * time.Hour)},
+	}
+	for _, e := range seed {
+		_, err := repo.Create(ctx, e)
+		require.NoError(t, err)
+	}
+
+	rows, err := r3.AggregateOf(ctx, repo, r3.Query{
+		GroupBy: r3.GroupBy("name"),
+		Aggregates: r3.Aggregates{
+			r3.AggMax("started_at", "last_started"),
+			r3.AggMin("started_at", "first_started"),
+			r3.AggCount("n"),
+		},
+		Sorts: r3.Sorts{r3.NewSortAscSpec(r3.NewFieldSpec("name"))},
+	})
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+
+	// Group "a": MAX/MIN over a codec'd INTEGER column decode back to time.Time,
+	// NOT the raw stored int — the fix this test guards.
+	last, ok := rows[0].Time("last_started")
+	require.True(t, ok, "MAX decodes to time.Time")
+	assert.True(t, last.Equal(base.Add(2*time.Hour)))
+	first, ok := rows[0].Time("first_started")
+	require.True(t, ok, "MIN decodes to time.Time")
+	assert.True(t, first.Equal(base))
+
+	// COUNT in the same query is NOT decoded — it stays an integer.
+	n, ok := rows[0].Int64("n")
+	require.True(t, ok)
+	assert.Equal(t, int64(2), n)
+	_, isTime := rows[0].Value("n").(time.Time)
+	assert.False(t, isTime, "COUNT must not be decoded to time")
+
+	// Group "b": single row.
+	last, ok = rows[1].Time("last_started")
+	require.True(t, ok)
+	assert.True(t, last.Equal(base.Add(time.Hour)))
+}
+
+func TestGormCodec_AggregateEmptyGroupNull(t *testing.T) {
+	repo, _ := newCodecRepo(t)
+	ctx := context.Background()
+
+	// A single row whose codec'd column is NULL (zero time stores NULL).
+	_, err := repo.Create(ctx, codecEvent{ID: 1, Name: "a"})
+	require.NoError(t, err)
+
+	rows, err := r3.AggregateOf(ctx, repo, r3.Query{
+		GroupBy:    r3.GroupBy("name"),
+		Aggregates: r3.Aggregates{r3.AggMax("started_at", "last_started")},
+	})
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+
+	// MAX over an all-NULL group is SQL NULL -> nil, left as nil (not fabricated
+	// as the codec's 1970 zero time), so Time reports ok=false.
+	assert.Nil(t, rows[0].Value("last_started"))
+	_, ok := rows[0].Time("last_started")
+	assert.False(t, ok, "absent extremum reports ok=false")
+}
+
+func TestGormCodec_AggregateGroupByCodecColumn(t *testing.T) {
+	repo, _ := newCodecRepo(t)
+	ctx := context.Background()
+
+	start := time.Date(2026, 7, 9, 10, 0, 0, 0, time.UTC)
+	// Two rows sharing one started_at, one with another.
+	for i, s := range []time.Time{start, start, start.Add(time.Hour)} {
+		_, err := repo.Create(ctx, codecEvent{ID: i + 1, Name: "e", StartedAt: s})
+		require.NoError(t, err)
+	}
+
+	rows, err := r3.AggregateOf(ctx, repo, r3.Query{
+		GroupBy:    r3.GroupBy("started_at"),
+		Aggregates: r3.Aggregates{r3.AggCount("n")},
+		Sorts:      r3.Sorts{r3.NewSortAscSpec(r3.NewFieldSpec("started_at"))},
+	})
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+
+	// The codec'd group-by key decodes to the domain time.Time.
+	g0, ok := rows[0].Time("started_at")
+	require.True(t, ok)
+	assert.True(t, g0.Equal(start))
+	n0, _ := rows[0].Int64("n")
+	assert.Equal(t, int64(2), n0)
+
+	g1, ok := rows[1].Time("started_at")
+	require.True(t, ok)
+	assert.True(t, g1.Equal(start.Add(time.Hour)))
+}
+
 // NOTE: cursor/keyset pagination is a raw-SQL-engine feature; the GORM driver
 // implements only offset pagination today (unrelated to codecs). The cursor codec
 // encoding lives in the shared engine/sql query-prep and is unit-tested in the

@@ -22,7 +22,7 @@ Legend: ✅ supported · ⚠️ degrades gracefully (documented) · ❌ not impl
 | Explicitly-declared relations — `r3.WithRelations` (table+column) | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Relation aggregation — `r3.AggregateThroughRelation` | ✅ | ❌ `ErrRelationAggregateNotSupported` | ❌ | ❌ | ❌ |
 | Value codecs — `r3:"codec:…"` reads/writes + filter args | ✅ | ❌ `RequireCodecSupport` panics at construction | ❌ panics | ❌ panics | ❌ panics |
-| Value codecs — aggregate `min`/`max` decode on a codec'd field | ❌ returns the raw stored int | ❌ | ❌ | ❌ | ❌ |
+| Value codecs — aggregate `min`/`max` decode on a codec'd field | ✅ | ❌ | ❌ | ❌ | ❌ |
 
 Value codecs are the transparent Go-value ⇄ stored-value transform (flagship
 `time.Time` ⇄ unix int). Design + rollout status live in
