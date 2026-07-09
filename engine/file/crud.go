@@ -40,6 +40,11 @@ func New[T any, ID comparable](idGen IDGenerator[ID], opts ...Option) (*BaseCRUD
 
 	meta := GetStructMeta[T]()
 
+	resolved := r3.ResolveOptions(cfg.r3Opts...)
+	// The file engine does not apply value codecs yet; reject a declared codec
+	// loudly rather than serializing the un-encoded value to the file.
+	r3.RequireCodecSupport(r3.SchemaOf[T](r3.WithSchemaNaming(resolved.Config.Naming)), "r3/engine/file")
+
 	var st storage
 	switch {
 	case cfg.filePath != "":
@@ -51,7 +56,6 @@ func New[T any, ID comparable](idGen IDGenerator[ID], opts ...Option) (*BaseCRUD
 		st = newSingleFileStorage(cfg.baseDir, meta.ResourceName, cfg.codec)
 	}
 
-	resolved := r3.ResolveOptions(cfg.r3Opts...)
 	crud := &BaseCRUD[T, ID]{
 		DefaultsManager: r3.NewDefaultsManagerWithConfig(resolved.Config),
 		Meta:            meta,

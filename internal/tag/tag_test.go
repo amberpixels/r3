@@ -16,6 +16,8 @@ type capModel struct {
 	Secret string `r3:"secret_token,no-filter,no-sort,no-output"`
 	Status string `r3:"status,enum:draft|planned|published"`
 	Del    string `r3:"deleted_at,soft_delete"`
+	Start  int64  `r3:"started_at,codec:unixtime"`
+	Combo  int64  `r3:"combo,readonly,codec:unixmilli"`
 }
 
 func fieldByName(t *testing.T, name string) reflect.StructField {
@@ -49,6 +51,17 @@ func TestParseColumnTag_CapabilityFlags(t *testing.T) {
 	}
 	if status.Column != "status" {
 		t.Errorf("status column = %q, want status", status.Column)
+	}
+
+	start := r3tag.ParseColumnTag(fieldByName(t, "Start"))
+	if start.Column != "started_at" || start.Codec != "unixtime" {
+		t.Errorf("start = %+v, want column=started_at codec=unixtime", start)
+	}
+
+	// A codec composes with capability flags on the same field.
+	combo := r3tag.ParseColumnTag(fieldByName(t, "Combo"))
+	if combo.Column != "combo" || combo.Codec != "unixmilli" || !combo.ReadOnly {
+		t.Errorf("combo = %+v, want column=combo codec=unixmilli readonly=true", combo)
 	}
 }
 

@@ -39,11 +39,15 @@ func NewGormCRUD[T any, ID comparable](db *gorm.DB, opts ...r3.Option) *GormCRUD
 	// reflected from struct tags, so filters/aggregates can resolve relations to
 	// tables the entity does not import as a Go type.
 	meta := enginesql.WithDeclaredRelations(enginesql.GetStructMeta[T](), resolved.Relations)
+	schema := r3.SchemaOf[T](r3.WithSchemaNaming(resolved.Config.Naming))
+	// Transparently bridge any r3:"codec:..." attributes to GORM's serializer
+	// mechanism so reads/writes apply the codec (see codec.go). No-op without codecs.
+	wireCodecs[T](db, schema)
 	return &GormCRUD[T, ID]{
 		db:              db,
 		DefaultsManager: r3.NewDefaultsManagerWithConfig(resolved.Config),
 		meta:            meta,
-		schema:          r3.SchemaOf[T](r3.WithSchemaNaming(resolved.Config.Naming)),
+		schema:          schema,
 		Config:          resolved.Config,
 		raw:             NewGormRaw[T, ID](db),
 	}
@@ -509,7 +513,7 @@ func (r *GormCRUD[T, ID]) prepareList(
 		}
 		merged.Filters = lowered
 	}
-	return enginesql.PrepareMergedListQuery(merged)
+	return enginesql.PrepareMergedListQuerySchema(r.schema, merged)
 }
 
 // Raw returns the GormRaw escape hatch for custom queries.

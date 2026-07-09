@@ -50,6 +50,7 @@ type ColumnTag struct {
 	ReadOnly  bool     // r3:"...,readonly"   — not creatable and not mutable
 	Immutable bool     // r3:"...,immutable"  — creatable once, then not mutable
 	Enum      []string // r3:"...,enum:a|b|c" — enum data type with the allowed values
+	Codec     string   // r3:"...,codec:name" — value codec name (resolved in schema derivation)
 }
 
 // ParseColumnTag reads column metadata from struct tags.
@@ -169,7 +170,8 @@ func isKnownKeyword(s string) bool {
 		strings.HasPrefix(s, "ref:") ||
 		strings.HasPrefix(s, "join:") ||
 		strings.HasPrefix(s, "table:") ||
-		strings.HasPrefix(s, "enum:")
+		strings.HasPrefix(s, "enum:") ||
+		strings.HasPrefix(s, "codec:")
 }
 
 // applyFlag applies a known tag flag to a ColumnTag.
@@ -192,6 +194,9 @@ func applyFlag(tag *ColumnTag, flag string) {
 	default:
 		if values, ok := strings.CutPrefix(flag, "enum:"); ok {
 			tag.Enum = parseEnumValues(values)
+		}
+		if name, ok := strings.CutPrefix(flag, "codec:"); ok {
+			tag.Codec = strings.TrimSpace(name)
 		}
 	}
 }

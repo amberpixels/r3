@@ -61,8 +61,28 @@ func PrepareListQuery(dm *DefaultsManager, qarg ...r3.Query) (PreparedListQuery,
 // (defaults + user args). It is the half of PrepareListQuery after the merge,
 // exposed so a driver can transform the merged query — e.g. lower relationship
 // ("has") filters into key-set In filters — before the clauses are built.
+//
+// It applies no value codecs (the zero schema has none); a driver whose schema
+// declares codecs must call [PrepareMergedListQuerySchema] so filter and cursor
+// arguments on codec'd fields are encoded to stored form.
 func PrepareMergedListQuery(q r3.Query) (PreparedListQuery, error) {
+	return PrepareMergedListQuerySchema(r3.Schema{}, q)
+}
+
+// PrepareMergedListQuerySchema is [PrepareMergedListQuery] with schema-driven
+// value codecs applied: filter arguments and decoded cursor keys that target a
+// codec'd attribute are converted to their stored form before the SQL clauses are
+// built, so predicates compare against the stored column values. With a zero
+// schema (no codecs) it behaves exactly like PrepareMergedListQuery.
+func PrepareMergedListQuerySchema(schema r3.Schema, q r3.Query) (PreparedListQuery, error) {
 	var p PreparedListQuery
+
+	// Encode filter arguments on codec'd fields to stored form before conversion.
+	filters, err := r3.EncodeFilterCodecs(schema, q.Filters)
+	if err != nil {
+		return p, fmt.Errorf("failed to encode filter codecs: %w", err)
+	}
+	q.Filters = filters
 	p.Query = q
 
 	// Convert filters to SQL clauses
@@ -96,6 +116,12 @@ func PrepareMergedListQuery(q r3.Query) (PreparedListQuery, error) {
 			values, err := r3.DecodeCursor(token)
 			if err != nil {
 				return p, fmt.Errorf("failed to decode cursor: %w", err)
+			}
+			// Encode cursor keys on codec'd fields to stored form so the keyset
+			// predicate compares against stored column values.
+			values, err = r3.EncodeCursorCodecs(schema, values)
+			if err != nil {
+				return p, fmt.Errorf("failed to encode cursor codecs: %w", err)
 			}
 			cursorClause, err := r3sql.CursorToSQLClause(values, q.Sorts, q.Cursor.Direction())
 			if err != nil {

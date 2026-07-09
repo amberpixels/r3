@@ -21,6 +21,17 @@ Legend: ✅ supported · ⚠️ degrades gracefully (documented) · ❌ not impl
 | Relationship filters — `r3.HasNo` (anti-join / NOT EXISTS) | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Explicitly-declared relations — `r3.WithRelations` (table+column) | ✅ | ❌ | ❌ | ❌ | ❌ |
 | Relation aggregation — `r3.AggregateThroughRelation` | ✅ | ❌ `ErrRelationAggregateNotSupported` | ❌ | ❌ | ❌ |
+| Value codecs — `r3:"codec:…"` reads/writes + filter args | ✅ | ❌ `RequireCodecSupport` panics at construction | ❌ panics | ❌ panics | ❌ panics |
+| Value codecs — aggregate `min`/`max` decode on a codec'd field | ❌ returns the raw stored int | ❌ | ❌ | ❌ | ❌ |
+
+Value codecs are the transparent Go-value ⇄ stored-value transform (flagship
+`time.Time` ⇄ unix int). Design + rollout status live in
+[`plan-field-codecs.md`](./plan-field-codecs.md). Every not-yet-wired backend
+**panics at construction** (`r3.RequireCodecSupport`) rather than silently
+storing the un-encoded value, so a declared codec can never corrupt data on an
+unsupported backend. Filter/cursor argument encoding is already shared in
+`engine/sql.PrepareMergedListQuerySchema`, so porting to the raw SQL drivers is
+mostly wiring the scan/bind path.
 
 Why GORM-only today: relationship resolution is implemented as a **pre-query key
 set lowering** in `drivers/gorm/relfilter.go` (a `Has` becomes an `IN`, a `HasNo`

@@ -29,6 +29,21 @@ var ErrUpsertNotSupported = errors.New("r3: upsert not supported")
 // a decorator in its chain) does not implement [BulkPatcher].
 var ErrBulkPatchNotSupported = errors.New("r3: bulk patch not supported")
 
+// ErrUnknownCodec is reported (by panic, via [RequireCodecSupport]-adjacent
+// derivation) when an attribute's r3:"...,codec:<name>" tag names a value codec
+// that is not registered. A codec name is authored in a struct tag — a typo is a
+// deterministic developer error surfaced at schema-derivation time, not a
+// runtime condition, so [SchemaOf] panics wrapping this sentinel rather than
+// silently leaving the field un-encoded.
+var ErrUnknownCodec = errors.New("r3: unknown codec")
+
+// ErrCodecNotSupported is reported when a repository is constructed for a backend
+// that does not yet apply value codecs, yet the entity declares one. A codec that
+// a backend silently ignored would store the un-encoded value — a data-corruption
+// bug, not a graceful degradation — so such backends panic wrapping this sentinel
+// at construction (see [RequireCodecSupport]) instead of proceeding.
+var ErrCodecNotSupported = errors.New("r3: value codec not supported by this backend")
+
 // ErrInvalidAggregate is returned when an aggregate query is structurally
 // invalid: no aggregates declared, a missing/duplicate/invalid alias, an
 // aggregate function that requires a field called without one, an alias

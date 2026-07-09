@@ -44,6 +44,13 @@ type Attribute struct {
 	// Relation describes the target when Type == TypeRel.
 	Relation *RelationRef
 
+	// Codec, when non-nil, transforms this attribute's value to and from its
+	// stored representation (see [Codec]). Type stays the domain type (e.g.
+	// TypeTime) so callers filter with domain values and validation accepts them;
+	// the codec bridges to storage (Codec.Stored(), e.g. TypeInt) at the engine
+	// boundary. A nil Codec is the identity — the value is stored as-is.
+	Codec Codec
+
 	// Computed marks an attribute with no backing column (reserved; computed
 	// execution is out of scope — see the schema design doc, §8). A computed
 	// attribute can never be written: the structural floor has nowhere to put a

@@ -56,12 +56,16 @@ var _ r3.CRUD[any, any] = &BaseCRUD[any, any]{}
 func NewBaseCRUD[T any, ID comparable](db *sql.DB, flavor Flavor, opts ...r3.Option) *BaseCRUD[T, ID] {
 	resolved := r3.ResolveOptions(opts...)
 	meta := GetStructMeta[T]()
+	schema := r3.SchemaOf[T](r3.WithSchemaNaming(resolved.Config.Naming))
+	// The raw database/sql engine does not apply value codecs yet; reject a
+	// declared codec loudly rather than storing the un-encoded value.
+	r3.RequireCodecSupport(schema, "r3/engine/sql")
 	return &BaseCRUD[T, ID]{
 		Executor:        db,
 		sqlDB:           db,
 		DefaultsManager: r3.NewDefaultsManagerWithConfig(resolved.Config),
 		Meta:            meta,
-		Schema:          r3.SchemaOf[T](r3.WithSchemaNaming(resolved.Config.Naming)),
+		Schema:          schema,
 		Flavor:          flavor,
 		Config:          resolved.Config,
 		Raw:             NewBaseRaw[T, ID](db, meta),

@@ -43,6 +43,9 @@ var _ r3.CRUD[any, any] = &BaseCRUD[any, any]{}
 func NewBaseCRUD[T any, ID comparable](coll *mongo.Collection, opts ...r3.Option) *BaseCRUD[T, ID] {
 	resolved := r3.ResolveOptions(opts...)
 	meta := GetStructMeta[T]()
+	// The mongo engine does not apply value codecs yet; reject a declared codec
+	// loudly rather than writing the un-encoded value to BSON.
+	r3.RequireCodecSupport(r3.SchemaOf[T](r3.WithSchemaNaming(resolved.Config.Naming)), "r3/mongo")
 	return &BaseCRUD[T, ID]{
 		Collection:      coll,
 		DefaultsManager: r3.NewDefaultsManagerWithConfig(resolved.Config),
@@ -59,6 +62,9 @@ func NewBaseCRUD[T any, ID comparable](coll *mongo.Collection, opts ...r3.Option
 func NewBaseCRUDFromDB[T any, ID comparable](db *mongo.Database, opts ...r3.Option) *BaseCRUD[T, ID] {
 	resolved := r3.ResolveOptions(opts...)
 	meta := GetStructMeta[T]()
+	// The mongo engine does not apply value codecs yet; reject a declared codec
+	// loudly rather than writing the un-encoded value to BSON.
+	r3.RequireCodecSupport(r3.SchemaOf[T](r3.WithSchemaNaming(resolved.Config.Naming)), "r3/mongo")
 	coll := db.Collection(meta.CollectionName)
 	return &BaseCRUD[T, ID]{
 		Collection:      coll,

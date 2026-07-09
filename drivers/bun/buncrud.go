@@ -32,6 +32,9 @@ var _ r3.Aggregator = &BunCRUD[any, any]{}
 // Accepts optional [r3.Option] values for framework-level configuration.
 func NewBunCRUD[T any, ID comparable](db *bun.DB, opts ...r3.Option) *BunCRUD[T, ID] {
 	resolved := r3.ResolveOptions(opts...)
+	// Value codecs are not wired into the bun driver yet; reject a declared codec
+	// loudly rather than binding the un-encoded value.
+	r3.RequireCodecSupport(r3.SchemaOf[T](r3.WithSchemaNaming(resolved.Config.Naming)), "r3/bun")
 	return &BunCRUD[T, ID]{
 		db:              db,
 		sqlDB:           db,

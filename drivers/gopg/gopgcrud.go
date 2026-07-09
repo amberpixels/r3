@@ -32,6 +32,9 @@ var _ r3.Aggregator = &GoPgCRUD[any, any]{}
 // Accepts optional [r3.Option] values for framework-level configuration.
 func NewGoPgCRUD[T any, ID comparable](db *pg.DB, opts ...r3.Option) *GoPgCRUD[T, ID] {
 	resolved := r3.ResolveOptions(opts...)
+	// Value codecs are not wired into the go-pg driver yet; reject a declared
+	// codec loudly rather than binding the un-encoded value.
+	r3.RequireCodecSupport(r3.SchemaOf[T](r3.WithSchemaNaming(resolved.Config.Naming)), "r3/gopg")
 	return &GoPgCRUD[T, ID]{
 		db:              db,
 		pgDB:            db,

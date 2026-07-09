@@ -839,3 +839,27 @@ func TestNewQuerier_ReadOnly(t *testing.T) {
 var _ r3.CRUD[City, int] = (*enginefile.BaseCRUD[City, int])(nil)
 var _ r3.Querier[City, int] = (*enginefile.BaseCRUD[City, int])(nil)
 var _ r3.Commander[City, int] = (*enginefile.BaseCRUD[City, int])(nil)
+
+// codecCity declares a value codec the file engine does not apply yet.
+type codecCity struct {
+	ID        int       `r3:"id,pk"`
+	Name      string    `r3:"name"`
+	StartedAt time.Time `r3:"started_at,codec:unixtime"`
+}
+
+// TestNew_CodecGuard verifies the construction guard fires: a backend that does
+// not apply codecs must reject a declared codec loudly, not store it un-encoded.
+func TestNew_CodecGuard(t *testing.T) {
+	var recovered any
+	func() {
+		defer func() { recovered = recover() }()
+		_, _ = enginefile.New[codecCity, int](
+			enginefile.IDGeneratorFunc[int](func(_ []int) (int, error) { return 1, nil }),
+			enginefile.WithBaseDir(t.TempDir()),
+		)
+	}()
+	require.NotNil(t, recovered, "construction with a codec model must panic")
+	err, ok := recovered.(error)
+	require.True(t, ok)
+	require.ErrorIs(t, err, r3.ErrCodecNotSupported)
+}

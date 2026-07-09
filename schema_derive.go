@@ -1,6 +1,7 @@
 package r3
 
 import (
+	"fmt"
 	"reflect"
 	"sync"
 	"time"
@@ -140,6 +141,17 @@ func columnAttribute(field reflect.StructField, ct r3tag.ColumnTag, naming Namin
 	}
 	if dt == TypeEnum {
 		attr.Enum = ct.Enum
+	}
+	if ct.Codec != "" {
+		c, ok := lookupCodec(ct.Codec)
+		if !ok {
+			// A codec name is authored in a struct tag, so an unregistered name is
+			// a deterministic developer error, not a runtime condition. Fail loudly
+			// at derivation (like a bad regexp in MustCompile) rather than silently
+			// leaving the field un-encoded.
+			panic(fmt.Errorf("%w: %q on field %q", ErrUnknownCodec, ct.Codec, field.Name))
+		}
+		attr.Codec = c
 	}
 	return attr
 }
