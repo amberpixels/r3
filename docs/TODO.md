@@ -58,6 +58,28 @@ increments:
 
 Each backend removes its `r3.RequireCodecSupport` construction guard when wired.
 
+## From the p44 consumer feedback log (`R3_TODO.md`)
+
+The p44 repo's `R3_TODO.md` is the authoritative feedback log (see
+[[p44-first-real-consumer]]). These are the R3-side items still open there;
+copied here so they are visible from the r3 repo. Update both when one is closed.
+
+- **R3-012 · i18n overlay on preloaded child entities.** `features/i18n` overlays
+  translated fields on the decorated entity itself but **not** on entities arriving
+  as preloads (e.g. `Raid.Video.Title` via `Preloads("Video")`), so a parent's
+  preloaded children keep source-language text even when translations exist. Needs
+  a nested-field option (e.g. `WithPreloadFields("Video", videoIDFunc, "title")`)
+  that batch-fetches child translations for a page of parents and overlays them
+  through the preload pointer/slice.
+- **R3-011 residual · aggregate *target* columns through an M2M.**
+  `AggregateThroughRelation` folds related rows grouped by a base-table column, but
+  aggregating/grouping on the *target* table's columns (e.g. `MAX(activist.joined_at)`
+  per squad through an M2M) is unsupported — group/aggregate columns resolve against
+  the join/child table, and the target is joined only to exclude soft-deleted rows.
+- **R3-006 follow-up · string-PK gorm fixture coverage.** The non-integer-PK
+  Get/Delete fix is verified by p44's sqlite suite; add a string-PK case to R3's
+  own Postgres gorm fixture suite for in-repo CI coverage.
+
 ## Downstream adoption waiting on a release
 
 - **runwell** can drop its hand-rolled `unixts` GORM serializer, switch entity
