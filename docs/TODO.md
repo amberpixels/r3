@@ -12,8 +12,8 @@ here, check whether it belongs in one of those instead:
 - **Consumer-driven feature requests** → the p44 feedback log (`R3_TODO.md` in
   the p44 repo), the authoritative source for consumer priorities.
 
-Everything else — cross-cutting gaps, "one backend is *behind* the others",
-correctness rough edges — lives here. When an item is closed, delete its row (or
+Everything else - cross-cutting gaps, "one backend is *behind* the others",
+correctness rough edges - lives here. When an item is closed, delete its row (or
 move it into the relevant plan/parity doc if that becomes its home).
 
 ## Open
@@ -37,11 +37,11 @@ Full status in [`plan-field-codecs.md`](./plan-field-codecs.md); parity rows in
 increments:
 
 - **Raw `engine/sql` drivers (pq, pgx, mysql, sqlite3).** The bind path is a
-  clean value pass-through; the scan path is the tricky bit — `ScanDest` hands
+  clean value pass-through; the scan path is the tricky bit - `ScanDest` hands
   live struct-field pointers to `rows.Scan`, so a codec needs a `sql.Scanner`
   wrapper (or an intermediate holder + post-scan decode), not a value map.
 - **`engine/mongo`.** Write has a clean choke-point (`ToBSONDoc`); **read has no
-  r3 hook** — `FindOne().Decode()` uses the driver's own bson unmarshaler, so
+  r3 hook** - `FindOne().Decode()` uses the driver's own bson unmarshaler, so
   reads would need a bson custom registry / `ValueMarshaler` or a reworked read
   path.
 - **`engine/file`.** Single clean choke-point per direction
@@ -77,7 +77,7 @@ copied here so they are visible from the r3 repo. Update both when one is closed
 - **R3-011 residual · aggregate *target* columns through an M2M.**
   `AggregateThroughRelation` folds related rows grouped by a base-table column, but
   aggregating/grouping on the *target* table's columns (e.g. `MAX(activist.joined_at)`
-  per squad through an M2M) is unsupported — group/aggregate columns resolve against
+  per squad through an M2M) is unsupported - group/aggregate columns resolve against
   the join/child table, and the target is joined only to exclude soft-deleted rows.
 - **R3-006 follow-up · string-PK gorm fixture coverage.** The non-integer-PK
   Get/Delete fix is verified by p44's sqlite suite; add a string-PK case to R3's

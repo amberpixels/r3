@@ -301,7 +301,7 @@ func TestListOverlaysInSingleStoreQuery(t *testing.T) {
 		t.Fatalf("List = %d items (total %d), want 3", len(items), total)
 	}
 	if items[0].Title != "Один" || items[1].Title != "Doi" || items[2].Title != "Три" {
-		t.Errorf("titles = %q, %q, %q — want overlay on 1 and 3 only",
+		t.Errorf("titles = %q, %q, %q - want overlay on 1 and 3 only",
 			items[0].Title, items[1].Title, items[2].Title)
 	}
 	if store.lists != 1 {

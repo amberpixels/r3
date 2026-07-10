@@ -306,7 +306,7 @@ func TestPatch_MergedReflectsFullEntity(t *testing.T) {
 	fields := r3.Fields{r3.NewFieldSpec("status")}
 	_, err := repo.Patch(ctx, Pet{ID: 1, Status: "sold"}, fields)
 	if err != nil {
-		t.Fatalf("Patch should pass — merged entity keeps Name=Buddy: %v", err)
+		t.Fatalf("Patch should pass - merged entity keeps Name=Buddy: %v", err)
 	}
 
 	if seenMerged.Name != "Buddy" {

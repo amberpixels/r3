@@ -4,7 +4,7 @@ Status: **Core + GORM landed.** The shared helper `r3.DecodeAggregateCodecs` is
 implemented and wired into the GORM `Aggregate` path (the only backend whose
 `RequireCodecSupport` guard is lifted today). Remaining backends
 (raw SQL / bun / gopg / mongo / file) call the same helper in the increment that
-removes their guard — see §2. Follow-on to the field-value-codec rollout
+removes their guard - see §2. Follow-on to the field-value-codec rollout
 ([`plan-field-codecs.md`](./plan-field-codecs.md)). Authored from the **p44**
 consumer side (the audit/stats reads that motivated `Aggregator` in R3-010).
 
@@ -22,25 +22,25 @@ rows, _ := r3.AggregateOf(ctx, repo, r3.Query{
     GroupBy:    r3.GroupBy("location_id"),
     Aggregates: r3.Aggregates{r3.AggMax("started_at", "last_started")},
 })
-rows[0].Time("last_started")   // (zero, false) — WRONG
-rows[0].Int64("last_started")  // (1752000000, true) — the raw stored unix int
+rows[0].Time("last_started")   // (zero, false) - WRONG
+rows[0].Int64("last_started")  // (1752000000, true) - the raw stored unix int
 ```
 
 `MAX(started_at)` over an integer column returns an **int64** in the
 `AggregateRow`. `AggregateRow.Time` only knows how to parse `time.Time` and the
-textual SQLite datetime layouts (`timeLayouts` in `r3_aggregate.go`) — it has no
+textual SQLite datetime layouts (`timeLayouts` in `r3_aggregate.go`) - it has no
 idea this int64 is a unix stamp, so it fails. The codec that *could* interpret it
 is never consulted on the aggregate read path.
 
 This is the one aggregate rough edge called out in
 [`backend-parity.md`](./backend-parity.md):
 
-> | Value codecs — aggregate `min`/`max` decode on a codec'd field | ❌ returns the raw stored int | ❌ | ❌ | ❌ | ❌ |
+> | Value codecs - aggregate `min`/`max` decode on a codec'd field | ❌ returns the raw stored int | ❌ | ❌ | ❌ | ❌ |
 
 Note this is the mirror image of the pre-codec world: `AggregateRow.Time`'s
 `timeLayouts` fallback exists precisely because SQLite `MIN/MAX` over a **plain**
 datetime (TEXT) column returns text. Once a field is codec'd to `int`, that
-textual path no longer fires — a numeric path is needed instead, and only the
+textual path no longer fires - a numeric path is needed instead, and only the
 codec knows the precision.
 
 ## Goal / non-goals
@@ -48,16 +48,16 @@ codec knows the precision.
 **Goal:** for a codec'd attribute, an aggregate result value that still carries
 the attribute's **domain meaning** is decoded back to the domain value before it
 lands in the `AggregateRow`, so `row.Time("last_started")` returns the real
-instant — uniformly across every backend that implements `Aggregator`.
+instant - uniformly across every backend that implements `Aggregator`.
 
-**Which result columns get decoded** — this is the crux of the design:
+**Which result columns get decoded** - this is the crux of the design:
 
 | Result column                       | Decode? | Why |
 |-------------------------------------|:-------:|-----|
 | **Group-by** column that is codec'd | ✅ | The grouped value **is** the field's domain value (e.g. `GROUP BY started_at`). |
-| `MIN(field)` / `MAX(field)`         | ✅ | Min/max preserve the domain type — the extremum is a real field value. |
+| `MIN(field)` / `MAX(field)`         | ✅ | Min/max preserve the domain type - the extremum is a real field value. |
 | `SUM(field)`                        | ❌ | A sum of unix seconds is **not** a `time.Time`; decoding would be nonsense. |
-| `AVG(field)`                        | ❌ | Same — not a domain value. |
+| `AVG(field)`                        | ❌ | Same - not a domain value. |
 | `COUNT` / `COUNT(DISTINCT field)`   | ❌ | Always an integer count, never the domain type. |
 
 So decode fires for **(a)** codec'd group-by columns and **(b)** `AggregateMin` /
@@ -66,12 +66,12 @@ through untouched.
 
 **Non-goals:**
 - Aggregating a codec'd **target** column *through a relation*
-  (`AggregateThroughRelation`) — that's the separate R3-011 residual gap (M2M
+  (`AggregateThroughRelation`) - that's the separate R3-011 residual gap (M2M
   target aggregation is unsupported regardless of codecs). Out of scope; see
   Follow-ups.
 - Any new public API. `AggregateRow` and its accessors are unchanged; this is a
   correctness fix in how rows are populated.
-- DDL / physical column types — unchanged (r3 never owns DDL).
+- DDL / physical column types - unchanged (r3 never owns DDL).
 
 ## Design
 
@@ -85,7 +85,7 @@ Add a backend-neutral, in-place decoder mirroring the existing
 // carries a codec'd attribute's domain meaning back to the domain value:
 //   - a group-by column that maps to a codec'd attribute, and
 //   - a MIN/MAX aggregate over a codec'd attribute (the extremum is a real
-//     field value; SUM/AVG/COUNT are NOT decoded — they are not domain values).
+//     field value; SUM/AVG/COUNT are NOT decoded - they are not domain values).
 // It is a no-op when the schema declares no codecs. Backends call it just
 // before returning aggregate rows so decode happens once, uniformly.
 func DecodeAggregateCodecs(s Schema, q Query, rows []AggregateRow) error
@@ -149,7 +149,7 @@ the `Codec.Decode` doc comment as part of this change).
 **NULL groups:** `MAX` over an empty/all-NULL group yields SQL `NULL` -> `nil` in
 the row; the `v == nil` guard leaves it as `nil` (not the codec's zero-time), so
 `row.Time` still reports `ok=false` for a genuinely absent extremum. Keep it that
-way — decoding `nil` to the zero time would fabricate `1970-01-01`.
+way - decoding `nil` to the zero time would fabricate `1970-01-01`.
 
 ### 2. Wire every `Aggregator` backend
 
@@ -178,7 +178,7 @@ return rows, nil
 
 Notes per backend:
 - **GORM & raw SQL:** the codec'd column is physically `INTEGER`, so `MIN/MAX`
-  return an `int64` — `unixTimeCodec.Decode`'s `asInt64` path handles it (and its
+  return an `int64` - `unixTimeCodec.Decode`'s `asInt64` path handles it (and its
   string/`[]byte` fallbacks cover any driver that stringifies). Once wired, the
   raw-SQL codec guard removal is tracked separately in `plan-field-codecs.md`;
   aggregate decode should land in the **same** increment that removes each
@@ -187,7 +187,7 @@ Notes per backend:
 - **file engine:** it holds decoded domain values in memory already (the codec is
   applied at its serialize boundary per the codec plan). Verify whether `MIN/MAX`
   there yield a `time.Time` (already fine, helper is a no-op for it) or the stored
-  int (needs the helper). Wire the call regardless — the helper is idempotent-safe
+  int (needs the helper). Wire the call regardless - the helper is idempotent-safe
   only if values are still stored form, so if the file engine already returns
   `time.Time`, `Decode(time.Time, nil)` must round-trip it (the unix codec's
   `asTime` path does). Confirm and add a test either way.
@@ -207,7 +207,7 @@ Core unit test (`r3_codec_test.go` or `r3_aggregate_test.go`), no backend:
   non-codec'd columns untouched; is a no-op on a zero schema; leaves a `nil`
   (empty-group `MAX`) as `nil`.
 
-Backend round-trip (extend the existing gorm-over-sqlite codec suite — no Docker,
+Backend round-trip (extend the existing gorm-over-sqlite codec suite - no Docker,
 mirrors how the codec core was verified):
 - Seed rows with codec'd `time.Time` values across a couple of group keys.
 - `AggMax`/`AggMin("started_at", ...)` grouped by a plain column ->
@@ -230,17 +230,17 @@ mirrors how the codec core was verified):
 - **p44 `R3_TODO.md`:** this closes the aggregate caveat noted under **R3-010**;
   add a one-line "aggregate min/max on codec'd fields now decodes (r3 vX.Y.Z)"
   and, when p44 actually adopts a codec'd timestamp, drop the note. (p44 does not
-  use codecs today — see below.)
+  use codecs today - see below.)
 
 ## Consumer context (why this matters, and its current urgency)
 
 p44 is the consumer that drove `Aggregator` (R3-010: `svcraid.StatsByLocation`,
 `svcsquadstats` last-raid dates), and those reads use `row.Time` over `MAX`
-datetime columns — the exact path this touches. **Today p44 stores timestamps as
+datetime columns - the exact path this touches. **Today p44 stores timestamps as
 SQLite datetime TEXT, not codec'd ints**, so it currently relies on
 `AggregateRow.Time`'s textual `timeLayouts` fallback and is unaffected. This fix
 is what makes it **safe for p44 (or runwell) to migrate a hot timestamp column to
-`codec:unixtime`** without silently breaking its stats/audit aggregates — i.e. it
+`codec:unixtime`** without silently breaking its stats/audit aggregates - i.e. it
 removes the last correctness footgun blocking codec adoption on aggregated
 columns. Priority is "before any consumer codec's an aggregated timestamp," not
 "urgent for a shipping feature."
@@ -257,15 +257,15 @@ columns. Priority is "before any consumer codec's an aggregated timestamp," not
 
 ## References
 
-- `r3_codec.go` — `Codec`, `unixTimeCodec`, `EncodeFilterCodecs` /
+- `r3_codec.go` - `Codec`, `unixTimeCodec`, `EncodeFilterCodecs` /
   `EncodeCursorCodecs` (the sibling encoders this mirrors), `hasCodecs`,
   `zeroForTarget` / `wrapForTarget` (nil-target handling).
-- `r3_aggregate.go` — `AggregateRow`, `.Time` / `.Int64` accessors, `timeLayouts`,
+- `r3_aggregate.go` - `AggregateRow`, `.Time` / `.Int64` accessors, `timeLayouts`,
   `AggregateSpec` (`Func`, `Field`, `Alias`), `Aggregator`, `AggregateOf`.
 - `engine/sql/aggregate.go`, `drivers/gorm/gormcrud.go`,
-  `engine/mongo/aggregate.go`, `engine/file/aggregate.go` — the four `Aggregate`
+  `engine/mongo/aggregate.go`, `engine/file/aggregate.go` - the four `Aggregate`
   implementations to wire.
-- `schema.go` — `Attribute` (carries `Codec`; no `reflect.Type`, hence
+- `schema.go` - `Attribute` (carries `Codec`; no `reflect.Type`, hence
   `target=nil`).
 - `docs/plan-field-codecs.md`, `docs/backend-parity.md`, `docs/TODO.md`,
   p44 `R3_TODO.md` (R3-010).

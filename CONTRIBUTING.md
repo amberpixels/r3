@@ -1,6 +1,6 @@
 # Contributing to R3
 
-First of all — thank you for caring enough to open this file. That genuinely
+First of all - thank you for caring enough to open this file. That genuinely
 means a lot. 💛
 
 R3 is currently built and maintained as a small, focused solo project, and here's
@@ -20,12 +20,12 @@ it.
 
 Lots! I'd love to hear from you:
 
-- 🐛 **Bug reports** — if something is broken or surprising, please
+- 🐛 **Bug reports** - if something is broken or surprising, please
   [open an issue](https://github.com/amberpixels/r3/issues). Reproductions are gold.
-- 💡 **Ideas & feature suggestions** — tell me what you'd want R3 to do.
-- ❓ **Questions** — about the design, the layering, how to use it, or whether it
+- 💡 **Ideas & feature suggestions** - tell me what you'd want R3 to do.
+- ❓ **Questions** - about the design, the layering, how to use it, or whether it
   fits your use case. No question is too small.
-- 🗣️ **Feedback & experience reports** — if you tried R3 (or just read the code),
+- 🗣️ **Feedback & experience reports** - if you tried R3 (or just read the code),
   what felt good, what felt off? That kind of signal shapes the project.
 
 Issues and discussions are open and I read them. Kindness and curiosity are
@@ -58,10 +58,10 @@ The architecture is documented in the [README](readme.md#architecture) and in th
 
 ## Security
 
-If you find a security vulnerability, please report it privately — see
+If you find a security vulnerability, please report it privately - see
 [SECURITY.md](SECURITY.md). Don't open a public issue for it.
 
 ---
 
 Thanks again for being here. Software gets better when people are kind to each
-other, so — be kind. ✨
+other, so - be kind. ✨

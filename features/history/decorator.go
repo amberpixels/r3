@@ -313,7 +313,7 @@ func (h *CRUD[T, ID]) RecordSyntheticCreate(
 		RecordID:   recordID,
 		Action:     ActionCreate,
 		Synthetic:  true,
-		Note:       "Reconstructed from current data — the values at creation are not known.",
+		Note:       "Reconstructed from current data - the values at creation are not known.",
 		Changes:    r3.NewJSONColumn(DiffCreate(entity)),
 		ActorID:    actor.ID,
 		ActorType:  actor.Type,

@@ -8,7 +8,7 @@ version is supported.
 
 ## Reporting a vulnerability
 
-Please report security vulnerabilities **privately** — do not open a public
+Please report security vulnerabilities **privately** - do not open a public
 GitHub issue.
 
 - Preferred: use GitHub's [private vulnerability reporting](https://github.com/amberpixels/r3/security/advisories/new)

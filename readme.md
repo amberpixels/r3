@@ -94,7 +94,7 @@ cityRepo := r3gorm.NewGormCRUD[City, int64](db)
 // Create
 city, err := cityRepo.Create(ctx, City{Name: "Berlin"})
 
-// Get by ID — missing records return r3.ErrNotFound on every backend
+// Get by ID - missing records return r3.ErrNotFound on every backend
 city, err := cityRepo.Get(ctx, 42)
 if errors.Is(err, r3.ErrNotFound) {
     // respond 404, etc.
@@ -295,7 +295,7 @@ case, or drop down to the `FieldSpec`-based forms when you need table hints or
 nested paths:
 
 ```go
-// Short-form helpers — terse, take a plain field name
+// Short-form helpers - terse, take a plain field name
 r3.Eq("status", "active")
 r3.Gt("age", 18)
 r3.In("country", []string{"DE", "FR"})
@@ -303,7 +303,7 @@ r3.Like("name", "%john%")
 r3.ILike("name", "%john%")
 r3.Between("price", 10, 100)        // inclusive
 
-// FieldSpec forms — for table hints / nested paths
+// FieldSpec forms - for table hints / nested paths
 r3.F(r3.NewFieldSpec("status"), "active")
 r3.Fop(r3.NewFieldSpec("age"), r3.OperatorGte, 18)
 
@@ -327,11 +327,11 @@ r3.Eq("deleted_at", nil)  // IS NULL
 
 ## Schema & Capabilities
 
-`r3.SchemaOf[T]()` reflects an entity's struct tags into a **`Schema`** — an
+`r3.SchemaOf[T]()` reflects an entity's struct tags into a **`Schema`** - an
 ordered set of capability-bearing **`Attribute`s**. Each attribute declares what
 it may do via five capabilities: `Filterable`, `Sortable`, `Queryable` (select &
-output), `Creatable`, and `Mutable`. Defaults are permissive — a plain scalar
-column gets all five — and tags only ever *tighten* them:
+output), `Creatable`, and `Mutable`. Defaults are permissive - a plain scalar
+column gets all five - and tags only ever *tighten* them:
 
 ```go
 type Campaign struct {
@@ -348,8 +348,8 @@ type Campaign struct {
 The SQL engines consume the schema automatically:
 
 - **Reads are validated.** An unknown or disallowed filter/sort/select field
-  becomes a typed error *before any SQL runs* — `ErrUnknownField`,
-  `ErrFieldNotFilterable`, `ErrFieldNotSortable`, `ErrFieldNotQueryable` — instead
+  becomes a typed error *before any SQL runs* - `ErrUnknownField`,
+  `ErrFieldNotFilterable`, `ErrFieldNotSortable`, `ErrFieldNotQueryable` - instead
   of a backend 500. Each error wraps the offending field name.
 - **Writes are shaped.** `Create` writes only `Creatable` columns; `Update`/`Patch`
   write only `Mutable` columns. A full `Update` can no longer clobber `created_at`
@@ -360,7 +360,7 @@ The SQL engines consume the schema automatically:
 
 Capabilities are the **public ceiling**: the `permissions` feature only narrows
 them per-actor/row, never widens. For an audited system/worker write of a
-user-immutable column (e.g. a nightly feed sync), open the explicit door — it
+user-immutable column (e.g. a nightly feed sync), open the explicit door - it
 skips only the capability check, never the structural floor (the PK and computed
 attributes stay unwritable), and the write still passes through `history`/`metrics`:
 
@@ -376,7 +376,7 @@ filter UI.
 
 ## Pagination
 
-**`List` paginates by default** — with no `Pagination` set it caps results at
+**`List` paginates by default** - with no `Pagination` set it caps results at
 `r3.PageSizeDefault` (100), so a forgotten pagination never accidentally scans a
 whole table. There are three ways to get more:
 
@@ -445,8 +445,8 @@ TEXT, MySQL returns `SUM` as a decimal string). `Filters`, `IncludeTrashed`,
 `Sorts` (over group fields and aliases), and `Pagination` (limits grouped rows)
 apply; an empty `GroupBy` returns a single whole-set row.
 
-Every engine implements `Aggregator` — SQL lowers to `GROUP BY`/`HAVING`, Mongo
-runs a `$group` pipeline, the file engine folds in memory — and every feature
+Every engine implements `Aggregator` - SQL lowers to `GROUP BY`/`HAVING`, Mongo
+runs a `$group` pipeline, the file engine folds in memory - and every feature
 decorator forwards it, with permissions applying its scope filters so grouped
 results only ever cover rows the actor may see. `r3.AggregateOf` deliberately
 checks only the outermost repo (never unwrapping decorators), so that scoping
@@ -457,12 +457,12 @@ cannot be bypassed. A repo without the capability returns
 
 Entities relate to each other as **has-many**, **belongs-to**, or
 **many-to-many**. Declare a relation by struct tag
-(`r3:"rel:has-many,fk:city_id"`) or physically by table and column names — the
+(`r3:"rel:has-many,fk:city_id"`) or physically by table and column names - the
 latter lets an entity relate to a table it does not import as a Go type, which
 sidesteps domain import cycles:
 
 ```go
-// Photo relates to locations via a join table — with no Location field on Photo,
+// Photo relates to locations via a join table - with no Location field on Photo,
 // so package photo never imports package location.
 repo := r3gorm.NewGormCRUD[Photo, int64](db, r3.WithRelations(
     r3.ManyToManyRelation("locations", "photo_locations", "photo_id", "location_id", "locations"),
@@ -472,14 +472,14 @@ repo := r3gorm.NewGormCRUD[Photo, int64](db, r3.WithRelations(
 Either way the relation drives three operations:
 
 ```go
-// Has — rows whose relation matches (EXISTS)
+// Has - rows whose relation matches (EXISTS)
 repo.List(ctx, r3.Query{Filters: r3.Filters{r3.Has("locations", r3.Eq("city_id", 7))}})
 
-// HasNo — the anti-join (NOT EXISTS): rows with no matching related row,
+// HasNo - the anti-join (NOT EXISTS): rows with no matching related row,
 // correctly including rows whose foreign key is NULL
 repo.List(ctx, r3.Query{Filters: r3.Filters{r3.HasNo("Translations")}})
 
-// AggregateThroughRelation — grouped aggregation over the related rows
+// AggregateThroughRelation - grouped aggregation over the related rows
 // (a has-many child table or an m2m join table)
 rows, _ := r3.AggregateThroughRelation(ctx, squadRepo, "members", r3.Query{
     GroupBy:    r3.GroupBy("squad_id"),

@@ -36,7 +36,7 @@ func TestMongoRepository(t *testing.T) {
 		t.Skip("Skipping integration test in short mode")
 	}
 	if !isDockerAvailable() {
-		t.Skip("Docker not available — Mongo integration test requires Docker")
+		t.Skip("Docker not available - Mongo integration test requires Docker")
 	}
 
 	ctx := t.Context()

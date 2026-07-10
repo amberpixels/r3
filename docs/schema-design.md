@@ -1,4 +1,4 @@
-# R3 Schema — Design & Implementation Plan
+# R3 Schema - Design & Implementation Plan
 
 > Status: **proposed**, not yet implemented.
 > Audience: the engineer (human or agent) implementing this in the `r3` repo.
@@ -13,7 +13,7 @@
 R3 today has a half-built notion of "what an entity's fields are": `engine/sql.StructMeta`
 (`engine/sql/reflect.go`), derived from the `r3`/`db` struct tags via `internal/tag`.
 It knows column names, the PK, the soft-delete column, and relations, and it encodes
-exactly **one** capability — `ValidatePatchColumns` rejects writes to the PK and the
+exactly **one** capability - `ValidatePatchColumns` rejects writes to the PK and the
 soft-delete column.
 
 What's missing, and what this plan adds:
@@ -45,13 +45,13 @@ These were settled in design discussion; treat them as fixed unless a blocker ap
 
 ### 2.1 `Schema` and `Attribute`
 
-- **`r3.Schema`** — the logical descriptor of an entity: an ordered set of `Attribute`s
-  plus lookup helpers. **Logical, engine-agnostic, zero-dependency** — it lives in the
+- **`r3.Schema`** - the logical descriptor of an entity: an ordered set of `Attribute`s
+  plus lookup helpers. **Logical, engine-agnostic, zero-dependency** - it lives in the
   core `r3` package next to `Query`/`Filters`. It contains **no SQL column names**.
-- **`r3.Attribute`** (`Attr` for short in prose) — one declared, capability-bearing member
+- **`r3.Attribute`** (`Attr` for short in prose) - one declared, capability-bearing member
   of an entity.
 
-Naming rationale: `r3.Fields`/`r3.FieldSpec` are **already taken** — a `FieldSpec` is a
+Naming rationale: `r3.Fields`/`r3.FieldSpec` are **already taken** - a `FieldSpec` is a
 *reference to a queryable thing inside a Query*. So:
 
 > **Attribute** = a declared member of an entity (the schema).
@@ -71,7 +71,7 @@ Five capabilities, modeled as a bitset on each attribute:
 | `Sortable`   | may appear in `Query.Sorts`                                    |
 | `Queryable`  | may appear in `Query.Fields` (SELECT) and in serialized output |
 | `Creatable`  | may be set by Create                                          |
-| `Mutable`    | may be changed after creation — gates **both** Update and Patch |
+| `Mutable`    | may be changed after creation - gates **both** Update and Patch |
 
 **Write model = two orthogonal axes (`Creatable`, `Mutable`), not three.** There is no
 "updatable but not patchable" axis: Patch is a strict subset of Update, and a field
@@ -87,9 +87,9 @@ combinations cover the real cases:
 
 `Creatable && !Mutable` is exactly "immutable after creation".
 
-### 2.3 Capabilities are the *public* contract — permissions narrow, never widen
+### 2.3 Capabilities are the *public* contract - permissions narrow, never widen
 
-`Mutable=false` means **immutable to every API caller, superadmin included** — used for a
+`Mutable=false` means **immutable to every API caller, superadmin included** - used for a
 field whose source of truth is external (e.g. a nightly third-party feed). It is **not**
 "this user lacks permission":
 
@@ -98,7 +98,7 @@ field whose source of truth is external (e.g. a nightly third-party feed). It is
   permissions can grant write access to a `Mutable=false` attribute.
 
 Role-shaped rules ("admin may set `featured`, a user may not") belong entirely to
-`permissions` — they must **not** leak into the schema. A field an admin can edit is a
+`permissions` - they must **not** leak into the schema. A field an admin can edit is a
 *mutable* field; the user merely lacks permission.
 
 ### 2.4 The structural floor (engine, absolute)
@@ -106,7 +106,7 @@ Role-shaped rules ("admin may set `featured`, a user may not") belong entirely t
 Independent of capabilities, the engine enforces a physical floor that **no one** can
 cross, not even system code:
 
-- A **computed** attribute (no backing column) can never be written — there is nowhere to
+- A **computed** attribute (no backing column) can never be written - there is nowhere to
   put the value.
 - The **PK** is identity, not a writable field.
 
@@ -136,7 +136,7 @@ R3's thesis ("features compose across backends") requires the schema to be engin
 - The only genuinely engine-specific piece is a computed attribute's expression (SQL
   `COUNT(...)` vs Mongo `$group`). Model `Compute` as portable primitives
   (`Count(relation)`, `Sum`, `Avg`) plus a SQL-only raw-expression escape hatch.
-  **Computed execution is out of scope here** — see §8.
+  **Computed execution is out of scope here** - see §8.
 
 ### 2.7 Defaults (permissive opt-out)
 
@@ -144,7 +144,7 @@ Derived defaults for a plain scalar column with no extra tags:
 
 | Capability | Default | Exceptions |
 |------------|---------|------------|
-| Queryable  | ✓ | — |
+| Queryable  | ✓ | - |
 | Filterable | ✓ | scalars only (int/string/bool/time/enum) |
 | Sortable   | ✓ | scalars only |
 | Creatable  | ✓ | **except** PK, `created_at`/`updated_at`, soft-delete |
@@ -154,7 +154,7 @@ Derived defaults for a plain scalar column with no extra tags:
   Sortable no.
 - **JSON/blob/text columns**: Queryable yes; Sortable no by default.
 - Rationale for opt-out: p44 (and any current R3 consumer) has **no** validation today, so
-  permissive defaults are a strict Pareto improvement — same capabilities, now *validated*
+  permissive defaults are a strict Pareto improvement - same capabilities, now *validated*
   (typed error instead of a SQL 500) and *introspectable*. Tags only tighten.
 - Provide a `DefaultsStrict()` policy (opt-in caps, allowlist posture) for consumers who
   want lock-down by default. Default policy stays permissive.
@@ -164,7 +164,7 @@ Derived defaults for a plain scalar column with no extra tags:
 ## 3. Public API surface (target)
 
 New file `schema.go` (+ `schema_caps.go`, `schema_derive.go`, `schema_validate.go` as
-convenient) in the **core `r3` package**. Sketch — finalize signatures during
+convenient) in the **core `r3` package**. Sketch - finalize signatures during
 implementation, keep them minimal and immutable-friendly like the rest of the query model:
 
 ```go
@@ -285,17 +285,17 @@ Population int      `r3:"population,readonly"`          // feed-synced; users ca
 Land in this order. Each phase is independently reviewable and (A, B) ships behavior that
 is strictly safer than today.
 
-### Phase A — Core types + derivation (no behavior change)
+### Phase A - Core types + derivation (no behavior change)
 
 **Goal:** the `r3.Schema`/`Attribute` model exists and can be derived from any struct,
 with correct default capabilities. Nothing consumes it yet.
 
 Files:
-- `r3/schema.go`, `r3/schema_caps.go` — types, `Capability`, `DataType`, `Has`, lookups.
-- `r3/schema_derive.go` — `SchemaOf[T]`, default-capability policy (§2.7), per-type cache.
-- `r3/schema_validate.go` — `ValidateQuery`, `Filterable/Sortable/Queryable/Writable`.
-- `internal/tag/tag.go` — new capability flags (§4).
-- `r3_errors.go` — new typed errors (§3.1).
+- `r3/schema.go`, `r3/schema_caps.go` - types, `Capability`, `DataType`, `Has`, lookups.
+- `r3/schema_derive.go` - `SchemaOf[T]`, default-capability policy (§2.7), per-type cache.
+- `r3/schema_validate.go` - `ValidateQuery`, `Filterable/Sortable/Queryable/Writable`.
+- `internal/tag/tag.go` - new capability flags (§4).
+- `r3_errors.go` - new typed errors (§3.1).
 - Default operator sets per `DataType` (string → eq/ne/in/nin/like/ilike/exists;
   numeric/time → + gt/gte/lt/lte/between*; bool → eq/ne; enum → eq/ne/in/nin).
 
@@ -309,7 +309,7 @@ Tests:
 
 Acceptance: `go test ./...` green; **zero** changes to existing engine/driver behavior.
 
-### Phase B — Engine enforcement (reads + writes) + escape hatch
+### Phase B - Engine enforcement (reads + writes) + escape hatch
 
 **Goal:** turn unknown-field SQL 500s into typed errors, and make writes honor
 `Creatable`/`Mutable`. This is where the value lands.
@@ -317,12 +317,12 @@ Acceptance: `go test ./...` green; **zero** changes to existing engine/driver be
 #### B.1 Read validation
 - In `engine/sql.PrepareMergedListQuery` (`engine/sql/list_query.go`), before converting
   filters/sorts/fields to SQL, validate them against the entity schema and return the typed
-  error. The schema must be reachable here — pass it in (preferred) or look it up via the
+  error. The schema must be reachable here - pass it in (preferred) or look it up via the
   driver. **Preferred wiring:** the driver builds the schema once (see B.3) and calls a new
   `PrepareMergedListQueryWithSchema(q, schema)` (keep the old signature as a thin wrapper
   with a nil schema = no validation, for back-compat / non-SQL callers).
 - Relation-filter fields (the `has`/relationship path in `drivers/gorm/relfilter.go`) must
-  be validated against the *target* entity's schema, not the root — keep that in mind, but
+  be validated against the *target* entity's schema, not the root - keep that in mind, but
   if it's awkward in this phase, validate only root-level fields and `// TODO` the relation
   case rather than reject valid relation filters.
 
@@ -339,7 +339,7 @@ Acceptance: `go test ./...` green; **zero** changes to existing engine/driver be
 
 #### B.3 Schema on the repo + caching
 - Each SQL driver builds its schema **once** at construction (today `GetStructMeta[T]()` is
-  re-reflected on every op — fix that too by caching `StructMeta` per type). Add a
+  re-reflected on every op - fix that too by caching `StructMeta` per type). Add a
   package-level `sync.Map` cache keyed by `reflect.Type` for both `StructMeta` and the
   derived `r3.Schema`, or store the schema on the CRUD struct in `NewGormCRUD` (and bun/
   gopg/sqlite3/pq/mongo equivalents).
@@ -347,7 +347,7 @@ Acceptance: `go test ./...` green; **zero** changes to existing engine/driver be
   startup-time consistency check (every logical attr resolves to a real column/relation);
   fail fast on mismatch.
 
-#### B.4 Escape hatch (system/worker writes) — keep audit
+#### B.4 Escape hatch (system/worker writes) - keep audit
 The existing `GormCRUD.Raw() *GormRaw` is the **bare-SQL** path (no engine features, no
 audit). It stays as-is and is documented as the blunt knife (`// bypasses ALL features;
 migrations/repair only`). It is **not** the everyday worker door, because it loses history.
@@ -364,7 +364,7 @@ func writeGuardBypassed(ctx context.Context) bool
 The engine's write-cap enforcement is skipped when `writeGuardBypassed(ctx)` is true; the
 **structural floor (§2.4) still applies** (computed/PK never writable). Because the marker
 rides on `ctx`, it flows *down* through the `history`/`metrics` decorators first, so worker
-writes are still audited — then the engine skips the capability check. This is the
+writes are still audited - then the engine skips the capability check. This is the
 "guard is always there; opt out explicitly" model.
 
 Ergonomic wrapper (recommended, reads like the chained form the team liked without
@@ -382,7 +382,7 @@ func SystemWriter[T any, ID comparable](repo CRUD[T, ID]) CRUD[T, ID]
 > offer a chained `repo.Unguarded()` handle. The context-marker + `SystemWriter` approach is
 > preferred because enforcement lives innermost (engine), where a rewrapped "chain minus a
 > layer" handle is awkward, and because it provably preserves audit. Do **not** reuse the
-> name `Raw()` for the audited bypass — it's taken by the bare path.
+> name `Raw()` for the audited bypass - it's taken by the bare path.
 
 Tests (Phase B):
 - List/Count with a non-filterable field → typed error, **no SQL emitted** (assert via a
@@ -398,12 +398,12 @@ Tests (Phase B):
 
 Acceptance: existing suites green; new behavior covered; the only *intentional* behavior
 change is "unknown field → typed error instead of SQL error" and "Update no longer writes
-protected columns" — both call-outs in the changelog.
+protected columns" - both call-outs in the changelog.
 
-### Phase C — Introspection serialization (still R3-only)
+### Phase C - Introspection serialization (still R3-only)
 
 **Goal:** R3 can serialize a `Schema` to a stable JSON shape, so a consumer can later build
-a `/-/schema` endpoint and dynamic UI. No HTTP here — just the dialect.
+a `/-/schema` endpoint and dynamic UI. No HTTP here - just the dialect.
 
 - Add `dialects/json` (or a new `dialects/schema`) functions:
   `MarshalSchema(s r3.Schema) ([]byte, error)` producing a documented, versioned JSON shape
@@ -427,9 +427,9 @@ Acceptance: stable, documented JSON; `readme.md`/`doc.go` updated.
 | Call                                   | Strips                              | Keeps                       | Use |
 |----------------------------------------|-------------------------------------|-----------------------------|-----|
 | `r3.SystemWriter(repo)` / `WithoutWriteGuard(ctx)` | write-capability checks (`Creatable`/`Mutable`) | structural floor, history, metrics, soft-delete | everyday worker/feed-sync write of a user-immutable field, **audited** |
-| `repo.Raw()` (bare `GormRaw`)          | **everything** — straight to SQL    | nothing                     | migrations, data repair, "I know exactly what I'm doing" |
+| `repo.Raw()` (bare `GormRaw`)          | **everything** - straight to SQL    | nothing                     | migrations, data repair, "I know exactly what I'm doing" |
 
-The **structural floor is un-bypassable by both** — a computed/PK has no writable column.
+The **structural floor is un-bypassable by both** - a computed/PK has no writable column.
 
 ---
 
@@ -452,7 +452,7 @@ The **structural floor is un-bypassable by both** — a computed/PK has no writa
 
 ---
 
-## 8. Out of scope (future phases — design-reserve only)
+## 8. Out of scope (future phases - design-reserve only)
 
 - **Computed / aggregation attributes (`Computed`, `Compute`).** Reserve the `Attribute`
   field and the JSON flag now (so the contract is stable), but do **not** implement
@@ -464,7 +464,7 @@ The **structural floor is un-bypassable by both** — a computed/PK has no writa
   is aggregation as a schema *attribute* of the entity itself.
 - **`DefaultsStrict()` policy** and **per-operator validation** (reject `gt` on a bool):
   the operator metadata (`Ops`, per-type defaults) is built in Phase A, but enforcing it in
-  the validator can be a fast-follow if it risks rejecting currently-working queries — gate
+  the validator can be a fast-follow if it risks rejecting currently-working queries - gate
   it behind a config flag first.
 - **Mongo/other-engine bindings.** The core schema is engine-neutral; only `engine/sql` is
   wired here. A Mongo binding is a separate effort.
