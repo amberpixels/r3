@@ -11,7 +11,6 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// Compile-time interface check.
 var _ r3.CRUD[any, any] = (*BaseCRUD[any, any])(nil)
 
 // BaseCRUD implements r3.CRUD for file-based storage.
@@ -26,8 +25,7 @@ type BaseCRUD[T any, ID comparable] struct {
 	mu     sync.RWMutex
 }
 
-// New creates a new file-based CRUD instance.
-// An IDGenerator must be provided explicitly.
+// New creates a file-based CRUD instance. An IDGenerator must be provided.
 func New[T any, ID comparable](idGen IDGenerator[ID], opts ...Option) (*BaseCRUD[T, ID], error) {
 	cfg := &config{
 		baseDir: ".",
@@ -41,14 +39,13 @@ func New[T any, ID comparable](idGen IDGenerator[ID], opts ...Option) (*BaseCRUD
 	meta := GetStructMeta[T]()
 
 	resolved := r3.ResolveOptions(cfg.r3Opts...)
-	// The file engine does not apply value codecs yet; reject a declared codec
-	// loudly rather than serializing the un-encoded value to the file.
+	// The file engine applies no value codecs yet; fail loud rather than write
+	// the un-encoded value. See [r3.RequireCodecSupport].
 	r3.RequireCodecSupport(r3.SchemaOf[T](r3.WithSchemaNaming(resolved.Config.Naming)), "r3/engine/file")
 
 	var st storage
 	switch {
 	case cfg.filePath != "":
-		// Explicit file path override.
 		st = &singleFileStorage{filePath: cfg.filePath}
 	case cfg.directoryMode:
 		st = newDirectoryStorage(cfg.baseDir, meta.ResourceName, &meta)
@@ -176,7 +173,6 @@ func (r *BaseCRUD[T, ID]) Get(_ context.Context, id ID, qarg ...r3.Query) (T, er
 
 	entity := entities[idx]
 
-	// Check soft-delete
 	includeTrashed := q.IncludeTrashed.Some() && q.IncludeTrashed.Unwrap()
 	if r.Meta.SoftDeleteField != "" && !includeTrashed && r.isSoftDeleted(entity) {
 		var zero T
@@ -198,11 +194,9 @@ func (r *BaseCRUD[T, ID]) List(_ context.Context, qarg ...r3.Query) ([]T, int64,
 		return nil, 0, fmt.Errorf("load entities: %w", err)
 	}
 
-	// Filter soft-deleted
 	includeTrashed := q.IncludeTrashed.Some() && q.IncludeTrashed.Unwrap()
 	entities = r.filterSoftDeleted(entities, includeTrashed)
 
-	// Apply filters
 	if len(q.Filters) > 0 {
 		entities, err = filterEntities(entities, q.Filters, &r.Meta)
 		if err != nil {
@@ -210,13 +204,11 @@ func (r *BaseCRUD[T, ID]) List(_ context.Context, qarg ...r3.Query) ([]T, int64,
 		}
 	}
 
-	// Count total after filtering (before pagination)
+	// Total reflects the filtered set, before pagination trims it.
 	totalCount := int64(len(entities))
 
-	// Apply sorts
 	sortEntities(entities, q.Sorts, &r.Meta)
 
-	// Apply cursor pagination or offset pagination
 	isCursorPaginated := q.Cursor != nil
 	isPaginated := !isCursorPaginated && q.Pagination != nil && q.Pagination.IsPaginated()
 
@@ -358,7 +350,6 @@ func (r *BaseCRUD[T, ID]) Patch(_ context.Context, entity T, fields r3.Fields) (
 		return zero, errNotFound
 	}
 
-	// Copy specified fields from input entity to existing entity
 	r.Meta.CopyFieldValues(&entities[idx], &entity, fieldNames)
 
 	if err := r.saveAll(entities); err != nil {
@@ -385,13 +376,13 @@ func (r *BaseCRUD[T, ID]) Delete(_ context.Context, id ID) error {
 	}
 
 	if r.Meta.SoftDeleteField != "" {
-		// Soft delete: set the soft-delete field to current time
+		// Soft delete: stamp the soft-delete field with now.
 		sdIdx := r.Meta.SoftDeleteFieldIdx()
 		if sdIdx >= 0 {
 			v := reflect.ValueOf(&entities[idx]).Elem()
 			field := v.Field(sdIdx)
 			now := time.Now()
-			// Support *time.Time and time.Time
+			// The field may be either time.Time or *time.Time.
 			if field.Type() == reflect.TypeFor[*time.Time]() {
 				field.Set(reflect.ValueOf(&now))
 			} else if field.Type() == reflect.TypeFor[time.Time]() {
@@ -399,7 +390,6 @@ func (r *BaseCRUD[T, ID]) Delete(_ context.Context, id ID) error {
 			}
 		}
 	} else {
-		// Hard delete: remove from slice
 		entities = append(entities[:idx], entities[idx+1:]...)
 	}
 

@@ -8,14 +8,12 @@ import (
 	r3utils "github.com/amberpixels/r3/internal/utils"
 )
 
-// timeType is used to distinguish time.Time from other structs.
+// timeType distinguishes time.Time from other structs (diffed as a scalar).
 var timeType = reflect.TypeFor[time.Time]()
 
-// Diff computes field-level changes between two entities of the same type.
-// It compares exported fields that have `db`, `bson`, or `r3` struct tags,
-// using flat dot-notation for nested structs (e.g. "address.city").
-//
-// Returns nil if there are no differences.
+// Diff computes field-level changes between two entities, comparing exported
+// fields with db/bson/r3 tags and flattening nested structs to dot-notation
+// (e.g. "address.city"). Returns nil when nothing changed.
 func Diff[T any](old, cur T) []FieldChange {
 	oldVal := reflect.ValueOf(old)
 	newVal := reflect.ValueOf(cur)
@@ -32,8 +30,8 @@ func Diff[T any](old, cur T) []FieldChange {
 	return changes
 }
 
-// DiffWithFields computes changes only for the specified field names.
-// Field names should match the column/field names (snake_case), not Go struct names.
+// DiffWithFields computes changes only for the named fields, given as
+// column/field names (snake_case), not Go struct names.
 func DiffWithFields[T any](old, cur T, fields []string) []FieldChange {
 	if len(fields) == 0 {
 		return nil
@@ -58,8 +56,8 @@ func DiffWithFields[T any](old, cur T, fields []string) []FieldChange {
 	return filtered
 }
 
-// DiffCreate generates FieldChanges for a newly created entity.
-// Every field gets OldValue=nil, NewValue=<current value>.
+// DiffCreate generates FieldChanges for a new entity: every field OldValue=nil,
+// NewValue=<current value>.
 func DiffCreate[T any](entity T) []FieldChange {
 	val := reflect.ValueOf(entity)
 	if val.Kind() == reflect.Pointer {
@@ -71,8 +69,8 @@ func DiffCreate[T any](entity T) []FieldChange {
 	return changes
 }
 
-// DiffDelete generates FieldChanges for a deleted entity.
-// Every field gets OldValue=<current value>, NewValue=nil.
+// DiffDelete generates FieldChanges for a deleted entity: every field
+// OldValue=<current value>, NewValue=nil.
 func DiffDelete[T any](entity T) []FieldChange {
 	val := reflect.ValueOf(entity)
 	if val.Kind() == reflect.Pointer {
@@ -94,7 +92,7 @@ func diffStructFields(oldVal, newVal reflect.Value, prefix string, changes *[]Fi
 			continue
 		}
 
-		// Skip relation-like fields (slices, maps)
+		// Relations (slices, maps) are not diffed.
 		if isRelationKind(field.Type) {
 			continue
 		}
@@ -112,13 +110,13 @@ func diffStructFields(oldVal, newVal reflect.Value, prefix string, changes *[]Fi
 		oldField := oldVal.Field(i)
 		newField := newVal.Field(i)
 
-		// Handle nested structs (except time.Time) with dot-notation
+		// Nested struct (not time.Time): recurse with dotted prefix.
 		if field.Type.Kind() == reflect.Struct && field.Type != timeType {
 			diffStructFields(oldField, newField, fullName, changes)
 			continue
 		}
 
-		// Handle pointer-to-struct (except *time.Time)
+		// Pointer-to-struct (not *time.Time): nil transitions become create/delete.
 		if field.Type.Kind() == reflect.Pointer && field.Type.Elem().Kind() == reflect.Struct &&
 			field.Type.Elem() != timeType {
 			switch {
@@ -145,7 +143,7 @@ func diffStructFields(oldVal, newVal reflect.Value, prefix string, changes *[]Fi
 	}
 }
 
-// createFields generates FieldChanges for all fields in a struct (for create operations).
+// createFields emits an OldValue=nil FieldChange for every field in a struct.
 func createFields(val reflect.Value, prefix string, changes *[]FieldChange) {
 	typ := val.Type()
 
@@ -183,7 +181,7 @@ func createFields(val reflect.Value, prefix string, changes *[]FieldChange) {
 	}
 }
 
-// deleteFields generates FieldChanges for all fields in a struct (for delete operations).
+// deleteFields emits a NewValue=nil FieldChange for every field in a struct.
 func deleteFields(val reflect.Value, prefix string, changes *[]FieldChange) {
 	typ := val.Type()
 
@@ -221,26 +219,23 @@ func deleteFields(val reflect.Value, prefix string, changes *[]FieldChange) {
 	}
 }
 
-// resolveColumnName determines the storage column name for a struct field.
-// Priority: r3 tag > db tag > bson tag > snake_case of Go field name.
+// resolveColumnName resolves a field's storage column name, preferring the r3
+// tag, then db, then bson, falling back to snake_case of the Go field name.
 func resolveColumnName(field reflect.StructField) string {
-	// Try r3 tag first
 	if tag := field.Tag.Get("r3"); tag != "" {
 		name := tagFirstPart(tag)
 		if name == "-" {
 			return "-"
 		}
-		// Skip relation tags
 		if strings.HasPrefix(name, "rel:") {
 			return ""
 		}
-		// Skip known keywords that aren't column names
+		// pk/soft_delete are keywords, not column names.
 		if name != "pk" && name != "soft_delete" && name != "" {
 			return name
 		}
 	}
 
-	// Try db tag
 	if tag := field.Tag.Get("db"); tag != "" {
 		name := tagFirstPart(tag)
 		if name == "-" {
@@ -251,7 +246,6 @@ func resolveColumnName(field reflect.StructField) string {
 		}
 	}
 
-	// Try bson tag
 	if tag := field.Tag.Get("bson"); tag != "" {
 		name := tagFirstPart(tag)
 		if name == "-" {
@@ -262,7 +256,6 @@ func resolveColumnName(field reflect.StructField) string {
 		}
 	}
 
-	// Fallback: snake_case of Go field name
 	return r3utils.ToSnakeCase(field.Name)
 }
 
@@ -274,8 +267,8 @@ func tagFirstPart(tag string) string {
 	return tag
 }
 
-// normalizeValue converts a reflect.Value to a plain Go value suitable for JSON serialization.
-// Nil pointers become nil. Everything else becomes its Interface() value.
+// normalizeValue converts a reflect.Value to a JSON-serializable plain value;
+// nil pointers/interfaces become nil.
 func normalizeValue(v reflect.Value) any {
 	if !v.IsValid() {
 		return nil
@@ -288,8 +281,7 @@ func normalizeValue(v reflect.Value) any {
 	return v.Interface()
 }
 
-// isRelationKind returns true for types that represent relations (slices, maps)
-// which should be skipped during diffing.
+// isRelationKind reports whether a type is a relation (slice/map) skipped in diffs.
 func isRelationKind(t reflect.Type) bool {
 	switch t.Kind() {
 	case reflect.Slice, reflect.Map:

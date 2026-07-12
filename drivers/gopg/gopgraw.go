@@ -8,8 +8,7 @@ import (
 	"github.com/go-pg/pg/v10/orm"
 )
 
-// GoPgRaw is a go-pg wrapper that allows calling any go-pg query.
-// Is considered to be embedded in GoPgCRUD.
+// GoPgRaw is the go-pg escape hatch, exposing any go-pg query via Find/Scan callbacks.
 type GoPgRaw[T any, ID any] struct {
 	db        orm.DB
 	tableName string
@@ -23,18 +22,14 @@ func NewGoPgRaw[T any, ID comparable](db orm.DB) *GoPgRaw[T, ID] {
 	}
 }
 
-// getTableName derives table name from generic type T using go-pg conventions.
-// go-pg pluralizes table names by default (e.g., City -> cities, Event -> events).
+// getTableName derives T's table name the go-pg way: snake_case and pluralized
+// (e.g. City -> cities, Event -> events).
 func getTableName[T any]() string {
 	var t T
 	typ := reflect.TypeOf(t)
-
-	// Handle pointer types
 	if typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 	}
-
-	// Convert struct name to snake_case and pluralize for table name
 	return r3utils.ToSnakeCasePlural(typ.Name())
 }
 

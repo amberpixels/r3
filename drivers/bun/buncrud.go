@@ -12,8 +12,8 @@ import (
 	"github.com/uptrace/bun"
 )
 
-// BunCRUD is a CRUD repository based on Bun's *bun.DB.
-// Internally it uses bun.IDB so that it can operate within transactions as well.
+// BunCRUD is a Bun repository. It holds bun.IDB (not *bun.DB) so the same code
+// runs against a transaction.
 type BunCRUD[T any, ID comparable] struct {
 	db    bun.IDB
 	sqlDB *bun.DB // original *bun.DB, nil when inside a transaction
@@ -27,13 +27,11 @@ type BunCRUD[T any, ID comparable] struct {
 var _ r3.CRUD[any, any] = &BunCRUD[any, any]{}
 var _ r3.Aggregator = &BunCRUD[any, any]{}
 
-// NewBunCRUD creates a new Bun-based CRUD repository.
-//
-// Accepts optional [r3.Option] values for framework-level configuration.
+// NewBunCRUD builds a Bun-based repository.
 func NewBunCRUD[T any, ID comparable](db *bun.DB, opts ...r3.Option) *BunCRUD[T, ID] {
 	resolved := r3.ResolveOptions(opts...)
-	// Value codecs are not wired into the bun driver yet; reject a declared codec
-	// loudly rather than binding the un-encoded value.
+	// Value codecs are not wired into bun yet; reject a declared codec loudly
+	// rather than binding the un-encoded value.
 	r3.RequireCodecSupport(r3.SchemaOf[T](r3.WithSchemaNaming(resolved.Config.Naming)), "r3/bun")
 	return &BunCRUD[T, ID]{
 		db:              db,
@@ -70,32 +68,26 @@ func (r *BunCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64
 	var entities []T
 	query := r.db.NewSelect().Model(&entities)
 
-	// Apply fields selection
 	if fieldCols := r3.FieldsToStrings(prep.Query.Fields); len(fieldCols) > 0 {
 		query = query.Column(fieldCols...)
 	}
 
-	// Apply preloads (Bun uses Relation for eager loading)
 	for _, preload := range prep.Query.Preloads {
 		query = query.Relation(preload.GetName())
 	}
 
-	// Handle soft-deleted records
 	if prep.Query.IncludeTrashed.Some(true) {
 		query = query.WhereAllWithDeleted()
 	}
 
-	// Apply joins
 	for _, join := range prep.Joins() {
 		query = query.Join(fmt.Sprintf("JOIN %s ON TRUE", join.String()))
 	}
 
-	// Apply filters
 	for _, clause := range prep.Clauses {
 		query = query.Where(clause.Clause, clause.Args...)
 	}
 
-	// Apply sorts
 	for _, sort := range prep.Sorts {
 		query = query.OrderExpr(sort.String())
 	}
@@ -205,17 +197,14 @@ func (r *BunCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, e
 	meta := enginesql.GetStructMeta[T]()
 	query := r.db.NewSelect().Model(&entity).Where("? = ?", bun.Ident(meta.PKColumn), id)
 
-	// Apply fields selection
 	if fieldCols := r3.FieldsToStrings(q.Fields); len(fieldCols) > 0 {
 		query = query.Column(fieldCols...)
 	}
 
-	// Apply preloads (Bun uses Relation for eager loading)
 	for _, preload := range q.Preloads {
 		query = query.Relation(preload.GetName())
 	}
 
-	// Handle soft-deleted records
 	if q.IncludeTrashed.Some(true) {
 		query = query.WhereAllWithDeleted()
 	}
@@ -296,8 +285,7 @@ func softDeleteColumn(meta enginesql.StructMeta) string {
 	return "deleted_at"
 }
 
-// NewBunQuerier creates a read-only Bun-based repository.
-// Returns [r3.Querier] — a compile-time guarantee of read-only access.
+// NewBunQuerier builds a read-only Bun repository ([r3.Querier] enforces it).
 func NewBunQuerier[T any, ID comparable](db *bun.DB, opts ...r3.Option) r3.Querier[T, ID] {
 	return NewBunCRUD[T, ID](db, opts...)
 }

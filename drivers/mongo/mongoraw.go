@@ -5,9 +5,9 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
-// MongoRaw is a thin wrapper around enginemongo.BaseRaw for backward compatibility.
+// MongoRaw wraps enginemongo.BaseRaw.
 //
-// Deprecated: Use enginemongo.BaseRaw directly via MongoCRUD.Raw().
+// Deprecated: use enginemongo.BaseRaw directly via MongoCRUD.Raw().
 type MongoRaw[T any, ID any] struct {
 	*enginemongo.BaseRaw[T, ID]
 }

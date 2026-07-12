@@ -90,11 +90,10 @@ var (
 	}
 )
 
-// String is implemented for debugging purposes, so the JSONFilterOperator is a fmt.Stringer.
+// String returns the operator's canonical name.
 func (op JSONFilterOperator) String() string { return FilterOperatorNames[op] }
 
-// UnmarshalJSON implements the json.Unmarshaler interface.
-// It expects the JSON value to be a string representing the operator.
+// UnmarshalJSON implements json.Unmarshaler, expecting a quoted operator string.
 func (op *JSONFilterOperator) UnmarshalJSON(data []byte) error {
 	str := string(data)
 	str = strings.Trim(str, `"`)
@@ -108,13 +107,12 @@ func (op *JSONFilterOperator) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// MarshalJSON implements the json.Marshaler interface.
+// MarshalJSON implements json.Marshaler.
 func (op JSONFilterOperator) MarshalJSON() ([]byte, error) {
 	return []byte(`"` + op.String() + `"`), nil
 }
 
-// UnmarshalText implements the encoding.TextUnmarshaler interface.
-// This is used to decode operator from plain text.
+// UnmarshalText implements encoding.TextUnmarshaler.
 func (op *JSONFilterOperator) UnmarshalText(text []byte) error {
 	parsed := FilterOperatorValues[string(text)]
 	if parsed == OperatorUnspecified {
@@ -125,8 +123,7 @@ func (op *JSONFilterOperator) UnmarshalText(text []byte) error {
 	return nil
 }
 
-// MarshalText implements the encoding.TextMarshaler interface.
-// This is used to encode operator as plain text.
+// MarshalText implements encoding.TextMarshaler.
 func (op JSONFilterOperator) MarshalText() ([]byte, error) {
 	return []byte(op.String()), nil
 }

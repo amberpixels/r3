@@ -14,18 +14,17 @@ import (
 
 var _ r3.Upserter[any, any] = &GormCRUD[any, any]{}
 
-// Upsert inserts entity, or updates the colliding row when it conflicts on the
-// conflict target (the primary key by default). It maps directly onto GORM's
-// clause.OnConflict — the same construction application code hand-writes today.
+// Upsert inserts entity, or updates the colliding row on a conflict at the conflict
+// target (the primary key by default), via GORM's clause.OnConflict.
 //
-// The insert branch obeys Creatable and stamps created_at/updated_at (via the
-// shared writeOmit path); the on-conflict update branch obeys Mutable and bumps
-// updated_at. The write guard bypass (r3.WithoutWriteGuard) is honored. The
-// stored row is re-fetched by the conflict target and returned, so the result
-// reflects the update, defaults, and triggers even on a collision.
+// The insert branch obeys Creatable and stamps created_at/updated_at (shared
+// writeOmit path); the update branch obeys Mutable and bumps updated_at. The write
+// guard bypass (r3.WithoutWriteGuard) is honored. The stored row is re-fetched by
+// the conflict target and returned, so the result reflects the update, defaults,
+// and triggers even on a collision.
 //
-// Upsert is a row-level operation and does not sync associations; use
-// Create/Update for entities carrying related rows.
+// Upsert is row-level and does not sync associations; use Create/Update for
+// entities carrying related rows.
 func (r *GormCRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.UpsertOption) (T, error) {
 	spec := r3.NewUpsertSpec(opts...)
 
@@ -59,11 +58,10 @@ func (r *GormCRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.Upser
 	return r.getByColumns(ctx, conflictCols, entity)
 }
 
-// upsertUpdateColumns resolves the columns the on-conflict update branch writes.
-// With no UpdateOnConflict option it is every mutable column plus managed
-// updated_at (a full replace). With an explicit set it mirrors Patch: reject the
-// PK/soft-delete/unknown columns and non-mutable columns, then append managed
-// updated_at.
+// upsertUpdateColumns resolves the columns the update branch writes. With no
+// UpdateOnConflict option: every mutable column plus managed updated_at (a full
+// replace). With an explicit set it mirrors Patch: reject PK/soft-delete/unknown
+// and non-mutable columns, then append managed updated_at.
 func (r *GormCRUD[T, ID]) upsertUpdateColumns(
 	ctx context.Context, entityPtr *T, spec r3.UpsertSpec,
 ) ([]string, error) {
@@ -82,10 +80,10 @@ func (r *GormCRUD[T, ID]) upsertUpdateColumns(
 	return append(cols, r.stampManaged(ctx, entityPtr, cols, r3.WriteOpMutate)...), nil
 }
 
-// stampManaged sets server time on the managed timestamp columns the op writes
-// (created_at/updated_at) that the caller did not already list, and returns
-// them. It is a no-op under the write-guard bypass or a zero schema, mirroring
-// engine/sql's stampManagedTimestamps.
+// stampManaged sets server time on the op's managed timestamp columns
+// (created_at/updated_at) not already listed by the caller, and returns them.
+// No-op under a write-guard bypass or zero schema, mirroring engine/sql's
+// stampManagedTimestamps.
 func (r *GormCRUD[T, ID]) stampManaged(
 	ctx context.Context, entityPtr *T, callerCols []string, op r3.WriteOp,
 ) []string {

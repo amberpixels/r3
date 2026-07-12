@@ -2,7 +2,7 @@ package r3sql
 
 import "fmt"
 
-// SQLPagination represents pagination in SQL format using LIMIT and OFFSET.
+// SQLPagination is LIMIT/OFFSET pagination.
 type SQLPagination struct {
 	Limit  int
 	Offset int

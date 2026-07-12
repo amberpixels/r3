@@ -12,22 +12,20 @@ import (
 
 var _ r3.Aggregator = (*BaseCRUD[any, any])(nil)
 
-// Aggregate computes grouped aggregates via the MongoDB aggregation pipeline:
-// $match (filters + soft-delete) → $group → $project (flatten group keys) →
-// $match (having) → $sort → $skip/$limit. See r3.Aggregator for the query
-// semantics.
+// Aggregate computes grouped aggregates via the pipeline: $match (filters +
+// soft-delete) → $group → $project (flatten group keys) → $match (having) →
+// $sort → $skip/$limit. See [r3.Aggregator] for the query semantics.
 //
-// Degradation notes (documented per the query-parity philosophy): dotted
-// (nested-path) group fields are not supported, and COUNT(DISTINCT field) is
-// computed via $addToSet — fine for the moderate cardinalities aggregates are
-// used for, but it materializes the value set per group.
+// Degradations vs SQL: dotted (nested-path) group fields are unsupported, and
+// COUNT(DISTINCT field) uses $addToSet, materializing the value set per group -
+// fine for the moderate cardinalities aggregates target.
 func (r *BaseCRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.AggregateRow, error) {
 	prep, err := PrepareListQuery(&r.DefaultsManager, qarg...)
 	if err != nil {
 		return nil, err
 	}
 	q := prep.Query
-	// The mongo engine carries no r3.Schema; structural validation still applies.
+	// No r3.Schema here, but structural validation still applies.
 	if err := (r3.Schema{}).ValidateAggregateQuery(q); err != nil {
 		return nil, err
 	}
@@ -105,8 +103,8 @@ const sumOp = "$sum"
 
 // buildGroupAndProject translates the aggregate specs into the $group document
 // (group keys under _id.g<i>, aggregates under their aliases) and the $project
-// document that flattens group keys back to their field names and finalizes
-// COUNT(DISTINCT ...) sets into sizes.
+// that flattens group keys back to field names and turns COUNT(DISTINCT ...) sets
+// into sizes.
 func buildGroupAndProject(groupNames []string, aggs r3.Aggregates) (bson.D, bson.D, error) {
 	var groupID any
 	if len(groupNames) > 0 {
@@ -165,9 +163,9 @@ func buildGroupAndProject(groupNames []string, aggs r3.Aggregates) (bson.D, bson
 	return group, project, nil
 }
 
-// normalizeBSONValue converts BSON-native scalar types into the Go types the
-// r3.AggregateRow accessors expect (bson.DateTime → time.Time in UTC, matching
-// how entities decode time fields).
+// normalizeBSONValue converts BSON-native scalars to the Go types the
+// [r3.AggregateRow] accessors expect (bson.DateTime → UTC time.Time, matching how
+// entities decode time fields).
 func normalizeBSONValue(v any) any {
 	if dt, ok := v.(bson.DateTime); ok {
 		return dt.Time().UTC()

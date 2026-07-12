@@ -4,7 +4,7 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// Query builder field names — matching the db/bson tags on Translation.
+// Query builder field names - matching the db/bson tags on Translation.
 var (
 	fieldEntityType = r3.NewFieldSpec("entity_type")
 	fieldEntityID   = r3.NewFieldSpec("entity_id")
@@ -32,7 +32,7 @@ func QueryFor(entityType, entityID, lang string, fields ...string) r3.Query {
 	}
 }
 
-// QueryForEntity matches every translation of one entity — all languages,
+// QueryForEntity matches every translation of one entity - all languages,
 // all fields. Used by the decorator for staleness marking and delete cleanup,
 // and by admin UIs listing an entity's translations.
 func QueryForEntity(entityType, entityID string) r3.Query {
@@ -47,7 +47,7 @@ func QueryForEntity(entityType, entityID string) r3.Query {
 	}
 }
 
-// QueryForBatch matches the translations of many entities in one language —
+// QueryForBatch matches the translations of many entities in one language -
 // the single query behind List overlays (never N+1).
 func QueryForBatch(entityType, lang string, entityIDs []string) r3.Query {
 	return r3.Query{
@@ -62,12 +62,11 @@ func QueryForBatch(entityType, lang string, entityIDs []string) r3.Query {
 	}
 }
 
-// QueryStale matches stale translations of one entity type (any language) —
-// the re-translation queue for a worker. Entities that have NO translation
-// yet are not visible here; finding those needs an anti-join ("has no
-// translation") against the entity table, which r3's relationship filters
-// (r3.Has) cannot express yet — negated relations are the missing piece —
-// so applications write that one queue query natively for now.
+// QueryStale matches stale translations of one entity type (any language) - a
+// worker's re-translation queue. Entities with NO translation yet are invisible
+// here; finding those needs an anti-join ("has no translation") that r3's
+// relationship filters can't express yet, so applications write that query
+// natively for now.
 func QueryStale(entityType string) r3.Query {
 	return r3.Query{
 		Filters: r3.Filters{

@@ -9,16 +9,15 @@ import (
 
 var _ r3.BulkPatcher[any, any] = &GormCRUD[any, any]{}
 
-// PatchWhere sets the given fields (to entity's values) on every row matching
-// filters and returns the affected-row count. It is the multi-row analogue of
-// Patch: the column set is validated and capability-gated identically
-// (ValidatePatchColumns + RequireMutableColumns), managed updated_at is bumped,
-// and the write guard bypass is honored — but rows are selected by filters
-// instead of by primary key.
+// PatchWhere sets fields (to entity's values) on every row matching filters and
+// returns the affected-row count. It is the multi-row analogue of Patch - same
+// column validation and capability gating (ValidatePatchColumns +
+// RequireMutableColumns), same updated_at bump, same write-guard bypass - but rows
+// are selected by filters instead of by primary key.
 //
-// Filters are validated against the schema and reuse the same filter→SQL
-// translation as List (including relationship "has" filter lowering). Soft-delete
-// exclusion follows GORM's default model scoping.
+// Filters are schema-validated and reuse List's filter-to-SQL translation
+// (including relationship "has" filter lowering). Soft-delete exclusion follows
+// GORM's default model scoping.
 func (r *GormCRUD[T, ID]) PatchWhere(
 	ctx context.Context, filters r3.Filters, entity T, fields r3.Fields,
 ) (int64, error) {

@@ -12,18 +12,16 @@ import (
 	gschema "gorm.io/gorm/schema"
 )
 
-// This file bridges an r3 value codec (declared with r3:"...,codec:<name>") to
-// GORM's own serializer mechanism, transparently — the user writes only the r3
-// tag, no gorm:"serializer:..." tag.
+// This file bridges an r3 value codec (r3:"...,codec:<name>") to GORM's serializer
+// mechanism so the user needs no gorm:"serializer:..." tag.
 //
-// GORM discovers a field's serializer from its tag during schema.Parse and bakes
-// the scan/value closures at that point (schema.Field.setupValuerAndSetter), so a
-// serializer set after Parse has no effect and GORM's serializer wrapper type is
-// unexported (can't be reproduced from outside). The bridge therefore parses a
-// shadow struct type — identical field layout, but the codec'd field carries a
-// generated gorm:"serializer:<name>" tag — and grafts the resulting serializer
-// closures onto the real, cached schema's field. The real schema keeps its own
-// table name and model type; only the codec'd fields gain serializer behavior.
+// GORM bakes a field's scan/value closures from its tag during schema.Parse
+// (schema.Field.setupValuerAndSetter), so a serializer set after Parse is ignored,
+// and GORM's serializer wrapper type is unexported (not reproducible from outside).
+// The bridge therefore parses a shadow struct of identical layout, but with a
+// generated gorm:"serializer:<name>" tag on the codec'd field, then grafts the
+// resulting closures onto the real cached schema's field - keeping the real
+// schema's own table name and model type.
 
 // codecSerializer adapts an r3.Codec to gorm/schema.SerializerInterface. GORM
 // clones it per use via reflection, preserving the codec reference.
@@ -58,14 +56,14 @@ var (
 )
 
 // registerCodecSerializer returns the GORM serializer name bound to c, registering
-// a new codecSerializer under a generated name on first use. Names are prefixed to
-// avoid colliding with GORM's built-in serializers (json, unixtime, gob).
+// a fresh codecSerializer under a generated name on first use. The name is prefixed
+// to avoid colliding with GORM's built-ins (json, unixtime, gob).
 func registerCodecSerializer(c r3.Codec) string {
 	codecSerializerMu.Lock()
 	defer codecSerializerMu.Unlock()
-	// Memoize by codec identity, but only when the concrete type is comparable
-	// (a map key must be) — a rare non-comparable custom codec simply registers a
-	// fresh serializer each time rather than panicking on the map lookup.
+	// Memoize by codec identity, but only when the concrete type is comparable (a
+	// map key must be); a rare non-comparable custom codec just registers a fresh
+	// serializer each time rather than panicking on the map lookup.
 	memoizable := reflect.TypeOf(c).Comparable()
 	if memoizable {
 		if name, ok := codecSerializerNames[c]; ok {
@@ -81,12 +79,11 @@ func registerCodecSerializer(c r3.Codec) string {
 	return name
 }
 
-// wireCodecs makes GORM apply the schema's value codecs to modelPtr's fields. For
-// each codec'd attribute it registers a GORM serializer and grafts the serializer
-// scan/value closures (obtained from a shadow parse) onto the real cached schema.
-// It is a no-op when the schema declares no codecs. Any structural mismatch is a
-// programming error (the shadow layout matches the model) and panics, consistent
-// with the unknown-codec / unsupported-backend guards.
+// wireCodecs makes GORM apply the schema's value codecs to T's fields: for each
+// codec'd attribute it registers a serializer and grafts its scan/value closures
+// (from a shadow parse) onto the real cached schema. No-op without codecs. A
+// structural mismatch is a programming error and panics, like the unknown-codec /
+// unsupported-backend guards.
 func wireCodecs[T any](db *gorm.DB, schema r3.Schema) {
 	codecs := codecAttributes(schema)
 	if len(codecs) == 0 {
@@ -100,10 +97,9 @@ func wireCodecs[T any](db *gorm.DB, schema r3.Schema) {
 	}
 	realSchema := stmt.Schema
 
-	// A shadow type with the same layout, but each codec'd field carries a
-	// generated gorm serializer tag so its serializer closures are built. The
-	// column comes from the real parsed schema (keyed by Go field name), so it
-	// always matches GORM's own column derivation for the model.
+	// A shadow type of the same layout, but with a generated gorm serializer tag on
+	// each codec'd field so its closures get built. The column comes from the real
+	// parsed schema (keyed by Go field name), matching GORM's own column derivation.
 	realType := reflect.TypeFor[T]()
 	fields := make([]reflect.StructField, realType.NumField())
 	wired := map[string]bool{} // columns we grafted (for the post-check)

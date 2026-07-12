@@ -14,33 +14,31 @@ type config struct {
 	r3Opts        []r3.Option
 }
 
-// WithBaseDir sets the base directory for file storage.
-// Each entity type will be stored in a file (or subdirectory) under this path.
+// WithBaseDir sets the base directory; each entity type gets a file (or
+// subdirectory) under it.
 func WithBaseDir(dir string) Option {
 	return func(c *config) {
 		c.baseDir = dir
 	}
 }
 
-// WithCodec sets the codec used for serialization.
-// Use JSONCodec(), YAMLCodec(), or NewCodec() for a custom codec.
+// WithCodec sets the serialization codec ([JSONCodec], [YAMLCodec], or [NewCodec]).
 func WithCodec(codec Codec) Option {
 	return func(c *config) {
 		c.codec = codec
 	}
 }
 
-// WithDirectoryMode enables directory mode where each entity is stored
-// in a separate file within a directory named after the resource.
-// For example: cities/1.json, cities/2.json instead of cities.json.
+// WithDirectoryMode stores each entity in its own file under a resource-named
+// directory (cities/1.json, cities/2.json) instead of a single cities.json.
 func WithDirectoryMode() Option {
 	return func(c *config) {
 		c.directoryMode = true
 	}
 }
 
-// WithFilePath sets an explicit file path, overriding the auto-derived
-// path from resource name + codec extension. Only valid in single-file mode.
+// WithFilePath overrides the auto-derived path (resource name + codec
+// extension). Single-file mode only.
 func WithFilePath(path string) Option {
 	return func(c *config) {
 		c.filePath = path

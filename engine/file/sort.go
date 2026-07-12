@@ -22,7 +22,6 @@ func sortEntities[T any](entities []T, sorts r3.Sorts, meta *StructMeta) {
 			aVal, aOk := meta.GetFieldValue(entities[i], fieldName)
 			bVal, bOk := meta.GetFieldValue(entities[j], fieldName)
 
-			// Handle missing fields
 			if !aOk && !bOk {
 				continue
 			}
@@ -30,7 +29,6 @@ func sortEntities[T any](entities []T, sorts r3.Sorts, meta *StructMeta) {
 			aIsNil := !aOk || isNullValue(aVal)
 			bIsNil := !bOk || isNullValue(bVal)
 
-			// Handle nulls position
 			if aIsNil || bIsNil {
 				if aIsNil && bIsNil {
 					continue

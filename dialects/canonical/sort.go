@@ -4,9 +4,8 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// ParseSortDirection parses a canonical sort direction string.
-// Recognized strings: "asc", "desc". Empty or unknown strings
-// return SortDirectionUnspecified.
+// ParseSortDirection parses "asc"/"desc"; anything else is
+// SortDirectionUnspecified.
 func ParseSortDirection(s string) r3.SortDirection {
 	switch s {
 	case "asc":
@@ -18,8 +17,7 @@ func ParseSortDirection(s string) r3.SortDirection {
 	}
 }
 
-// FormatSortDirection returns the canonical string for an r3.SortDirection.
-// Returns "asc", "desc", or "" for unspecified.
+// FormatSortDirection returns "asc", "desc", or "" for unspecified.
 func FormatSortDirection(d r3.SortDirection) string {
 	switch d {
 	case r3.SortDirectionAsc:
@@ -33,9 +31,8 @@ func FormatSortDirection(d r3.SortDirection) string {
 	}
 }
 
-// ParseNullsPosition parses a canonical nulls position string.
-// Recognized strings: "first", "last". Empty or unknown strings
-// return NullsPositionNotSpecified.
+// ParseNullsPosition parses "first"/"last"; anything else is
+// NullsPositionNotSpecified.
 func ParseNullsPosition(s string) r3.SortNullsPosition {
 	switch s {
 	case "first":
@@ -47,8 +44,7 @@ func ParseNullsPosition(s string) r3.SortNullsPosition {
 	}
 }
 
-// FormatNullsPosition returns the canonical string for an r3.SortNullsPosition.
-// Returns "first", "last", or "" for unspecified.
+// FormatNullsPosition returns "first", "last", or "" for unspecified.
 func FormatNullsPosition(p r3.SortNullsPosition) string {
 	switch p {
 	case r3.NullsPositionFirst:

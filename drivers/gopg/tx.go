@@ -13,7 +13,6 @@ type gopgTxCRUD[T any, ID comparable] struct {
 	tx *pg.Tx
 }
 
-// Compile-time checks.
 var _ r3.Transactor[any, any] = &GoPgCRUD[any, any]{}
 var _ r3.TxCRUD[any, any] = &gopgTxCRUD[any, any]{}
 

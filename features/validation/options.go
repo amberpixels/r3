@@ -6,31 +6,28 @@ import (
 	r3utils "github.com/amberpixels/r3/internal/utils"
 )
 
-// IDFunc extracts the primary key from an entity.
-// Used by the decorator to fetch existing entities for state-transition validation
-// (Update, Patch).
+// IDFunc extracts the primary key from an entity, letting the decorator fetch
+// the existing entity for state-transition validation (Update, Patch).
 type IDFunc[T any, ID comparable] func(entity T) ID
 
-// Options configures the behavior of the validation decorator.
+// Options configures the validation decorator.
 type Options[T any, ID comparable] struct {
-	// IDFunc extracts the primary key from an entity.
-	// When set, the decorator fetches the existing entity before Update and Patch
-	// operations, populating ValidationRequest.Existing for state-transition validation.
-	// Without IDFunc, Existing is always nil.
+	// IDFunc, when set, makes the decorator fetch the existing entity before
+	// Update and Patch, populating Request.Existing for state-transition
+	// validation. Without it, Existing is always nil.
 	IDFunc IDFunc[T, ID]
 
-	// RecordType is the entity type name used in error messages.
-	// If empty, it is derived automatically from the struct type T
-	// (e.g. Order -> "orders", CampaignAdset -> "campaign_adsets").
+	// RecordType names the entity type in error messages. If empty, derived from
+	// T (e.g. Order -> "orders", CampaignAdset -> "campaign_adsets").
 	RecordType string
 }
 
 // Option is a functional option for configuring the validation CRUD decorator.
 type Option[T any, ID comparable] func(*Options[T, ID])
 
-// WithIDFunc sets the function that extracts the primary key from an entity.
-// This enables state-transition validation: the decorator fetches the current
-// DB state before Update and Patch, so the validator can compare old vs new values.
+// WithIDFunc sets the primary-key extractor, enabling state-transition validation:
+// the decorator fetches current DB state before Update and Patch so the validator
+// can compare old vs new.
 func WithIDFunc[T any, ID comparable](fn IDFunc[T, ID]) Option[T, ID] {
 	return func(o *Options[T, ID]) {
 		o.IDFunc = fn

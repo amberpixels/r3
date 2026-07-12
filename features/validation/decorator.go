@@ -6,43 +6,19 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// CRUD is a decorator that wraps any r3.CRUD[T, ID] and validates entities
-// before mutation operations (Create, Update, Patch). Read operations (Get, List)
-// and Delete pass through without validation.
-//
-// The decorator is stateless -- it doesn't define validation rules. It delegates
-// to a user-provided [Validator] implementation that can use any validation library.
-//
-// It transparently satisfies the r3.CRUD[T, ID] interface, so it can be used
-// as a drop-in replacement for any CRUD repository.
-//
-// Usage:
-//
-//	repo := validation.WithValidation[Pet, int64](
-//	    innerRepo,
-//	    myValidator,
-//	    validation.WithIDFunc[Pet, int64](func(p Pet) int64 { return p.ID }),
-//	)
+// CRUD validates entities before mutations, delegating the rules to a
+// user-provided [Validator]; reads and Delete pass through. See the package doc.
 type CRUD[T any, ID comparable] struct {
 	inner     r3.CRUD[T, ID]
 	validator Validator[T, ID]
 	opts      Options[T, ID]
 }
 
-// Compile-time check that CRUD satisfies r3.CRUD.
 var _ r3.CRUD[any, any] = &CRUD[any, any]{}
 var _ r3.Aggregator = &CRUD[any, any]{}
 var _ r3.RelationAggregator = &CRUD[any, any]{}
 
-// WithValidation wraps an existing r3.CRUD with validation.
-// The validator parameter defines the validation logic for mutation operations.
-//
-// Example:
-//
-//	repo := validation.WithValidation[Pet, int64](
-//	    innerRepo,
-//	    myValidator,
-//	)
+// WithValidation wraps inner so mutations are validated by validator.
 func WithValidation[T any, ID comparable](
 	inner r3.CRUD[T, ID],
 	validator Validator[T, ID],
@@ -61,20 +37,19 @@ func WithValidation[T any, ID comparable](
 	}
 }
 
-// Inner returns the underlying CRUD repository (unwrapped).
-// Useful when you need to bypass validation for a specific operation.
+// Inner returns the underlying CRUD, unwrapped - bypasses validation.
 func (v *CRUD[T, ID]) Inner() r3.CRUD[T, ID] {
 	return v.inner
 }
 
-// Unwrap returns the wrapped CRUD so capability detection and transaction
-// propagation can walk the decorator chain.
+// Unwrap returns the wrapped CRUD so decorator-chain walks (capability
+// detection, transaction propagation) can reach the backend.
 func (v *CRUD[T, ID]) Unwrap() r3.CRUD[T, ID] {
 	return v.inner
 }
 
-// Rewrap rebuilds this decorator around a different inner CRUD (used to
-// re-apply the validation layer on top of a transaction-bound CRUD).
+// Rewrap rebuilds this decorator around inner, re-applying the validation layer
+// on top of a transaction-bound CRUD.
 func (v *CRUD[T, ID]) Rewrap(inner r3.CRUD[T, ID]) r3.CRUD[T, ID] {
 	return &CRUD[T, ID]{inner: inner, validator: v.validator, opts: v.opts}
 }
@@ -129,12 +104,10 @@ func (v *CRUD[T, ID]) AggregateThroughRelation(
 	return agg.AggregateThroughRelation(ctx, relation, qarg...)
 }
 
-// Update optionally fetches the existing entity (if IDFunc is set),
-// validates, then delegates to inner.Update.
-//
-// As with Patch, the fetch-validate-write sequence is atomic only when this
-// decorator runs inside a transaction (see the transactor feature); otherwise
-// the read-before-validate has a TOCTOU window against concurrent writers.
+// Update fetches the existing entity (if IDFunc is set), validates, then delegates
+// to inner.Update. As with Patch, fetch-validate-write is atomic only inside a
+// transaction (see the transactor feature); otherwise the read has a TOCTOU window
+// against concurrent writers.
 func (v *CRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	req := Request[T, ID]{
 		Operation: OpUpdate,
@@ -159,17 +132,14 @@ func (v *CRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	return v.inner.Update(ctx, entity)
 }
 
-// Patch optionally fetches the existing entity (if IDFunc is set),
-// validates with the Fields list populated, then delegates to inner.Patch.
+// Patch fetches the existing entity (if IDFunc is set), validates with Fields
+// populated, then delegates to inner.Patch. With IDFunc set the request also
+// carries Merged (the patch overlaid on current state), so whole-entity validators
+// don't see the sparse (zeroed) input.
 //
-// When IDFunc is set the request also carries Merged — the patch overlaid on the
-// current state — so whole-entity validators don't see the sparse (zeroed) input.
-//
-// The fetch-validate-write sequence is only atomic when this decorator runs
-// inside a transaction: wrap the repo with the transactor feature and call Patch
-// within InTx so the Get and the write share one transaction. Outside a
-// transaction the read-before-validate is best-effort (a concurrent writer can
-// change the row between the Get and the Patch — a TOCTOU window).
+// Fetch-validate-write is atomic only inside a transaction: wrap the repo with the
+// transactor feature and call Patch within InTx. Otherwise a concurrent writer can
+// change the row between the Get and the Patch (a TOCTOU window).
 func (v *CRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields) (T, error) {
 	req := Request[T, ID]{
 		Operation: OpPatch,

@@ -10,51 +10,40 @@ import (
 )
 
 // Codec transforms a Go field value to and from its stored representation. It is
-// declared once per attribute via the r3:"...,codec:<name>" struct tag and then
-// applied uniformly by every backend that supports codecs — on write (Go →
-// stored), on read (stored → Go), and on filter/cursor arguments (a domain value
-// bound into a predicate is encoded to stored form before it reaches the query).
+// declared once per attribute via the r3:"...,codec:<name>" struct tag, then
+// applied uniformly by every codec-aware backend: on write (Go → stored), on read
+// (stored → Go), and on filter/cursor arguments (a domain value is encoded before
+// it reaches the query). The flagship is [time.Time] ⇄ unix int ("unixtime"), but
+// the abstraction is general — money as cents, enums as ints, a struct as JSON.
 //
-// The flagship codec is [time.Time] ⇄ unix int ("unixtime"), but the abstraction
-// is general: money as cents, enums as small ints, uuid as bytes, a struct as a
-// JSON string, and so on — one declared field, two representations, applied
-// everywhere.
-//
-// A Codec operates on plain Go values so it is backend-neutral: an engine feeds
-// it whatever it scanned (SQL int64, bson int32/int64, JSON float64, []byte or
-// string) and takes back a value to bind or marshal. Implementations MUST be pure
-// and stateless — a single instance is shared across all repositories and cached
-// on the derived [Schema].
-//
-// A codec never owns the physical column type (r3 does not do DDL). The
-// consumer's column must already be the stored type that [Codec.Stored] reports.
+// A Codec operates on plain Go values, so it is backend-neutral: an engine feeds
+// it whatever it scanned (int64, int32, float64, []byte, string) and takes back a
+// value to bind or marshal. Implementations MUST be pure and stateless — one
+// instance is shared across all repositories and cached on the [Schema]. A codec
+// never owns the physical column type (r3 does no DDL); the column must already be
+// the type [Codec.Stored] reports.
 type Codec interface {
-	// Encode converts a Go field value into the value handed to the backend (a
-	// bind parameter, a bson value, a JSON/YAML/TOML node). It returns (nil, nil)
-	// to store NULL — e.g. the zero time.Time or a nil pointer.
+	// Encode converts a Go field value into the value handed to the backend. It
+	// returns (nil, nil) to store NULL — e.g. the zero time.Time or a nil pointer.
 	Encode(goValue any) (any, error)
 
-	// Decode converts a value read from any backend back into the Go field value
-	// whose type is target (which may be a pointer for a nullable field). It must
-	// tolerate the representation variance across backends — the same logical
-	// value can arrive as int64, int32, float64, []byte, or string — and map a
-	// NULL (nil) back to the zero value (or nil pointer) for target. A nil target
-	// means "no destination shape is known" (e.g. decoding an aggregate result
-	// into an [AggregateRow], which has no struct field): decode to the codec's
-	// natural domain type — the value [DecodeAggregateCodecs] relies on.
+	// Decode converts a stored value back into the Go field of type target (a
+	// pointer type for a nullable field), tolerating the representation variance
+	// across backends (int64/int32/float64/[]byte/string) and mapping NULL to the
+	// zero value or nil pointer. A nil target means no destination shape is known
+	// (e.g. an [AggregateRow] has no struct field): decode to the codec's natural
+	// domain type, which [DecodeAggregateCodecs] relies on.
 	Decode(stored any, target reflect.Type) (any, error)
 
-	// Stored reports the logical DataType of the stored representation (e.g.
-	// [TypeInt] for unixtime). It is a hint used for bind typing and cursor
-	// encoding, never a substitute for the attribute's domain [DataType].
+	// Stored reports the logical DataType of the stored form (e.g. [TypeInt] for
+	// unixtime) — a hint for bind typing and cursor encoding, not a substitute for
+	// the attribute's domain [DataType].
 	Stored() DataType
 }
 
-// codecRegistry maps a codec name to its shared, stateless implementation. It is
-// seeded with the built-ins at package initialization (no init func — the linter
-// forbids them) and extended through [RegisterCodec]. Reads and writes are guarded
-// by codecRegistryMu so a RegisterCodec call during program setup is safe against
-// concurrent SchemaOf derivation.
+// codecRegistry maps a codec name to its shared, stateless implementation, seeded
+// with the built-ins and extended through [RegisterCodec]. codecRegistryMu guards
+// it so a RegisterCodec during setup is safe against concurrent SchemaOf derivation.
 var (
 	codecRegistryMu sync.RWMutex
 	codecRegistry   = map[string]Codec{
@@ -74,11 +63,9 @@ const (
 	codecUnixNano    = "unixnano"  // time.Time ⇄ int64 unix nanoseconds
 )
 
-// RegisterCodec registers a value codec under name so it can be referenced from a
-// struct tag (r3:"...,codec:<name>"). Built-in codecs (unixtime, unixmilli,
-// unixmicro, unixnano) are registered automatically. Call this during program
-// setup, before deriving schemas; it panics on an empty name or nil codec, and
-// overwrites any existing registration for name.
+// RegisterCodec registers a value codec under name for use in a struct tag
+// (r3:"...,codec:<name>"). Call it during setup, before deriving schemas; it
+// overwrites any existing registration and panics on an empty name or nil codec.
 func RegisterCodec(name string, c Codec) {
 	if name == "" {
 		panic("r3: RegisterCodec called with an empty name")
@@ -99,12 +86,11 @@ func lookupCodec(name string) (Codec, bool) {
 	return c, ok
 }
 
-// RequireCodecSupport panics if s declares any value codec, naming the offending
-// attribute and the backend. A backend that does not yet apply codecs calls this
-// at repository construction so a declared codec fails loudly at startup instead
-// of silently storing the un-encoded value — which would corrupt data and break
-// the cross-backend portability r3 promises. A zero schema declares no codecs and
-// passes. backend is a short identifier for the panic message, e.g. "r3/mongo".
+// RequireCodecSupport panics if s declares any value codec, naming the attribute
+// and backend. A backend that does not yet apply codecs calls this at construction
+// so a declared codec fails loudly instead of silently storing the un-encoded
+// value (corrupting data and breaking portability). backend is a short id for the
+// message, e.g. "r3/mongo".
 func RequireCodecSupport(s Schema, backend string) {
 	for i := range s.attrs {
 		if s.attrs[i].Codec != nil {
@@ -126,15 +112,12 @@ func (s Schema) hasCodecs() bool {
 	return false
 }
 
-// EncodeFilterCodecs returns a clone of filters in which every argument that
-// targets a codec'd attribute is converted to its stored form, so the predicate
-// compares against stored column values (the fix for filtering a codec'd field
-// with a domain value, e.g. r3.Lt("started_at", someTime) against an int column).
-// Scalar, In/NotIn slice, and Between-family pair arguments are all handled;
-// operators that do not carry a comparable field value (Exists, Like) are left
-// untouched. Fields without a codec, relationship filters, and dotted (joined)
-// field names pass through unchanged. It is a no-op when the schema declares no
-// codecs.
+// EncodeFilterCodecs clones filters with every codec'd argument converted to
+// stored form, so a domain value compares against stored column values (e.g.
+// r3.Lt("started_at", someTime) against an int column). Scalar, In/NotIn slice,
+// and Between-pair arguments are handled; operators carrying no comparable value
+// (Exists, Like), non-codec'd fields, relationship filters, and dotted field names
+// pass through. No-op when the schema declares no codecs.
 func EncodeFilterCodecs(s Schema, filters Filters) (Filters, error) {
 	if !s.hasCodecs() || len(filters) == 0 {
 		return filters, nil
@@ -222,10 +205,9 @@ func encodeFilterArg(c Codec, op FilterOperatorSpec, v any) (any, error) {
 	}
 }
 
-// EncodeCursorCodecs returns a clone of the decoded cursor values with every
-// value that keys a codec'd attribute converted to stored form, so keyset
-// predicates compare against stored column values. It is a no-op when the schema
-// declares no codecs.
+// EncodeCursorCodecs clones the decoded cursor values with every codec'd key
+// converted to stored form, so keyset predicates compare against stored column
+// values. No-op when the schema declares no codecs.
 func EncodeCursorCodecs(s Schema, values CursorValues) (CursorValues, error) {
 	if !s.hasCodecs() || len(values) == 0 {
 		return values, nil
@@ -246,22 +228,16 @@ func EncodeCursorCodecs(s Schema, values CursorValues) (CursorValues, error) {
 	return out, nil
 }
 
-// DecodeAggregateCodecs decodes, in place, every [AggregateRow] value that still
-// carries a codec'd attribute's domain meaning back to the domain value:
-//   - a group-by column that maps to a codec'd attribute (the grouped value IS
-//     the field's domain value), and
-//   - a MIN/MAX aggregate over a codec'd attribute (the extremum is a real field
-//     value).
+// DecodeAggregateCodecs decodes, in place, the [AggregateRow] values that still
+// carry a codec'd attribute's domain meaning: a group-by column mapping to a
+// codec'd attribute, and a MIN/MAX over a codec'd attribute (both are real field
+// values). SUM/AVG/COUNT are never decoded — a sum of unix seconds is not a
+// time.Time. A NULL (e.g. MIN/MAX over an empty group) is left nil so
+// [AggregateRow.Time] still reports ok=false rather than the codec's zero value.
 //
-// SUM/AVG/COUNT/COUNT(DISTINCT) are never decoded: a sum of unix seconds is not a
-// time.Time and a count is always an integer, so decoding them would be nonsense.
-// A NULL result (nil — e.g. MIN/MAX over an empty group) is left as nil so
-// [AggregateRow.Time] still reports ok=false for a genuinely absent extremum
-// rather than fabricating the codec's zero value.
-//
-// It is a no-op when the schema declares no codecs. Backends that implement
-// [Aggregator] and apply codecs call it once, just before returning rows, so the
-// "which columns decode" rule lives in exactly one place and cannot drift.
+// No-op when the schema declares no codecs. Codec-aware [Aggregator] backends call
+// it once before returning rows, so the "which columns decode" rule lives in one
+// place.
 func DecodeAggregateCodecs(s Schema, q Query, rows []AggregateRow) error {
 	if !s.hasCodecs() || len(rows) == 0 {
 		return nil
@@ -336,9 +312,9 @@ func isBetweenOp(op FilterOperatorSpec) bool {
 		op == OperatorBetweenExInc || op == OperatorBetweenIncEx
 }
 
-// unixTimeCodec implements time.Time ⇄ int64 at a fixed precision. It is the
-// inverse of GORM's schema.UnixSecondSerializer (which maps an int Go field to a
-// datetime column); here the Go field is the time.Time and the column is the int.
+// unixTimeCodec implements time.Time ⇄ int64 at a fixed precision — the inverse of
+// GORM's schema.UnixSecondSerializer: here the Go field is the time.Time and the
+// column is the int.
 type unixTimeCodec struct{ unit unixUnit }
 
 // unixUnit selects the precision of a unixTimeCodec.
@@ -354,11 +330,10 @@ const (
 // Stored reports that a unix timestamp is stored as an integer.
 func (unixTimeCodec) Stored() DataType { return TypeInt }
 
-// Encode maps a time.Time / *time.Time to an int64 at the configured precision in
-// UTC. The zero time and a nil pointer both encode to NULL. It also tolerates the
-// JSON-decoded form of a time (an RFC3339 or numeric string), so a codec'd field
-// works as a cursor key — cursor tokens round-trip through JSON, where a time.Time
-// becomes an RFC3339 string.
+// Encode maps a time.Time / *time.Time to a UTC int64 at the configured precision;
+// the zero time and a nil pointer encode to NULL. It also accepts a time's
+// JSON-decoded form (RFC3339 or numeric string) so a codec'd field works as a
+// cursor key — cursor tokens round-trip through JSON, turning a time into a string.
 func (c unixTimeCodec) Encode(goValue any) (any, error) {
 	t, ok := asTime(goValue)
 	if !ok {

@@ -8,9 +8,8 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// IDGenerator generates new unique IDs for entities.
-// The Generate method receives the list of existing IDs so that
-// implementations can avoid collisions (e.g. auto-increment).
+// IDGenerator produces a new unique ID. Generate receives the existing IDs so an
+// implementation can avoid collisions (e.g. auto-increment).
 type IDGenerator[ID comparable] interface {
 	Generate(existing []ID) (ID, error)
 }
@@ -23,8 +22,7 @@ func (f IDGeneratorFunc[ID]) Generate(existing []ID) (ID, error) {
 	return f(existing)
 }
 
-// IncrementIDGen returns an IDGenerator that picks max(existing) + 1.
-// Works with integer types (int, int64, etc.).
+// incrementIDGen picks max(existing) + 1, for integer ID types.
 type incrementIDGen[ID interface {
 	~int | ~int8 | ~int16 | ~int32 | ~int64 |
 		~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64
@@ -48,8 +46,8 @@ func IncrementIDGen[ID interface {
 	return incrementIDGen[ID]{}
 }
 
-// UUIDStringIDGen returns an IDGenerator that generates UUID v4 strings.
-// This uses crypto/rand and does not depend on any external UUID library.
+// UUIDStringIDGen returns an IDGenerator producing UUID v4 strings via
+// crypto/rand (no external UUID dependency).
 func UUIDStringIDGen() IDGenerator[string] {
 	return IDGeneratorFunc[string](func(_ []string) (string, error) {
 		return generateUUIDv4()

@@ -23,44 +23,32 @@ const (
 	OpPatchWhere Operation = "patch_where"
 )
 
-// Request carries all context needed for a validation decision.
-//
-// Fields:
-//   - Operation: which mutation is being performed
-//   - Entity: the entity being validated (always populated)
-//   - Fields: for Patch operations, which fields are being changed (nil for Create/Update)
-//   - Existing: for Update/Patch, the current DB state (nil unless IDFunc is configured)
+// Request carries the context for a validation decision.
 type Request[T any, ID comparable] struct {
-	// Operation is the mutation type: create, update, or patch.
+	// Operation is the mutation type.
 	Operation Operation
 
-	// Entity is the entity being validated. Always populated.
+	// Entity being validated. Always populated.
 	Entity T
 
-	// Fields is the list of fields being patched. Non-nil only for Patch operations.
-	// Validators can use this to skip rules for fields that aren't being changed.
+	// Fields being patched. Non-nil only for Patch; lets validators skip rules for
+	// unchanged fields.
 	Fields r3.Fields
 
-	// Existing is the current database state of the entity.
-	// Populated only for Update and Patch operations when WithIDFunc is configured.
-	// Enables state-transition validation (e.g. "status can only go draft -> published").
+	// Existing is the current DB state. Populated only for Update/Patch when
+	// WithIDFunc is set - enables state-transition rules (e.g. "draft -> published").
 	Existing *T
 
-	// Merged is the full entity as it will look AFTER the patch is applied: the
-	// patched fields overlaid on Existing. Populated only for Patch when WithIDFunc
-	// is configured. Validators should prefer Merged over Entity for whole-entity
-	// rules on Patch, since Entity carries only the patched fields (the rest are
-	// zeroed) — validating Entity directly would reject otherwise-valid patches.
+	// Merged is the entity AFTER the patch is applied (patched fields overlaid on
+	// Existing). Populated only for Patch when WithIDFunc is set. Prefer Merged over
+	// Entity for whole-entity rules on Patch, since Entity carries only the patched
+	// fields (rest zeroed) and validating it directly would reject valid patches.
 	Merged *T
 }
 
-// Validator validates entities before mutation operations.
-// Implementations can use any validation library (go-playground/validator,
-// ozzo-validation, custom logic, etc.)
-//
-// Validate returns nil to allow the operation, or an error to reject it.
-// Returning an *Error provides structured per-field error details.
-// Any other error type is also accepted and will prevent the mutation.
+// Validator validates entities before mutations, using any library or plain Go.
+// Validate returns nil to allow or an error to reject; an *Error carries
+// structured per-field details, but any error type prevents the mutation.
 type Validator[T any, ID comparable] interface {
 	Validate(ctx context.Context, req Request[T, ID]) error
 }

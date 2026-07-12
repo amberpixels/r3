@@ -11,91 +11,63 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// Snapshot represents a full point-in-time capture of an entity.
-// Snapshots are completely separate from change records — they have their own
-// storage (separate table/collection, e.g. "original_benefit_sheets") and
-// are triggered by custom conditions (SnapshotRule).
-//
-// Unlike change records (which are always created on every mutation),
-// snapshots are opt-in and only taken when a SnapshotRule's condition is met.
-//
-// Snapshot is a first-class r3 entity: it can be stored via any
-// r3.CRUD[Snapshot, string] implementation.
+// Snapshot is a full point-in-time capture of an entity, separate from change
+// records: its own storage, triggered only when a [SnapshotRule] condition is met
+// (unlike change records, written on every mutation).
 type Snapshot struct {
-	// ID is the unique identifier for this snapshot.
+	// ID uniquely identifies this snapshot.
 	ID string `json:"id" db:"id,pk" bson:"_id"`
 
-	// RecordType is the type name of the entity (e.g. "benefit_sheets").
+	// RecordType is the entity type name.
 	RecordType string `json:"record_type" db:"record_type" bson:"record_type"`
 
-	// RecordID is the primary key of the entity, stringified.
+	// RecordID is the entity primary key, stringified.
 	RecordID string `json:"record_id" db:"record_id" bson:"record_id"`
 
-	// Version is the change record version that triggered this snapshot.
+	// Version is the change-record version that triggered this snapshot.
 	Version int64 `json:"version" db:"version" bson:"version"`
 
-	// RuleName identifies which SnapshotRule triggered this snapshot.
-	// Useful when multiple rules exist for the same entity type.
+	// RuleName is which SnapshotRule fired (disambiguates multiple rules per type).
 	RuleName string `json:"rule_name,omitempty" db:"rule_name" bson:"rule_name,omitempty"`
 
-	// ActorID / ActorType identify who triggered the snapshot, mirrored from the
-	// change record that produced it (resolved from r3.GetActor(ctx)).
+	// ActorID / ActorType mirror the triggering change record.
 	ActorID   string `json:"actor_id,omitempty"   db:"actor_id"   bson:"actor_id,omitempty"`
 	ActorType string `json:"actor_type,omitempty" db:"actor_type" bson:"actor_type,omitempty"`
 
-	// Data is the full serialized state of the entity at snapshot time.
-	// Stored as JSON bytes for portability across storage backends.
+	// Data is the full entity state at snapshot time, JSON bytes for portability.
 	Data json.RawMessage `json:"data" db:"data" bson:"data"`
 
-	// Metadata carries contextual information (same as on the change record).
-	// Stored as a JSON blob in SQL databases via JSONColumn.
+	// Metadata mirrors the change record's context. Stored as JSON.
 	Metadata r3.JSONColumn[Metadata] `json:"metadata" db:"metadata" bson:"metadata"`
 
-	// CreatedAt is the timestamp when the snapshot was taken.
+	// CreatedAt is when the snapshot was taken.
 	CreatedAt time.Time `json:"created_at" db:"created_at" bson:"created_at"`
 }
 
-// SnapshotConditionFunc evaluates whether a snapshot should be taken after a mutation.
-// It receives the action, the old state (zero value for create), and the new state
-// (zero value for delete). Return true to trigger a snapshot.
-//
-// Example: snapshot when status changes from "draft" to "published":
+// SnapshotConditionFunc reports whether to snapshot after a mutation. old is zero
+// for create, cur is zero for delete.
 //
 //	func(action Action, old, cur BenefitSheet) bool {
 //	    return old.Status == "draft" && cur.Status == "published"
 //	}
 type SnapshotConditionFunc[T any] func(action Action, old, cur T) bool
 
-// SnapshotRule defines when and where to take a snapshot for an entity type.
-// Multiple rules can exist per entity — each with its own condition and store.
-//
-// The Store field is any [r3.Commander] for Snapshot — only write access is needed.
-//
-// Example:
-//
-//	r3history.SnapshotRule[BenefitSheet]{
-//	    Name:  "on_publish",
-//	    Store: snapshotCRUD,  // any r3.Commander[Snapshot, string] (or r3.CRUD)
-//	    Condition: func(action Action, old, cur BenefitSheet) bool {
-//	        return old.Status == "draft" && cur.Status == "published"
-//	    },
-//	}
+// SnapshotRule defines when and where to snapshot an entity type; multiple rules
+// may exist per entity.
 type SnapshotRule[T any] struct {
-	// Name identifies this rule (for logging and the RuleName field on Snapshot).
+	// Name identifies this rule (logging and Snapshot.RuleName).
 	Name string
 
-	// Store is where snapshots triggered by this rule are persisted.
-	// Only [r3.Commander] is required — snapshots are only written, never read back
-	// through this interface. Any r3.CRUD also satisfies Commander.
+	// Store persists snapshots from this rule. Only [r3.Commander] is required -
+	// snapshots are write-only here.
 	Store r3.Commander[Snapshot, string]
 
-	// Condition determines whether a snapshot should be taken.
-	// If nil, the rule never triggers (effectively disabled).
+	// Condition gates the snapshot; nil disables the rule.
 	Condition SnapshotConditionFunc[T]
 }
 
-// MarshalSnapshot serializes an entity to JSON bytes for storage in a Snapshot.
-// Returns nil if the entity is nil or serialization fails.
+// MarshalSnapshot serializes an entity to JSON bytes, returning nil if entity is
+// nil or marshaling fails.
 func MarshalSnapshot(entity any) json.RawMessage {
 	if entity == nil {
 		return nil
@@ -119,9 +91,8 @@ func UnmarshalSnapshot[T any](data json.RawMessage) (T, error) {
 	return entity, nil
 }
 
-// evaluateSnapshotRules checks all snapshot rules and takes snapshots where conditions are met.
-// Called by the decorator after recording a change. The old/new entities and action
-// are passed through to each rule's condition function.
+// evaluateSnapshotRules takes a snapshot for every rule whose condition holds.
+// Called by the decorator after recording a change.
 func evaluateSnapshotRules[T any](
 	ctx context.Context,
 	rules []SnapshotRule[T],
@@ -138,12 +109,12 @@ func evaluateSnapshotRules[T any](
 			continue
 		}
 
-		// Determine which entity state to snapshot
+		// Deletes snapshot the pre-deletion state; everything else the post-mutation state.
 		var entity any
 		if action == ActionDelete {
-			entity = old // for deletes, snapshot the pre-deletion state
+			entity = old
 		} else {
-			entity = cur // for everything else, snapshot the post-mutation state
+			entity = cur
 		}
 
 		snapshot := Snapshot{
@@ -160,7 +131,7 @@ func evaluateSnapshotRules[T any](
 		}
 
 		if _, err := rule.Store.Create(ctx, snapshot); err != nil {
-			// Log but don't fail the mutation — snapshots are best-effort add-ons.
+			// Log but don't fail the mutation - snapshots are best-effort add-ons.
 			// In async mode the caller already doesn't see errors.
 			slog.ErrorContext(
 				ctx,

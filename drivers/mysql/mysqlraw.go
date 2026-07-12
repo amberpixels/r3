@@ -7,9 +7,9 @@ import (
 	enginesql "github.com/amberpixels/r3/engine/sql"
 )
 
-// MysqlRaw is a thin wrapper around enginesql.BaseRaw for backward compatibility.
+// MysqlRaw wraps enginesql.BaseRaw.
 //
-// Deprecated: Use enginesql.BaseRaw directly via MysqlCRUD.Raw().
+// Deprecated: use enginesql.BaseRaw directly via MysqlCRUD.Raw().
 type MysqlRaw[T any, ID any] struct {
 	*enginesql.BaseRaw[T, ID]
 }

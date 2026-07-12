@@ -14,9 +14,8 @@ import (
 // (which are relations or JSON blobs).
 var timeType = reflect.TypeFor[time.Time]()
 
-// schemaCache memoizes the default (no-option) Schema per reflect.Type. Schema
-// derivation reflects over tags, so caching keeps it off the hot path the way
-// the engine caches StructMeta.
+// schemaCache memoizes the default (no-option) Schema per type, keeping tag
+// reflection off the hot path (as the engine caches StructMeta).
 var schemaCache sync.Map // reflect.Type -> Schema
 
 // schemaConfig is the resolved derivation policy.
@@ -28,19 +27,16 @@ type schemaConfig struct {
 type SchemaOption func(*schemaConfig)
 
 // WithSchemaNaming overrides the well-known field names (created_at, updated_at,
-// deleted_at) used to derive the read-only timestamp/soft-delete defaults. By
-// default the standard names apply.
+// deleted_at) that drive the read-only timestamp/soft-delete defaults.
 func WithSchemaNaming(n NamingConfig) SchemaOption {
 	return func(c *schemaConfig) { c.naming = n }
 }
 
-// SchemaOf reflects T's struct tags into a logical Schema with default
-// capabilities (see the schema design doc, §2.7): a plain scalar column is
-// queryable, filterable, sortable, creatable, and mutable; the PK, the
-// created_at/updated_at timestamps, and the soft-delete column are read-only;
-// relations are queryable (preload) only. Tags only ever tighten these defaults.
-//
-// The default (no-option) result is cached per type T.
+// SchemaOf reflects T's struct tags into a [Schema] with permissive default
+// capabilities (see the schema design doc, §2.7): a plain scalar is
+// queryable/filterable/sortable/creatable/mutable; PK, created_at/updated_at,
+// and the soft-delete column are read-only; relations are queryable (preload)
+// only. Tags only ever tighten these. The no-option result is cached per T.
 func SchemaOf[T any](opts ...SchemaOption) Schema {
 	typ := derefType(reflect.TypeFor[T]())
 	if typ == nil || typ.Kind() != reflect.Struct {
@@ -67,7 +63,7 @@ func resolveSchemaConfig(opts []SchemaOption) schemaConfig {
 	for _, opt := range opts {
 		opt(&c)
 	}
-	// Backfill any names the caller left empty so detection is never blank.
+	// Backfill names the caller left empty so detection is never blank.
 	def := DefaultConfig().Naming
 	if c.naming.CreatedAtField == "" {
 		c.naming.CreatedAtField = def.CreatedAtField
@@ -81,9 +77,8 @@ func resolveSchemaConfig(opts []SchemaOption) schemaConfig {
 	return c
 }
 
-// deriveSchema walks the struct fields once, mirroring engine/sql's field
-// classification (relation vs column) so the logical schema stays 1:1 with the
-// physical columns the engine binds.
+// deriveSchema walks the fields once, mirroring engine/sql's relation-vs-column
+// classification so the logical schema stays 1:1 with the physical columns.
 func deriveSchema(typ reflect.Type, cfg schemaConfig) Schema {
 	var attrs []Attribute
 	for field := range typ.Fields() {
@@ -107,14 +102,13 @@ func deriveSchema(typ reflect.Type, cfg schemaConfig) Schema {
 	return newSchema(attrs)
 }
 
-// columnAttribute derives a scalar/JSON attribute from a column field: it infers
-// the data type, computes the default capabilities, then tightens them with any
-// tag flags.
+// columnAttribute derives a scalar/JSON attribute: infer the type, compute the
+// default capabilities, then tighten with tag flags.
 func columnAttribute(field reflect.StructField, ct r3tag.ColumnTag, naming NamingConfig) Attribute {
 	dt := inferType(field.Type, ct)
 	caps := defaultColumnCaps(ct, dt, naming)
 
-	// Tag flags only tighten (clear) capabilities — they never widen.
+	// Tag flags only tighten (clear) capabilities, never widen.
 	if ct.NoFilter {
 		caps &^= Filterable
 	}
@@ -145,10 +139,9 @@ func columnAttribute(field reflect.StructField, ct r3tag.ColumnTag, naming Namin
 	if ct.Codec != "" {
 		c, ok := lookupCodec(ct.Codec)
 		if !ok {
-			// A codec name is authored in a struct tag, so an unregistered name is
-			// a deterministic developer error, not a runtime condition. Fail loudly
-			// at derivation (like a bad regexp in MustCompile) rather than silently
-			// leaving the field un-encoded.
+			// A codec name comes from a struct tag, so an unregistered one is a
+			// deterministic developer error: fail loudly at derivation (like a bad
+			// regexp in MustCompile) rather than silently storing un-encoded values.
 			panic(fmt.Errorf("%w: %q on field %q", ErrUnknownCodec, ct.Codec, field.Name))
 		}
 		attr.Codec = c
@@ -156,9 +149,9 @@ func columnAttribute(field reflect.StructField, ct r3tag.ColumnTag, naming Namin
 	return attr
 }
 
-// defaultColumnCaps applies the permissive default policy: full capabilities for
-// a plain scalar, minus the structural exceptions (PK, timestamps, soft-delete
-// are read-only) and minus filter/sort for non-scalar types.
+// defaultColumnCaps applies the permissive default: full capabilities for a
+// plain scalar, minus filter/sort for non-scalars and minus write for the
+// structural exceptions (PK, timestamps, soft-delete are read-only).
 func defaultColumnCaps(ct r3tag.ColumnTag, dt DataType, naming NamingConfig) Capability {
 	caps := capsAll
 	if !dt.isScalar() {
@@ -169,7 +162,7 @@ func defaultColumnCaps(ct r3tag.ColumnTag, dt DataType, naming NamingConfig) Cap
 	if ct.IsPK || ct.Column == "id" {
 		caps &^= Creatable | Mutable
 	}
-	// Timestamps are server-managed; updated_at is system-only.
+	// Timestamps are server-managed.
 	if ct.Column == naming.CreatedAtField || ct.Column == naming.UpdatedAtField {
 		caps &^= Creatable | Mutable
 	}
@@ -180,9 +173,8 @@ func defaultColumnCaps(ct r3tag.ColumnTag, dt DataType, naming NamingConfig) Cap
 	return caps
 }
 
-// relationAttribute derives a queryable-only relation attribute. Relations are
-// preloadable but not filterable/sortable as plain fields (relationship filters
-// use the dedicated Has mechanism).
+// relationAttribute derives a queryable-only relation attribute: preloadable but
+// not filterable/sortable as a plain field (relationship filters use Has).
 func relationAttribute(field reflect.StructField, rel r3tag.RelationTag) Attribute {
 	target := r3utils.ToSnakeCase(r3utils.ResolveElementType(field.Type).Name())
 	return Attribute{
@@ -198,7 +190,7 @@ func relationAttribute(field reflect.StructField, rel r3tag.RelationTag) Attribu
 
 // inferType maps a Go field type to a logical DataType. An explicit enum tag
 // wins; otherwise the Go kind decides. Only scalars and time.Time reach here as
-// columns — other structs/slices/maps are classified as relations upstream — so
+// columns (other structs/slices/maps are classified as relations upstream), so
 // the JSON branch is a defensive fallback.
 func inferType(t reflect.Type, ct r3tag.ColumnTag) DataType {
 	if len(ct.Enum) > 0 {
@@ -221,8 +213,7 @@ func inferType(t reflect.Type, ct r3tag.ColumnTag) DataType {
 		}
 		return TypeJSON
 	default:
-		// Slices/maps/other shapes that slip past relation classification are
-		// modeled as opaque JSON blobs.
+		// Shapes that slip past relation classification are opaque JSON blobs.
 		return TypeJSON
 	}
 }

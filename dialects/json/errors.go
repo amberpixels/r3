@@ -8,8 +8,7 @@ import (
 // ErrJSONDialectorFailed is a generic error for r3json dialector failures.
 var ErrJSONDialectorFailed = errors.New("json dialector failed")
 
-// newError creates a new error with the given error as a cause.
-// It's considered to be used for all errors returned from inside r3json package.
+// newError wraps err under ErrJSONDialectorFailed; used for every error the package returns.
 func newError(err error) error {
 	return fmt.Errorf("%w: %w", ErrJSONDialectorFailed, err)
 }

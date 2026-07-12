@@ -2,19 +2,11 @@ package r3
 
 import "errors"
 
-// ErrNotFound is returned by Get (and other single-record operations) when no
-// record matches the requested ID.
-//
-// Every backend normalizes its native "no rows" / "no documents" error to this
-// sentinel — database/sql's sql.ErrNoRows, GORM's gorm.ErrRecordNotFound,
-// MongoDB's mongo.ErrNoDocuments, and the file engine's internal not-found
-// error all surface as r3.ErrNotFound. This lets business code detect a missing
-// record identically regardless of the concrete driver:
-//
-//	user, err := repo.Get(ctx, id)
-//	if errors.Is(err, r3.ErrNotFound) {
-//	    // respond 404, etc.
-//	}
+// ErrNotFound is returned by Get (and other single-record ops) when no record
+// matches. Every backend normalizes its native "no rows"/"no documents" error to
+// this sentinel - sql.ErrNoRows, gorm.ErrRecordNotFound, mongo.ErrNoDocuments,
+// the file engine's internal not-found - so errors.Is detects a missing record
+// identically across drivers.
 var ErrNotFound = errors.New("r3: record not found")
 
 // ErrAggregateNotSupported is returned by [AggregateOf] when the repository
@@ -29,19 +21,15 @@ var ErrUpsertNotSupported = errors.New("r3: upsert not supported")
 // a decorator in its chain) does not implement [BulkPatcher].
 var ErrBulkPatchNotSupported = errors.New("r3: bulk patch not supported")
 
-// ErrUnknownCodec is reported (by panic, via [RequireCodecSupport]-adjacent
-// derivation) when an attribute's r3:"...,codec:<name>" tag names a value codec
-// that is not registered. A codec name is authored in a struct tag — a typo is a
-// deterministic developer error surfaced at schema-derivation time, not a
-// runtime condition, so [SchemaOf] panics wrapping this sentinel rather than
-// silently leaving the field un-encoded.
+// ErrUnknownCodec wraps a panic from [SchemaOf] when a r3:"...,codec:<name>" tag
+// names an unregistered codec. A tag typo is a deterministic developer error, so
+// it fails loudly at derivation rather than silently leaving the field un-encoded.
 var ErrUnknownCodec = errors.New("r3: unknown codec")
 
-// ErrCodecNotSupported is reported when a repository is constructed for a backend
-// that does not yet apply value codecs, yet the entity declares one. A codec that
-// a backend silently ignored would store the un-encoded value — a data-corruption
-// bug, not a graceful degradation — so such backends panic wrapping this sentinel
-// at construction (see [RequireCodecSupport]) instead of proceeding.
+// ErrCodecNotSupported wraps a construction-time panic when an entity declares a
+// codec that the target backend does not yet apply. Silently ignoring the codec
+// would store the un-encoded value - data corruption, not graceful degradation -
+// so such backends panic here instead (see [RequireCodecSupport]).
 var ErrCodecNotSupported = errors.New("r3: value codec not supported by this backend")
 
 // ErrInvalidAggregate is returned when an aggregate query is structurally
@@ -52,8 +40,8 @@ var ErrCodecNotSupported = errors.New("r3: value codec not supported by this bac
 var ErrInvalidAggregate = errors.New("r3: invalid aggregate query")
 
 // Schema validation errors. Schema.ValidateQuery wraps the offending field name
-// (fmt.Errorf("%w: %q", err, name)) so a consumer can surface a useful 400-class
-// message instead of leaking a backend driver error (which would otherwise be a 500).
+// (fmt.Errorf("%w: %q", err, name)) so a consumer can surface a 400-class message
+// instead of leaking a backend driver error (a 500) once SQL is built.
 var (
 	// ErrUnknownField is returned when a referenced field is not declared by the schema.
 	ErrUnknownField = errors.New("unknown field")

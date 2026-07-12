@@ -9,14 +9,13 @@ import (
 	"gorm.io/gorm"
 )
 
-// pkKey normalizes a primary/foreign key value to a string so keys of any
-// comparable type (int, int64, string/UUID, ...) group consistently — including
-// across the int/int64 differences that arise between struct fields and values
-// scanned back from the database.
+// pkKey stringifies a primary/foreign key so keys of any comparable type group
+// consistently - including across the int/int64 mismatch between a struct field
+// and the same value scanned back from the DB.
 func pkKey(v any) string { return fmt.Sprintf("%v", v) }
 
-// splitPreloads separates preloads into R3-managed (have RelationMeta with r3 tags)
-// and GORM-managed (no r3 relation tag — use GORM's native Preload).
+// splitPreloads partitions preloads into R3-managed (have RelationMeta from r3
+// tags) and GORM-managed (no r3 relation tag; use GORM's native Preload).
 func splitPreloads[T any](preloads r3.Preloads) ([]enginesql.RelationMeta, r3.Preloads) {
 	if len(preloads) == 0 {
 		return nil, nil
@@ -41,8 +40,7 @@ func splitPreloads[T any](preloads r3.Preloads) ([]enginesql.RelationMeta, r3.Pr
 	return r3Managed, gormManaged
 }
 
-// runR3Preloads loads relations for a slice of entities using direct SQL,
-// based on R3 relation metadata. Modifies entities in-place.
+// runR3Preloads loads R3-managed relations for entities via direct SQL, in place.
 func runR3Preloads[T any](db *gorm.DB, entities []T, rels []enginesql.RelationMeta) error {
 	meta := enginesql.GetStructMeta[T]()
 
@@ -68,7 +66,6 @@ func runR3Preloads[T any](db *gorm.DB, entities []T, rels []enginesql.RelationMe
 
 // preloadM2M loads a many-to-many relation via the join table.
 func preloadM2M[T any](db *gorm.DB, entities []T, meta enginesql.StructMeta, rel enginesql.RelationMeta) error {
-	// Collect parent PKs
 	parentIDs := collectPKs(entities, meta)
 	if len(parentIDs) == 0 {
 		return nil
@@ -129,7 +126,6 @@ func preloadM2M[T any](db *gorm.DB, entities []T, meta enginesql.StructMeta, rel
 		}
 	}
 
-	// Assign to entities.
 	parentPKIdx := meta.Fields[meta.PKField]
 	for i := range entities {
 		ev := reflect.ValueOf(&entities[i]).Elem()
@@ -190,7 +186,6 @@ func preloadHasMany[T any](db *gorm.DB, entities []T, meta enginesql.StructMeta,
 		parentToChildren[key] = append(parentToChildren[key], child)
 	}
 
-	// Assign to entities.
 	parentPKIdx := meta.Fields[meta.PKField]
 	for i := range entities {
 		ev := reflect.ValueOf(&entities[i]).Elem()
@@ -266,7 +261,6 @@ func preloadBelongsTo[T any](db *gorm.DB, entities []T, meta enginesql.StructMet
 		targetByPK[pkKey(t.Field(pkFieldIdx).Interface())] = t
 	}
 
-	// Assign to entities.
 	for i := range entities {
 		ev := reflect.ValueOf(&entities[i]).Elem()
 		fkField := ev.Field(fkFieldIdx)

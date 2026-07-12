@@ -5,16 +5,15 @@ import (
 	"fmt"
 )
 
-// ErrSQLDialectorFailed is a generic error for r3sql dialector failures.
+// ErrSQLDialectorFailed is the sentinel wrapping every r3sql failure.
 var ErrSQLDialectorFailed = errors.New("sql dialector failed")
 
-// newError creates a new error with the given error as a cause.
-// It's considered to be used for all errors returned from inside r3sql package.
+// newError wraps err under ErrSQLDialectorFailed.
 func newError(err error) error {
 	return fmt.Errorf("%w: %w", ErrSQLDialectorFailed, err)
 }
 
-// IsErrDialectorFailure checks if the given error is a r3sql failure.
+// IsErrDialectorFailure reports whether err is a r3sql failure.
 func IsErrDialectorFailure(err error) bool {
 	return errors.Is(err, ErrSQLDialectorFailed)
 }

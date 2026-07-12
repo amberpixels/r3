@@ -4,14 +4,13 @@ import (
 	"sync"
 )
 
-// Defaults stores the default query values for List and Get operations.
-// It is shared by all drivers (database/sql-based, GORM, Bun, go-pg, MongoDB, etc.).
+// Defaults holds the default queries for List and Get, shared across all drivers.
 type Defaults struct {
 	ListQuery Query
 	GetQuery  Query
 }
 
-// NewDefaults returns Defaults initialized with reasonable default queries.
+// NewDefaults returns Defaults with reasonable default queries.
 func NewDefaults() Defaults {
 	return Defaults{
 		ListQuery: DefaultQuery(),
@@ -19,9 +18,8 @@ func NewDefaults() Defaults {
 	}
 }
 
-// DefaultsManager provides thread-safe access to Defaults.
-// Embed this in your CRUD struct to get SetDefaultListQuery, SetDefaultGetQuery,
-// GetDefaultListQuery, and GetDefaultGetQuery for free.
+// DefaultsManager is thread-safe access to Defaults; embed it in a CRUD struct to
+// get the Set/Get default-query methods for free.
 type DefaultsManager struct {
 	defaults Defaults
 	mu       sync.RWMutex
@@ -34,12 +32,9 @@ func NewDefaultsManager() DefaultsManager {
 	}
 }
 
-// NewDefaultsManagerWithConfig creates a DefaultsManager that respects the given Config.
-//
-// If Config.Defaults.Unpaginated is set, the default list query is unbounded
-// (List returns all rows unless a query opts into pagination). Otherwise, if
-// Config.Defaults.PageSize differs from the global default, the default list
-// query is initialized with that page size.
+// NewDefaultsManagerWithConfig creates a DefaultsManager honoring cfg: Unpaginated
+// makes the default list query unbounded; otherwise a non-default PageSize seeds
+// the default list query's page size.
 func NewDefaultsManagerWithConfig(cfg Config) DefaultsManager {
 	d := NewDefaults()
 	switch {

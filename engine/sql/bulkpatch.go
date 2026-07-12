@@ -11,17 +11,14 @@ import (
 
 var _ r3.BulkPatcher[any, any] = &BaseCRUD[any, any]{}
 
-// PatchWhere sets the given fields (to entity's values) on every row matching
-// filters and returns the affected-row count. It is the multi-row analogue of
-// Patch: the column set is validated and capability-gated identically
-// (ValidatePatchColumns + RequireMutableColumns), managed updated_at is bumped,
-// and the write guard bypass is honored — but rows are selected by filters
-// instead of by primary key.
+// PatchWhere sets fields (from entity's values) on every row matching filters and
+// returns the affected-row count - the multi-row Patch: same column validation
+// and capability gating (ValidatePatchColumns + RequireMutableColumns), managed
+// updated_at bump, and write-guard bypass, but rows are selected by filters.
 //
-// Filters are validated against the schema (an unknown or non-filterable field
-// is a typed error, as in List). Soft-deleted rows are excluded by default, so a
-// bulk update never touches trashed rows. Relationship ("has") filters are not
-// supported here and return an error.
+// Filters are schema-validated (an unknown or non-filterable field is a typed
+// error, as in List). Soft-deleted rows are excluded by default. Relationship
+// ("has") filters are not supported and return an error.
 func (r *BaseCRUD[T, ID]) PatchWhere(
 	ctx context.Context, filters r3.Filters, entity T, fields r3.Fields,
 ) (int64, error) {
@@ -64,10 +61,9 @@ func (r *BaseCRUD[T, ID]) PatchWhere(
 	return n, nil
 }
 
-// buildBulkWhere translates filters into a WHERE clause whose placeholders start
-// at startIdx (so they follow the SET clause's parameters), plus the soft-delete
-// guard. It rejects relationship filters, which would require a JOIN that a bare
-// UPDATE cannot express portably.
+// buildBulkWhere builds a WHERE clause (plus the soft-delete guard) whose
+// placeholders start at startIdx, following the SET parameters. It rejects
+// relationship filters, which need a JOIN a bare UPDATE can't express portably.
 func (r *BaseCRUD[T, ID]) buildBulkWhere(filters r3.Filters, startIdx int) (string, []any, error) {
 	prep, err := PrepareMergedListQuery(r3.Query{Filters: filters})
 	if err != nil {

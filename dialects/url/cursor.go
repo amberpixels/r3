@@ -8,10 +8,8 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// ParseCursorPagination extracts cursor pagination parameters from url.Values.
-// It reads the after, before, and limit parameters using the configured param names.
-//
-// If no cursor parameters are present, it returns nil (no cursor pagination requested).
+// ParseCursorPagination reads the after/before/limit params into a [r3.CursorSpec],
+// or nil when none are present.
 func ParseCursorPagination(values url.Values, paramNames ParamNames) (*r3.CursorSpec, error) {
 	after := values.Get(paramNames.CursorAfter)
 	before := values.Get(paramNames.CursorBefore)
@@ -40,8 +38,7 @@ func ParseCursorPagination(values url.Values, paramNames ParamNames) (*r3.Cursor
 	}, nil
 }
 
-// FormatCursorPagination writes cursor pagination parameters into url.Values.
-// If cursor is nil, no parameters are added.
+// FormatCursorPagination writes cursor params into url.Values; nil cursor adds none.
 func FormatCursorPagination(c *r3.CursorSpec, paramNames ParamNames) url.Values {
 	values := make(url.Values)
 	if c == nil {

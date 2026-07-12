@@ -4,7 +4,7 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// Query builder field names — matching the db/bson tags on ChangeRecord.
+// Query builder field names, matching the db/bson tags on ChangeRecord.
 var (
 	fieldRecordType = r3.NewFieldSpec("record_type")
 	fieldRecordID   = r3.NewFieldSpec("record_id")
@@ -15,10 +15,8 @@ var (
 	fieldActorID    = r3.NewFieldSpec("actor_id")
 )
 
-// QueryForRecord builds a Query that filters change records for a specific
-// entity instance, sorted by version ascending.
-//
-// Equivalent to the old Store.ForRecord(ctx, recordType, recordID).
+// QueryForRecord filters change records for one entity instance, sorted by
+// version ascending.
 func QueryForRecord(recordType, recordID string) r3.Query {
 	return r3.Query{
 		Filters: r3.Filters{
@@ -32,10 +30,8 @@ func QueryForRecord(recordType, recordID string) r3.Query {
 	}
 }
 
-// QueryForType builds a Query that filters change records for all entities
-// of a given type, sorted by created_at descending.
-//
-// Equivalent to the old Store.ForType(ctx, recordType).
+// QueryForType filters change records for all entities of a type, sorted by
+// created_at descending.
 func QueryForType(recordType string) r3.Query {
 	return r3.Query{
 		Filters: r3.Filters{
@@ -46,10 +42,9 @@ func QueryForType(recordType string) r3.Query {
 	}
 }
 
-// QueryForActor builds a Query that filters change records by the actor who
-// performed them, sorted by created_at descending. This answers "show me
-// everything user X did" — possible only because the actor is a first-class
-// column on ChangeRecord (not buried in the Metadata JSON blob).
+// QueryForActor filters change records by the actor who performed them, sorted
+// by created_at descending ("everything user X did") - possible only because the
+// actor is a first-class column, not buried in the Metadata JSON blob.
 func QueryForActor(actorID string) r3.Query {
 	return r3.Query{
 		Filters: r3.Filters{
@@ -60,10 +55,8 @@ func QueryForActor(actorID string) r3.Query {
 	}
 }
 
-// QueryForTree builds a Query that matches change records across a parent-child
-// hierarchy. Each TreeScope defines one level; they are combined with OR.
-//
-// Equivalent to the old Store.ForTree(ctx, scopes).
+// QueryForTree matches change records across a parent-child hierarchy: each
+// TreeScope is one level, combined with OR.
 func QueryForTree(scopes []TreeScope) r3.Query {
 	orFilters := make(r3.Filters, 0, len(scopes))
 	for _, s := range scopes {
@@ -79,7 +72,6 @@ func QueryForTree(scopes []TreeScope) r3.Query {
 			conditions = append(conditions, r3.F(fieldParentID, s.ParentID))
 		}
 
-		// Combine this scope's conditions with AND, then add to OR group
 		orFilters = append(orFilters, r3.And(conditions...))
 	}
 
@@ -90,9 +82,7 @@ func QueryForTree(scopes []TreeScope) r3.Query {
 	}
 }
 
-// QueryForVersion builds a Query that matches a specific version of a specific entity.
-//
-// Equivalent to the old Store.GetVersion(ctx, recordType, recordID, version).
+// QueryForVersion matches one specific version of one specific entity.
 func QueryForVersion(recordType, recordID string, version int64) r3.Query {
 	return r3.Query{
 		Filters: r3.Filters{
@@ -106,10 +96,8 @@ func QueryForVersion(recordType, recordID string, version int64) r3.Query {
 	}
 }
 
-// QueryLatestVersion builds a Query that returns the most recent change record
-// for a specific entity (sort by version desc, limit 1).
-//
-// Used internally to compute NextVersion and to implement RevertLast.
+// QueryLatestVersion returns the most recent change record for an entity
+// (version desc, limit 1). Used to compute NextVersion and implement RevertLast.
 func QueryLatestVersion(recordType, recordID string) r3.Query {
 	return r3.Query{
 		Filters: r3.Filters{
@@ -151,8 +139,7 @@ func QueryLatestSnapshot(recordType, recordID string) r3.Query {
 	}
 }
 
-// QueryListSnapshots builds a Query that lists all snapshots for a specific entity,
-// ordered by version descending.
+// QueryListSnapshots lists all snapshots for an entity, version descending.
 func QueryListSnapshots(recordType, recordID string) r3.Query {
 	return r3.Query{
 		Filters: r3.Filters{

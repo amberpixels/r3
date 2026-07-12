@@ -4,12 +4,11 @@ package r3url
 type Mode int
 
 const (
-	// ModeAuto tries unified mode first (if the "query" param is present),
-	// and falls back to decomposed mode otherwise. This is the default.
+	// ModeAuto (default) uses unified mode when the "query" param is present, else decomposed.
 	ModeAuto Mode = iota
-	// ModeUnified only accepts a single JSON parameter containing the full query.
+	// ModeUnified accepts only the single JSON "query" parameter.
 	ModeUnified
-	// ModeDecomposed only accepts decomposed parameters (fields, filters, sort, page, page_size).
+	// ModeDecomposed accepts only decomposed parameters (fields, filters, sort, page, page_size).
 	ModeDecomposed
 )
 
@@ -17,18 +16,14 @@ const (
 type SortFormat int
 
 const (
-	// SortFormatColonDir uses "field:direction" pairs separated by commas.
-	// Example: "name:asc,age:desc"
-	// Nulls position can be appended: "name:asc:nulls_last".
+	// SortFormatColonDir uses comma-separated "field:direction" pairs, with an
+	// optional nulls position: "name:asc,age:desc" or "name:asc:nulls_last".
 	SortFormatColonDir SortFormat = iota
 
-	// SortFormatSignPrefix uses a "-" prefix for descending, no prefix for ascending.
-	// Example: "name,-age"
-	// This format does not support nulls position.
+	// SortFormatSignPrefix uses a "-" prefix for descending ("name,-age"). No nulls position.
 	SortFormatSignPrefix
 
-	// SortFormatJSON parses the sort parameter as a JSON array of sort objects,
-	// using the same schema as the r3json dialect.
+	// SortFormatJSON parses a JSON array of sort objects, same schema as r3json.
 	// Example: [{"field":"name","direction":"asc"}].
 	SortFormatJSON
 )
@@ -79,18 +74,15 @@ type SortConfig struct {
 
 // FilterConfig configures filter parsing.
 type FilterConfig struct {
-	// AllowDjangoStyle enables parsing field__op=value query parameters as filters.
-	// Default: false.
+	// AllowDjangoStyle enables parsing field__op=value params as filters. Default: false.
 	AllowDjangoStyle bool
 
-	// DjangoSeparator is the separator between field name and operator in Django-style params.
-	// Default: "__" (double underscore).
+	// DjangoSeparator separates field name from operator. Default: "__".
 	DjangoSeparator string
 
-	// DjangoFields restricts which fields can be used in Django-style filters.
-	// If empty and AllowDjangoStyle is true, all fields are allowed (validated for identifier safety).
-	// Setting this is recommended as a security safeguard to prevent arbitrary query parameters
-	// from being interpreted as filters.
+	// DjangoFields whitelists which fields may appear in Django-style filters. Empty means
+	// all fields (validated for identifier safety) - set it as a security safeguard so
+	// arbitrary query params aren't interpreted as filters.
 	DjangoFields []string
 }
 
@@ -157,8 +149,8 @@ func WithSortFormat(f SortFormat) Option {
 	}
 }
 
-// WithDjangoStyleFilters enables Django-style filter parsing for the specified fields.
-// If no fields are provided, all fields are allowed (not recommended for security reasons).
+// WithDjangoStyleFilters enables Django-style filter parsing, whitelisted to the given
+// fields. No fields means all fields are allowed (not recommended - see [FilterConfig]).
 func WithDjangoStyleFilters(fields ...string) Option {
 	return func(c *Config) {
 		c.Filter.AllowDjangoStyle = true
@@ -166,16 +158,14 @@ func WithDjangoStyleFilters(fields ...string) Option {
 	}
 }
 
-// WithDjangoSeparator sets the separator used in Django-style filter parameters.
-// Default is "__" (double underscore).
+// WithDjangoSeparator sets the field/operator separator for Django-style params (default "__").
 func WithDjangoSeparator(sep string) Option {
 	return func(c *Config) {
 		c.Filter.DjangoSeparator = sep
 	}
 }
 
-// reservedParamNames returns the set of parameter names that are used by the dialect itself,
-// so they are not considered as Django-style filter candidates.
+// reservedParamNames returns the dialect's own param names, excluded from Django-style filters.
 func (c *Config) reservedParamNames() map[string]struct{} {
 	return map[string]struct{}{
 		c.ParamNames.Query:        {},

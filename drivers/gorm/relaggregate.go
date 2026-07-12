@@ -28,9 +28,9 @@ func (r *GormCRUD[T, ID]) AggregateThroughRelation(
 		return nil, err
 	}
 
-	// Merge only the caller queries — not the entity's default list query, whose
-	// default sorts and pagination reference the owner's own columns, which do
-	// not exist in the related base table.
+	// Merge only the caller queries, not the entity's default list query: its
+	// default sorts and pagination name the owner's own columns, absent from the
+	// related base table.
 	var q r3.Query
 	for _, a := range qarg {
 		q = q.MergeWith(a)
@@ -59,9 +59,9 @@ func (r *GormCRUD[T, ID]) AggregateThroughRelation(
 	if plan.softDeleteCond != "" {
 		query = query.Where(plan.softDeleteCond)
 	}
-	// Owner filters restrict which owners' related rows are aggregated — this is
-	// where a permissions Scoper's owner filters land. Applied as a subquery on
-	// the owner table rather than a materialized key set.
+	// Owner filters restrict which owners' related rows are aggregated - this is
+	// where a permissions Scoper's owner filters land. Applied as a subquery on the
+	// owner table rather than a materialized key set.
 	if len(q.Filters) > 0 {
 		clause, args, err := r.ownerKeyRestriction(ctx, plan.ownerKeyColumn, q.Filters)
 		if err != nil {

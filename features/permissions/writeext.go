@@ -11,12 +11,10 @@ var (
 	_ r3.BulkPatcher[any, any] = &CRUD[any, any]{}
 )
 
-// Upsert gates an insert-or-update. Because it can do either, the actor must
-// pass BOTH the OpCreate and the OpUpdate check (the stricter of the two wins).
-// When the checker is also a Scoper, the entity being written must fall within
-// the actor's scope, so a scoped actor cannot upsert onto a row outside its
-// scope. Returns r3.ErrUpsertNotSupported when the inner repo has no upsert
-// capability.
+// Upsert gates an insert-or-update: since it may do either, the actor must pass
+// BOTH the OpCreate and OpUpdate check. When the checker is a Scoper, the written
+// entity must fall within scope, so a scoped actor cannot upsert onto a row
+// outside it. Returns r3.ErrUpsertNotSupported when the inner repo can't upsert.
 func (p *CRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.UpsertOption) (T, error) {
 	up, ok := p.inner.(r3.Upserter[T, ID])
 	if !ok {
@@ -42,9 +40,9 @@ func (p *CRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.UpsertOpt
 		return zero, err
 	}
 
-	// Row-level scope: the written entity must satisfy the actor's scope filters.
-	// A relationship ("has") scope filter can't be evaluated in memory, so it
-	// fails closed (denied) — a scoped write is never allowed to escape scope.
+	// Row-level scope: the written entity must satisfy the scope filters. A
+	// relationship ("has") filter can't be evaluated in memory, so it fails closed
+	// (denied) - a scoped write is never allowed to escape scope.
 	if scoper, ok := p.checker.(Scoper[T, ID]); ok {
 		filters, err := scoper.Scope(ctx, actor)
 		if err != nil {
@@ -63,11 +61,10 @@ func (p *CRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.UpsertOpt
 	return up.Upsert(ctx, entity, opts...)
 }
 
-// PatchWhere gates a bulk conditional update. The actor must pass the OpUpdate
-// check, and — security-critical — when the checker is a Scoper the scope
-// filters are AND-ed into the caller's filters so a scoped actor can only mutate
-// rows inside its scope. Top-level filters combine with AND, so the effective
-// selection is (caller filters AND scope filters). Returns
+// PatchWhere gates a bulk conditional update. The actor must pass OpUpdate, and
+// - security-critical - when the checker is a Scoper the scope filters are AND-ed
+// into the caller's filters, so the effective selection is (caller AND scope) and
+// a scoped actor can only mutate rows inside its scope. Returns
 // r3.ErrBulkPatchNotSupported when the inner repo has no bulk-patch capability.
 func (p *CRUD[T, ID]) PatchWhere(
 	ctx context.Context, filters r3.Filters, entity T, fields r3.Fields,

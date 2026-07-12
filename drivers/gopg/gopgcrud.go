@@ -13,8 +13,8 @@ import (
 	"github.com/go-pg/pg/v10/types"
 )
 
-// GoPgCRUD is a CRUD repository based on go-pg's *pg.DB.
-// Internally it uses orm.DB so that it can operate within transactions as well.
+// GoPgCRUD is a go-pg repository. It holds orm.DB (not *pg.DB) so the same code
+// runs against a transaction.
 type GoPgCRUD[T any, ID comparable] struct {
 	db   orm.DB
 	pgDB *pg.DB // original *pg.DB, nil when inside a transaction
@@ -27,13 +27,11 @@ type GoPgCRUD[T any, ID comparable] struct {
 var _ r3.CRUD[any, any] = &GoPgCRUD[any, any]{}
 var _ r3.Aggregator = &GoPgCRUD[any, any]{}
 
-// NewGoPgCRUD creates a new go-pg-based CRUD repository.
-//
-// Accepts optional [r3.Option] values for framework-level configuration.
+// NewGoPgCRUD builds a go-pg-based repository.
 func NewGoPgCRUD[T any, ID comparable](db *pg.DB, opts ...r3.Option) *GoPgCRUD[T, ID] {
 	resolved := r3.ResolveOptions(opts...)
-	// Value codecs are not wired into the go-pg driver yet; reject a declared
-	// codec loudly rather than binding the un-encoded value.
+	// Value codecs are not wired into go-pg yet; reject a declared codec loudly
+	// rather than binding the un-encoded value.
 	r3.RequireCodecSupport(r3.SchemaOf[T](r3.WithSchemaNaming(resolved.Config.Naming)), "r3/gopg")
 	return &GoPgCRUD[T, ID]{
 		db:              db,
@@ -70,32 +68,26 @@ func (r *GoPgCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 	var entities []T
 	query := r.db.ModelContext(ctx, &entities)
 
-	// Apply fields selection
 	if fieldCols := r3.FieldsToStrings(prep.Query.Fields); len(fieldCols) > 0 {
 		query = query.Column(fieldCols...)
 	}
 
-	// Apply preloads (go-pg uses Relation for eager loading)
 	for _, preload := range prep.Query.Preloads {
 		query = query.Relation(preload.GetName())
 	}
 
-	// Handle soft-deleted records
 	if prep.Query.IncludeTrashed.Some(true) {
 		query = query.AllWithDeleted()
 	}
 
-	// Apply joins
 	for _, join := range prep.Joins() {
 		query = query.Join(fmt.Sprintf("JOIN %s ON TRUE", join.String()))
 	}
 
-	// Apply filters
 	for _, clause := range prep.Clauses {
 		query = query.Where(clause.Clause, clause.Args...)
 	}
 
-	// Apply sorts
 	for _, sort := range prep.Sorts {
 		query = query.OrderExpr(sort.String())
 	}
@@ -222,17 +214,14 @@ func (r *GoPgCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 	meta := enginesql.GetStructMeta[T]()
 	query := r.db.ModelContext(ctx, &entity).Where("? = ?", pg.Ident(meta.PKColumn), id)
 
-	// Apply fields selection
 	if fieldCols := r3.FieldsToStrings(q.Fields); len(fieldCols) > 0 {
 		query = query.Column(fieldCols...)
 	}
 
-	// Apply preloads (go-pg uses Relation for eager loading)
 	for _, preload := range q.Preloads {
 		query = query.Relation(preload.GetName())
 	}
 
-	// Handle soft-deleted records
 	if q.IncludeTrashed.Some(true) {
 		query = query.AllWithDeleted()
 	}
@@ -313,8 +302,7 @@ func softDeleteColumn(meta enginesql.StructMeta) string {
 	return "deleted_at"
 }
 
-// NewGoPgQuerier creates a read-only go-pg-based repository.
-// Returns [r3.Querier] — a compile-time guarantee of read-only access.
+// NewGoPgQuerier builds a read-only go-pg repository ([r3.Querier] enforces it).
 func NewGoPgQuerier[T any, ID comparable](db *pg.DB, opts ...r3.Option) r3.Querier[T, ID] {
 	return NewGoPgCRUD[T, ID](db, opts...)
 }
@@ -322,5 +310,4 @@ func NewGoPgQuerier[T any, ID comparable](db *pg.DB, opts ...r3.Option) r3.Queri
 // Raw returns the GoPgRaw escape hatch for custom queries.
 func (r *GoPgCRUD[T, ID]) Raw() *GoPgRaw[T, ID] { return r.raw }
 
-// Compile-time check that *orm.Query implements expected interface from go-pg.
 var _ orm.DB = (*pg.DB)(nil)

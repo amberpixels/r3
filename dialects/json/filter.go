@@ -11,9 +11,8 @@ import (
 type JSONFilter struct {
 	Field JSONField `json:"f,omitempty"`
 
-	// The operator is provided as a string (like "eq", "ne", etc.)
 	Op    JSONFilterOperator `json:"op,omitempty"`
-	Value any                `json:"v,omitempty"` // allow for raw value handling (or use any, string, etc.)
+	Value any                `json:"v,omitempty"` // raw value
 
 	// Logical groups:
 	And JSONFilters `json:"and,omitempty"`
@@ -47,12 +46,12 @@ func (jfs JSONFilters) String() string {
 func (jf *JSONFilter) MarshalJSON() ([]byte, error) {
 	type alias JSONFilter
 
-	// If this is an AND/OR group filter, use default marshaling
+	// AND/OR groups marshal by default; simple filters go through a map below
+	// so a nil "v" is emitted explicitly rather than omitted.
 	if len(jf.And) > 0 || len(jf.Or) > 0 {
 		return json.Marshal((*alias)(jf))
 	}
 
-	// For simple filters, create a map to handle nil values explicitly
 	result := make(map[string]any)
 
 	if jf.Field != "" {
@@ -62,7 +61,7 @@ func (jf *JSONFilter) MarshalJSON() ([]byte, error) {
 		result["op"] = jf.Op
 	}
 
-	// Always include "v" field for simple filters, even if nil
+	// Always emit "v" for a simple filter, even when nil.
 	if jf.Field != "" && jf.Op != OperatorUnspecified {
 		result["v"] = jf.Value
 	}
@@ -70,7 +69,7 @@ func (jf *JSONFilter) MarshalJSON() ([]byte, error) {
 	return json.Marshal(result)
 }
 
-// UnmarshalJSON is optional, depending on how you want to handle the Value.
+// UnmarshalJSON implements json.Unmarshaler.
 func (jf *JSONFilter) UnmarshalJSON(data []byte) error {
 	type alias JSONFilter
 	return json.Unmarshal(data, (*alias)(jf))
@@ -86,7 +85,7 @@ func (jf *JSONFilter) ToFilterSpec() (*r3.FilterSpec, error) {
 		return nil, err
 	}
 
-	// For AND/OR group filters, we don't need field-level validation
+	// AND/OR groups skip field-level validation.
 	if len(andFilters) > 0 || len(orFilters) > 0 {
 		return &r3.FilterSpec{
 			And: andFilters,
@@ -94,7 +93,6 @@ func (jf *JSONFilter) ToFilterSpec() (*r3.FilterSpec, error) {
 		}, nil
 	}
 
-	// For simple filters, validate field and operator
 	fieldSpec, err := jf.Field.ToFieldSpec()
 	if err != nil {
 		return nil, err

@@ -22,28 +22,25 @@ type Options[T any, ID comparable] struct {
 	// IDFunc extracts the primary key from an entity. Required.
 	IDFunc IDFunc[T, ID]
 
-	// ExcludeStale hides stale translations on reads, falling back to the
-	// source text, instead of serving the outdated translation (default:
-	// stale translations are served — usually better than the wrong
+	// ExcludeStale hides stale translations on reads, falling back to source text.
+	// Default: stale translations are served (usually better than the wrong
 	// language).
 	ExcludeStale bool
 
-	// SkipOverlay disables the read overlay entirely: Get/List return source
-	// text untouched while Update/Patch still mark translations stale. Use it
-	// on editor/admin repositories, where the form must show (and save) the
-	// source text but source edits still need to invalidate translations —
-	// this is the safe answer to the read-modify-write hazard in the package
-	// doc.
+	// SkipOverlay disables the read overlay: Get/List return source text untouched
+	// while Update/Patch still mark translations stale. For editor/admin repos,
+	// where the form shows and saves source text but source edits must still
+	// invalidate translations - the safe answer to the read-modify-write hazard in
+	// the package doc.
 	SkipOverlay bool
 
-	// DeleteWithEntity removes an entity's translations when the entity is
-	// deleted. Default false: translations are kept, which is the safe
-	// choice with soft-deleted entities that may be restored.
+	// DeleteWithEntity removes an entity's translations when it is deleted. Default
+	// false: keeping them is the safe choice with soft-deleted, restorable entities.
 	DeleteWithEntity bool
 
-	// ErrorHandler is invoked when a best-effort side operation fails
-	// (overlay read, staleness patch, delete cleanup). If nil, failures are
-	// logged via slog. Reads/mutations themselves never fail because of it.
+	// ErrorHandler is invoked when a best-effort side operation fails (overlay read,
+	// staleness patch, delete cleanup). If nil, failures are logged via slog.
+	// Reads/mutations themselves never fail over it.
 	ErrorHandler func(error)
 }
 

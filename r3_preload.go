@@ -22,20 +22,20 @@ func (preloads Preloads) Clone() Preloads {
 	return cloned
 }
 
-// PreloadSpec means a simple possible preload (name of a table/collection).
+// PreloadSpec names a relation to preload (a table/collection name).
 type PreloadSpec struct {
 	Name string
 }
 
-// GetName returns the name of the current preload.
+// GetName returns the preload name.
 func (t *PreloadSpec) GetName() string { return t.Name }
 
-// Clone returns a newly created struct of PreloadSpec.
+// Clone returns a copy of the preload.
 func (t *PreloadSpec) Clone() *PreloadSpec {
 	return &PreloadSpec{Name: t.Name}
 }
 
-// String simply returns name of the preload.
+// String returns the preload name.
 func (t *PreloadSpec) String() string { return t.Name }
 
 // NewPreloadSpec creates a PreloadSpec.

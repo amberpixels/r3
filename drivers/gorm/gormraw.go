@@ -8,8 +8,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// GormRaw is a gorm wrapper that allows call any gorm request.
-// Is considered to be embedded in GormCRUD.
+// GormRaw is the GORM escape hatch, exposing any gorm query via Find/Scan callbacks.
 type GormRaw[T any, ID any] struct {
 	db        *gorm.DB
 	tableName string
@@ -22,24 +21,19 @@ func NewGormRaw[T any, ID comparable](db *gorm.DB) *GormRaw[T, ID] {
 	}
 }
 
-// getTableName derives table name from generic type T.
-// GORM uses singular snake_case table names by default (e.g. City -> city).
+// getTableName derives T's table name the GORM way: singular snake_case
+// (e.g. City -> city).
 func getTableName[T any]() string {
 	var t T
 	typ := reflect.TypeOf(t)
-
-	// Handle pointer types
 	if typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
 	}
-
-	// Convert struct name to snake_case for table name
 	return r3utils.ToSnakeCase(typ.Name())
 }
 
 func (r *GormRaw[T, ID]) Find(ctx context.Context, cb func(*gorm.DB) *gorm.DB) ([]T, error) {
 	var entities []T
-	// Pass the context-aware db instance to the callback to build a custom query.
 	query := cb(r.db.WithContext(ctx).Table(r.tableName))
 	if err := query.Find(&entities).Error; err != nil {
 		return nil, err

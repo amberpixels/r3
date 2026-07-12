@@ -15,18 +15,11 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// Reverter provides revert/undo capabilities for a history-tracked entity.
-//
-// It reconstructs historical states purely from field-level diffs and applies
-// them via the inner CRUD's Update method. Every revert is itself recorded as
-// a new change record (Action: "revert"), so the audit trail is always
-// append-only and reverting a revert is possible.
-//
-// State reconstruction strategy:
-//   - Start from version 1 (the create record, which contains every field
-//     as a FieldChange with OldValue=nil), then replay changes forward to
-//     the target version.
-//   - No snapshots are needed — this is purely diff-based.
+// Reverter provides revert/undo for a history-tracked entity. It reconstructs
+// historical state purely from field diffs (replaying v1 forward - no snapshots)
+// and applies it via the inner CRUD's Update. Every revert is itself recorded as
+// an ActionRevert change, so the trail stays append-only and a revert is
+// revertible.
 type Reverter[T any, ID comparable] struct {
 	crud  r3.CRUD[T, ID]
 	store r3.CRUD[ChangeRecord, string]
@@ -47,37 +40,29 @@ func (r *Reverter[T, ID]) handleError(ctx context.Context, err error) {
 	slog.ErrorContext(ctx, "r3history: revert record failed", "record_type", r.opts.RecordType, "error", err)
 }
 
-// RevertTo restores an entity to the state it was in at a specific version.
-//
-// It reconstructs the state by replaying all FieldChanges from version 1
-// through the target version. A new change record with Action "revert"
-// is always created.
-//
-// Returns the restored entity and an error if reconstruction fails.
+// RevertTo restores an entity to its state at a specific version (reconstructed
+// from diffs) and always records an ActionRevert change.
 func (r *Reverter[T, ID]) RevertTo(ctx context.Context, id ID, version int64) (T, error) {
 	var zero T
 
 	recordID := fmt.Sprint(id)
 
-	// Reconstruct the state at the target version from diffs.
 	restored, err := r.Reconstruct(ctx, recordID, version)
 	if err != nil {
 		return zero, fmt.Errorf("r3history: failed to reconstruct version %d: %w", version, err)
 	}
 
-	// Fetch current state for the diff
+	// Fetch current state for the diff.
 	current, err := r.crud.Get(ctx, id)
 	if err != nil {
 		return zero, fmt.Errorf("r3history: failed to get current state for diff: %w", err)
 	}
 
-	// Apply the reverted state via Update
 	result, err := r.crud.Update(ctx, restored)
 	if err != nil {
 		return zero, fmt.Errorf("r3history: failed to apply reverted state: %w", err)
 	}
 
-	// Record the revert as a new change
 	var diffFn DiffFunc[T]
 	if r.opts.DiffFunc != nil {
 		diffFn = r.opts.DiffFunc
@@ -121,7 +106,6 @@ func (r *Reverter[T, ID]) RevertTo(ctx context.Context, id ID, version int64) (T
 		return result, nil
 	}
 
-	// Evaluate snapshot rules after revert
 	if len(r.opts.SnapshotRules) > 0 {
 		evaluateSnapshotRules(
 			ctx,
@@ -136,17 +120,14 @@ func (r *Reverter[T, ID]) RevertTo(ctx context.Context, id ID, version int64) (T
 	return result, nil
 }
 
-// RevertLast undoes the most recent change by reverting to the previous version.
-// Equivalent to RevertTo(ctx, id, latestVersion-1).
-//
-// Returns ErrNoHistory if the entity has no history, or an error if there's
-// only one version (the initial create — nothing to revert to).
+// RevertLast undoes the most recent change (RevertTo latestVersion-1). Returns
+// ErrNoHistory if there is no history, or an error if only the initial create
+// (version 1) exists.
 func (r *Reverter[T, ID]) RevertLast(ctx context.Context, id ID) (T, error) {
 	var zero T
 
 	recordID := fmt.Sprint(id)
 
-	// Query the latest version via List
 	q := QueryLatestVersion(r.opts.RecordType, recordID)
 	records, _, err := r.store.List(ctx, q)
 	if err != nil {
@@ -164,22 +145,12 @@ func (r *Reverter[T, ID]) RevertLast(ctx context.Context, id ID) (T, error) {
 	return r.RevertTo(ctx, id, latest.Version-1)
 }
 
-// Reconstruct rebuilds the entity state at a specific version by replaying
-// all FieldChanges from version 1 (the create) through the target version.
-//
-// This is purely diff-based — no snapshots are needed. Version 1 (create)
-// always contains every field as a FieldChange (OldValue=nil, NewValue=<value>),
-// which provides the baseline. Subsequent versions' changes are applied on top.
-//
-// Strategy:
-//  1. Fetch all records from version 1 to the target version.
-//  2. Start with a zero-value T.
-//  3. Apply changes from each version in order (v1, v2, ..., vN).
-//  4. Return the reconstructed entity.
+// Reconstruct rebuilds entity state at a version by replaying FieldChanges from v1
+// through the target. Purely diff-based: v1 (create) carries every field as the
+// baseline, later versions apply on top.
 func (r *Reverter[T, ID]) Reconstruct(ctx context.Context, recordID string, version int64) (T, error) {
 	var zero T
 
-	// Fetch all records for this entity using query builders
 	q := QueryForRecord(r.opts.RecordType, recordID)
 	records, _, err := r.store.List(ctx, q)
 	if err != nil {
@@ -190,8 +161,7 @@ func (r *Reverter[T, ID]) Reconstruct(ctx context.Context, recordID string, vers
 		return zero, fmt.Errorf("no history for %s/%s", r.opts.RecordType, recordID)
 	}
 
-	// Start with a zero-value entity and replay all changes up to the target version.
-	// Version 1 (create) provides all fields, so this builds the complete state.
+	// Replay from zero up to the target version; v1 provides every field.
 	entity := zero
 
 	for _, rec := range records {
@@ -208,15 +178,13 @@ func (r *Reverter[T, ID]) Reconstruct(ctx context.Context, recordID string, vers
 	return entity, nil
 }
 
-// applyChanges applies a set of FieldChanges to an entity, producing the new state.
-// It works by marshaling the entity to a JSON map, applying the changes, then
-// unmarshaling back to T. This is backend-agnostic and handles nested dot-notation.
+// applyChanges applies FieldChanges to an entity via a JSON-map round-trip:
+// backend-agnostic and handles nested dot-notation.
 func applyChanges[T any](entity T, changes []FieldChange) (T, error) {
 	if len(changes) == 0 {
 		return entity, nil
 	}
 
-	// Marshal entity to JSON map for manipulation
 	data, err := json.Marshal(entity)
 	if err != nil {
 		return entity, fmt.Errorf("marshal entity: %w", err)
@@ -227,12 +195,10 @@ func applyChanges[T any](entity T, changes []FieldChange) (T, error) {
 		return entity, fmt.Errorf("unmarshal to map: %w", err)
 	}
 
-	// Apply each change
 	for _, c := range changes {
 		setNestedValue(m, c.Field, c.NewValue)
 	}
 
-	// Marshal back to JSON then unmarshal to T
 	data, err = json.Marshal(m)
 	if err != nil {
 		return entity, fmt.Errorf("marshal modified map: %w", err)
@@ -246,21 +212,18 @@ func applyChanges[T any](entity T, changes []FieldChange) (T, error) {
 	return result, nil
 }
 
-// setNestedValue sets a value in a nested map using dot-notation keys.
-// e.g. setNestedValue(m, "address.city", "NYC") sets m["address"]["city"] = "NYC".
+// setNestedValue sets a dot-notation path in a nested map, creating intermediate
+// maps as needed. e.g. "address.city" sets m["address"]["city"].
 func setNestedValue(m map[string]any, path string, value any) {
 	parts := strings.Split(path, ".")
 
 	current := m
 	for i, part := range parts {
 		if i == len(parts)-1 {
-			// Last part: set the value
-			// Convert typed values to JSON-compatible form
 			current[part] = jsonNormalize(value)
 			return
 		}
 
-		// Navigate into nested map, creating if needed
 		next, ok := current[part]
 		if !ok {
 			nested := make(map[string]any)
@@ -271,7 +234,7 @@ func setNestedValue(m map[string]any, path string, value any) {
 
 		nested, ok := next.(map[string]any)
 		if !ok {
-			// The intermediate path isn't a map — overwrite it
+			// The intermediate path isn't a map - overwrite it.
 			nested = make(map[string]any)
 			current[part] = nested
 		}
@@ -279,14 +242,13 @@ func setNestedValue(m map[string]any, path string, value any) {
 	}
 }
 
-// jsonNormalize converts a Go value to its JSON-round-trip equivalent.
-// This ensures consistency when comparing values that went through JSON serialization.
+// jsonNormalize converts a Go value to its JSON-round-trip equivalent, for
+// consistent comparison of values that went through JSON serialization.
 func jsonNormalize(v any) any {
 	if v == nil {
 		return nil
 	}
 
-	// For basic types, return as-is (json.Marshal will handle them)
 	rv := reflect.ValueOf(v)
 	switch rv.Kind() {
 	case reflect.Pointer, reflect.Interface:

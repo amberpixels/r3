@@ -1,18 +1,12 @@
-// Package permissions provides a policy-based, entity-aware permission decorator
-// for r3 CRUD repositories.
+// Package permissions gates every CRUD operation through a caller-supplied
+// authorization policy. The decorator wraps any r3.CRUD[T, ID], transparently
+// satisfies it, and drops in anywhere a CRUD is expected.
 //
-// It works as a pre-call gating decorator around any r3.CRUD[T, ID] implementation,
-// checking authorization before every Create, Get, List, Update, Patch, and Delete
-// operation. The decorator is stateless -- it doesn't store roles or permissions.
-// A single Checker interface receives the actor, operation, and entity context,
-// returning allow or deny. Users bring their own authorization logic.
-//
-// Key features:
-//   - Policy-based: no built-in concept of roles or permission sets
-//   - Entity-aware: the Checker receives the actual entity for row-level rules
-//   - Scope injection: optional Scoper interface injects filters into List queries
-//   - Composable helpers: AllowAll, DenyAll, ReadOnly, ByActorType, Compose, OperationCheckers
-//   - r3.Actor integration: reads actor from context via r3.GetActor(ctx)
+// It is stateless: it stores no roles or permissions. A single Checker receives
+// the actor (read from context via r3.GetActor), operation, and entity context
+// and returns allow or deny - bring your own authorization logic. Composable
+// helpers cover the common shapes: AllowAll, DenyAll, ReadOnly, ByActorType,
+// Compose, OperationCheckers.
 //
 // # Basic Usage
 //
@@ -26,9 +20,9 @@
 //
 // # Entity-Aware Checks
 //
-// When WithIDFunc is configured, the decorator fetches the existing entity before
-// Update, Patch, and Delete operations, enabling row-level rules like "users can
-// only edit their own posts":
+// With WithIDFunc, the decorator fetches the existing entity before Update,
+// Patch, and Delete, enabling row-level rules like "users can only edit their
+// own posts":
 //
 //	repo := permissions.WithPermissions[Post, int64](
 //	    innerRepo, myChecker,
@@ -37,8 +31,8 @@
 //
 // # Scope Injection
 //
-// When a Checker also implements Scoper, the decorator injects filters into List
-// queries for efficient DB-level row filtering:
+// When a Checker also implements Scoper, the decorator injects its filters into
+// List/Count/Aggregate for DB-level row filtering (and enforces them on Get):
 //
 //	type postPolicy struct{}
 //	func (p postPolicy) Check(ctx context.Context, req permissions.AccessRequest[Post, int64]) error { ... }

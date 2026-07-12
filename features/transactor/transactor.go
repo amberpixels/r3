@@ -6,24 +6,18 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// CRUD is a decorator that wraps any r3.CRUD[T, ID] and adds transaction
-// capabilities. All six standard CRUD methods are passed through to the inner
-// implementation unchanged.
-//
-// Transaction operations (BeginTx) are delegated to the inner CRUD if it
-// implements the [r3.Transactor] interface. Otherwise,
-// [r3.ErrTransactionsNotSupported] is returned.
+// CRUD adds transaction capabilities to the inner repo (BeginTx delegated when it
+// implements [r3.Transactor], else [r3.ErrTransactionsNotSupported]); standard
+// methods pass through unchanged. See the package doc.
 type CRUD[T any, ID comparable] struct {
 	inner r3.CRUD[T, ID]
 }
 
-// Compile-time check that CRUD satisfies r3.CRUD.
 var _ r3.CRUD[any, any] = &CRUD[any, any]{}
 var _ r3.Aggregator = &CRUD[any, any]{}
 var _ r3.RelationAggregator = &CRUD[any, any]{}
 
-// WithTransactor wraps an existing r3.CRUD with transaction capabilities.
-// All standard CRUD methods pass through unchanged.
+// WithTransactor wraps inner with transaction capabilities.
 func WithTransactor[T any, ID comparable](inner r3.CRUD[T, ID]) *CRUD[T, ID] {
 	return &CRUD[T, ID]{inner: inner}
 }
@@ -83,33 +77,26 @@ func (c *CRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 	return c.inner.Delete(ctx, id)
 }
 
-// BeginTx starts a transaction if the underlying backend supports it.
-//
-// It walks the decorator chain below the transactor to the backend, begins the
-// transaction there, and re-applies the same decorator stack on top of it — so
-// the returned [r3.TxCRUD] is fully decorated and writes inside the transaction
-// are still validated, audited, permission-checked, etc.
-//
-// Returns [r3.ErrTransactionsNotSupported] if no layer in the chain implements
-// [r3.Transactor].
+// BeginTx starts a transaction if the backend supports it. It walks the chain
+// below the transactor to the backend, begins the transaction there, and
+// re-applies the same decorator stack on top - so the returned [r3.TxCRUD] is
+// fully decorated and in-transaction writes are still validated, audited,
+// permission-checked, etc. Returns [r3.ErrTransactionsNotSupported] if no layer
+// implements [r3.Transactor].
 func (c *CRUD[T, ID]) BeginTx(ctx context.Context) (r3.TxCRUD[T, ID], error) {
 	return r3.BeginTxChain(ctx, c.inner)
 }
 
-// InTx runs fn inside a transaction if the inner CRUD supports it.
-// It begins a transaction, calls fn with a transactional CRUD, and:
-//   - commits if fn returns nil
-//   - rolls back if fn returns an error or panics
-//
-// Returns [r3.ErrTransactionsNotSupported] if the inner CRUD does not
-// implement [r3.Transactor].
+// InTx runs fn inside a transaction (if supported), committing when fn returns
+// nil and rolling back on an error or panic. Returns
+// [r3.ErrTransactionsNotSupported] if the inner CRUD does not implement
+// [r3.Transactor].
 func (c *CRUD[T, ID]) InTx(ctx context.Context, fn func(tx r3.CRUD[T, ID]) error) error {
 	return r3.InTx(ctx, c.inner, fn)
 }
 
-// SupportsTransactions reports whether the underlying backend supports
-// transactions (seen through any decorators between the transactor and the
-// backend), and can therefore be used with BeginTx / InTx.
+// SupportsTransactions reports whether the backend (seen through any decorators
+// below the transactor) supports transactions, and so can use BeginTx / InTx.
 func (c *CRUD[T, ID]) SupportsTransactions() bool {
 	return r3.SupportsTx(c.inner)
 }
@@ -119,8 +106,8 @@ func (c *CRUD[T, ID]) Inner() r3.CRUD[T, ID] {
 	return c.inner
 }
 
-// Unwrap returns the wrapped CRUD so capability detection and transaction
-// propagation can walk the decorator chain.
+// Unwrap returns the wrapped CRUD so decorator-chain walks (capability
+// detection, transaction propagation) can reach the backend.
 func (c *CRUD[T, ID]) Unwrap() r3.CRUD[T, ID] {
 	return c.inner
 }

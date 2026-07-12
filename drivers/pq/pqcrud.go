@@ -7,27 +7,22 @@ import (
 	enginesql "github.com/amberpixels/r3/engine/sql"
 )
 
-// PqCRUD is a CRUD repository based on database/sql with lib/pq.
-// It embeds enginesql.BaseCRUD which provides the full r3.CRUD implementation.
+// PqCRUD is a lib/pq repository; enginesql.BaseCRUD supplies the r3.CRUD impl.
 type PqCRUD[T any, ID comparable] struct {
 	*enginesql.BaseCRUD[T, ID]
 }
 
 var _ r3.CRUD[any, any] = &PqCRUD[any, any]{}
 
-// NewPqCRUD creates a new database/sql-based CRUD repository.
-// Models should use `db:"column_name"` struct tags for column mapping.
-// The primary key field should be tagged with `db:"id,pk"` (defaults to "id").
-//
-// Accepts optional [r3.Option] values for framework-level configuration.
+// NewPqCRUD builds a repository. Map columns with `db:"column_name"` and mark the
+// PK with `db:"id,pk"` (defaults to "id").
 func NewPqCRUD[T any, ID comparable](db *sql.DB, opts ...r3.Option) *PqCRUD[T, ID] {
 	return &PqCRUD[T, ID]{
 		BaseCRUD: enginesql.NewBaseCRUD[T, ID](db, enginesql.FlavorPostgres, opts...),
 	}
 }
 
-// NewPqQuerier creates a read-only pq-based repository.
-// Returns [r3.Querier] — a compile-time guarantee of read-only access.
+// NewPqQuerier builds a read-only repository ([r3.Querier] enforces it).
 func NewPqQuerier[T any, ID comparable](db *sql.DB, opts ...r3.Option) r3.Querier[T, ID] {
 	return NewPqCRUD[T, ID](db, opts...)
 }

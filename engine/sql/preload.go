@@ -8,17 +8,10 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// RunPreloads executes preload queries for the given entities based on the requested
-// preload names and the relation metadata in StructMeta.
-//
-// For has-many relations: collects parent PKs, queries child table WHERE fk IN (...),
-// groups results by FK, and assigns them to the parent's slice field.
-//
-// For belongs-to relations: collects FK values from parents, queries target table
-// WHERE pk IN (...), and assigns results to the parent's pointer field.
-//
-// entities must be a pointer to a slice (e.g. *[]City). The function modifies
-// entities in place by setting their relation fields.
+// RunPreloads loads the requested relations for entities (a *[]T, e.g. *[]City),
+// setting the relation fields in place. Has-many: WHERE fk IN (parent PKs),
+// grouped by FK into each parent's slice field. Belongs-to: WHERE pk IN (parent
+// FKs), assigned to each parent's pointer field.
 func RunPreloads(
 	ctx context.Context,
 	executor SQLExecutor,
@@ -31,7 +24,6 @@ func RunPreloads(
 		return nil
 	}
 
-	// Build a map of relation name -> RelationMeta for quick lookup
 	relMap := make(map[string]*RelationMeta, len(meta.Relations))
 	for i := range meta.Relations {
 		relMap[meta.Relations[i].FieldName] = &meta.Relations[i]
@@ -45,7 +37,7 @@ func RunPreloads(
 	for _, preload := range preloads {
 		rel, ok := relMap[preload.GetName()]
 		if !ok {
-			// No matching relation found — skip silently (ORM drivers may handle it)
+			// Skip silently; an ORM driver may handle it.
 			continue
 		}
 
@@ -64,8 +56,8 @@ func RunPreloads(
 	return nil
 }
 
-// preloadHasMany loads child records for a has-many relation.
-// Parent PK -> Child FK (e.g. City.ID -> CityTranslation.CityID).
+// preloadHasMany loads children for a has-many relation, parent PK -> child FK
+// (City.ID -> CityTranslation.CityID).
 func preloadHasMany(
 	ctx context.Context,
 	executor SQLExecutor,
@@ -79,7 +71,7 @@ func preloadHasMany(
 		return nil
 	}
 
-	// Collect unique parent PK values
+	// Collect unique parent PKs.
 	pkSet := make(map[any]bool, n)
 	var pkValues []any
 	for i := range n {
@@ -95,7 +87,7 @@ func preloadHasMany(
 		return nil
 	}
 
-	// Query child table: SELECT * FROM children WHERE fk IN (...)
+	// SELECT * FROM children WHERE fk IN (...)
 	targetMeta := &rel.TargetMeta
 	placeholders := flavor.Placeholders(len(pkValues), 1)
 	query := fmt.Sprintf(
@@ -112,7 +104,6 @@ func preloadHasMany(
 	}
 	defer rows.Close()
 
-	// Find the FK column index in the target meta
 	fkColIdx := -1
 	for i, col := range targetMeta.Columns {
 		if col == rel.FKColumn {
@@ -124,8 +115,7 @@ func preloadHasMany(
 		return fmt.Errorf("FK column %q not found in target table %s columns", rel.FKColumn, targetMeta.TableName)
 	}
 
-	// Scan results and group by FK value
-	// key: FK value (as interface{}), value: slice of child entities (reflect.Value)
+	// Scan and group children by FK value.
 	grouped := make(map[any][]reflect.Value)
 
 	for rows.Next() {
@@ -142,7 +132,7 @@ func preloadHasMany(
 		return err
 	}
 
-	// Assign grouped children back to parent entities
+	// Assign grouped children back to parents.
 	for i := range n {
 		entity := sliceVal.Index(i)
 		pkVal := entity.Field(parentMeta.Fields[parentMeta.PKField]).Interface()
@@ -151,7 +141,6 @@ func preloadHasMany(
 			continue
 		}
 
-		// Build a slice of the correct type and assign
 		childSlice := reflect.MakeSlice(entity.Field(rel.FieldIndex).Type(), len(children), len(children))
 		for j, child := range children {
 			childSlice.Index(j).Set(child)
@@ -162,8 +151,8 @@ func preloadHasMany(
 	return nil
 }
 
-// preloadBelongsTo loads parent records for a belongs-to relation.
-// Child FK -> Parent PK (e.g. Location.CityID -> City.ID).
+// preloadBelongsTo loads targets for a belongs-to relation, child FK -> parent PK
+// (Location.CityID -> City.ID).
 func preloadBelongsTo(
 	ctx context.Context,
 	executor SQLExecutor,
@@ -177,7 +166,7 @@ func preloadBelongsTo(
 		return nil
 	}
 
-	// Find the FK column index in the parent (the entity that has the FK field as a db column)
+	// The parent holds the FK as a db column.
 	fkColIdx := -1
 	for i, col := range parentMeta.Columns {
 		if col == rel.FKColumn {
@@ -189,7 +178,7 @@ func preloadBelongsTo(
 		return fmt.Errorf("FK column %q not found in parent table %s columns", rel.FKColumn, parentMeta.TableName)
 	}
 
-	// Collect unique FK values from the parent entities
+	// Collect unique parent FKs.
 	fkSet := make(map[any]bool, n)
 	var fkValues []any
 	for i := range n {
@@ -205,7 +194,7 @@ func preloadBelongsTo(
 		return nil
 	}
 
-	// Query target table: SELECT * FROM targets WHERE pk IN (...)
+	// SELECT * FROM targets WHERE pk IN (...)
 	targetMeta := &rel.TargetMeta
 	placeholders := flavor.Placeholders(len(fkValues), 1)
 	query := fmt.Sprintf(
@@ -222,7 +211,7 @@ func preloadBelongsTo(
 	}
 	defer rows.Close()
 
-	// Scan results and index by PK
+	// Scan and index targets by PK.
 	indexed := make(map[any]reflect.Value)
 	for rows.Next() {
 		targetPtr := reflect.New(rel.TargetType)
@@ -238,7 +227,7 @@ func preloadBelongsTo(
 		return err
 	}
 
-	// Assign targets back to parent entities
+	// Assign targets back to parents (as *City or City).
 	for i := range n {
 		entity := sliceVal.Index(i)
 		fkVal := entity.Field(parentMeta.Fields[fkColIdx]).Interface()
@@ -249,12 +238,10 @@ func preloadBelongsTo(
 
 		field := entity.Field(rel.FieldIndex)
 		if field.Kind() == reflect.Pointer {
-			// Set as pointer: *City
 			ptr := reflect.New(rel.TargetType)
 			ptr.Elem().Set(target)
 			field.Set(ptr)
 		} else {
-			// Set as value: City
 			field.Set(target)
 		}
 	}

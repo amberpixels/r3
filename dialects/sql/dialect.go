@@ -1,11 +1,5 @@
 package r3sql
 
-// NOTE: Database-specific SQL variations (ILIKE behavior, placeholder style,
-// NULLS FIRST/LAST support) are handled at the engine layer via engine/sql.Flavor,
-// not at the dialect level. The dialect package generates generic SQL that works
-// across databases, while Flavor handles DB-specific placeholder conversion
-// and query construction.
-
 import (
 	"errors"
 	"fmt"
@@ -16,9 +10,8 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// FieldToSQL converts a FieldSpec to an SQLColumn (raw, no quoting).
-// This does NOT validate or quote the identifier. For safe SQL generation from
-// user-supplied field names, use SafeColumnExpr instead.
+// FieldToSQL converts a FieldSpec to a raw, unquoted SQLColumn. It does NOT
+// validate or quote; use SafeColumnExpr for user-supplied field names.
 func FieldToSQL(f *r3.FieldSpec) SQLColumn {
 	return SQLColumn(f.String())
 }
@@ -52,19 +45,18 @@ func OperatorToSQL(op r3.FilterOperatorSpec) (SQLClauseOperator, error) {
 	case r3.OperatorNotLike:
 		return SQLClauseOperatorNotLike, nil
 	case r3.OperatorILike:
-		// Generates ILIKE which is PostgreSQL-native. For MySQL/SQLite compatibility,
-		// the engine/sql.Flavor layer handles any necessary conversion.
+		// PostgreSQL-native ILIKE; engine/sql.Flavor converts it for MySQL/SQLite.
 		return SQLClauseOperatorILike, nil
 
 	case r3.OperatorExists:
-		// Exists is handled directly in FilterToSQL as IS NOT NULL.
+		// Exists becomes IS NOT NULL, handled in FilterToSQL.
 		return "", errors.New("exists operator must be handled via FilterToSQL, not OperatorToSQL")
 
 	case r3.OperatorBetween,
 		r3.OperatorBetweenEx,
 		r3.OperatorBetweenExInc,
 		r3.OperatorBetweenIncEx:
-		// Between operators are handled directly in FilterToSQL as compound conditions.
+		// Between becomes a compound condition, handled in FilterToSQL.
 		return "", errors.New("between operators must be handled via FilterToSQL, not OperatorToSQL")
 
 	case r3.OperatorUnspecified:
@@ -115,21 +107,19 @@ func FilterToSQL(cf *r3.FilterSpec) (SQLClause, error) {
 		)
 	}
 
-	// Case 1. A simple filter when Field is set.
+	// Simple filter: Field is set.
 	if cf.Field != nil {
-		// Validate and quote the field name to prevent SQL injection.
 		safeCol, err := SafeColumnExpr(cf.Field)
 		if err != nil {
 			return SQLClause{}, fmt.Errorf("unsafe filter field: %w", err)
 		}
 
-		// Extract join information from the field (uses raw name for table extraction).
 		joins, err := extractJoinFromField(cf.Field.String())
 		if err != nil {
 			return SQLClause{}, fmt.Errorf("unsafe join in filter field: %w", err)
 		}
 
-		// Nil value means we need to generate an "IS NULL" or "IS NOT NULL" clause.
+		// A nil value means IS NULL (Eq) or IS NOT NULL (Ne).
 		if cf.Value == nil {
 			if cf.Operator == r3.OperatorEq { //nolint: staticcheck // we care only about these 2 values here
 				clause := fmt.Sprintf("%s %s", safeCol, sqlIsNull)
@@ -142,13 +132,11 @@ func FilterToSQL(cf *r3.FilterSpec) (SQLClause, error) {
 			return SQLClause{}, fmt.Errorf("unsupported operator %v for nil value", cf.Operator)
 		}
 
-		// Exists: translate to IS NOT NULL
 		if cf.Operator == r3.OperatorExists {
 			clause := fmt.Sprintf("%s %s", safeCol, sqlIsNotNull)
 			return SQLClause{Clause: clause, Args: nil, Joins: joins}, nil
 		}
 
-		// Between operators: value must be a 2-element slice [low, high].
 		if isBetweenOperator(cf.Operator) {
 			return betweenToSQL(safeCol, cf.Operator, cf.Value, joins)
 		}
@@ -164,7 +152,6 @@ func FilterToSQL(cf *r3.FilterSpec) (SQLClause, error) {
 			return inToSQL(safeCol, sqlOp, cf.Value, joins), nil
 		}
 
-		// Simple case: Field is set and Value is non-nil.
 		sqlClauseOperator, err := OperatorToSQL(cf.Operator)
 		if err != nil {
 			return SQLClause{}, err
@@ -178,8 +165,7 @@ func FilterToSQL(cf *r3.FilterSpec) (SQLClause, error) {
 		}, nil
 	}
 
-	// Case 2. A compound filter (logical group).
-	// We assume that when Field is empty, either And or Or is non-empty.
+	// Compound filter (logical group): with Field empty, And or Or is non-empty.
 	var children r3.Filters
 	logicalOp := sqlAnd
 	if len(cf.Or) > 0 {
@@ -193,7 +179,6 @@ func FilterToSQL(cf *r3.FilterSpec) (SQLClause, error) {
 	var args []any
 	var joins []SQLColumn
 
-	// Process each child filter recursively.
 	for _, child := range children {
 		childClause, err := FilterToSQL(child)
 		if err != nil {
@@ -204,7 +189,6 @@ func FilterToSQL(cf *r3.FilterSpec) (SQLClause, error) {
 		joins = quick.Append(joins, childClause.Joins...)
 	}
 
-	// Combine the child conditions with the logical operator.
 	combined := "(" + strings.Join(conditions, " "+logicalOp+" ") + ")"
 	return SQLClause{
 		Clause: combined,
@@ -244,13 +228,11 @@ func SortToSQL(s *r3.SortSpec) (SQLSort, error) {
 		return "", errors.New("sort spec cannot be nil")
 	}
 
-	// Validate and quote the column name to prevent SQL injection.
 	safeCol, err := SafeColumnExpr(s.Column)
 	if err != nil {
 		return "", fmt.Errorf("unsafe sort column: %w", err)
 	}
 
-	// Build SQL sort string
 	sortStr := safeCol + " " + sqlSortDirectionString(s.Direction)
 
 	if s.NullsPosition != r3.NullsPositionNotSpecified {
@@ -294,10 +276,9 @@ func SQLToPagination(p *SQLPagination) *r3.PaginationSpec {
 		return nil
 	}
 
-	// Convert limit/offset back to page number/page size
-	// Offset = (PageNum - 1) * PageSize, so PageNum = (Offset / PageSize) + 1
+	// Offset = (PageNum - 1) * PageSize, so PageNum = (Offset / PageSize) + 1.
 	pageSize := p.Limit
-	pageNum := 1 // Default to page 1
+	pageNum := 1
 	if pageSize > 0 && p.Offset > 0 {
 		pageNum = (p.Offset / pageSize) + 1
 	}
@@ -314,7 +295,7 @@ func parseSQLSortString(sortStr string) (*r3.SortSpec, error) {
 		return nil, errors.New("empty sort string")
 	}
 
-	// If no spaces, it's just a field name (default direction)
+	// No spaces means a bare field name (default direction).
 	if !strings.Contains(sortStr, " ") {
 		col := r3.FieldSpec(unquoteSQLColumn(sortStr))
 		return &r3.SortSpec{Column: &col}, nil
@@ -330,10 +311,8 @@ func parseSQLSortString(sortStr string) (*r3.SortSpec, error) {
 	// contain spaces, so the column is always a single space-delimited token.
 	col := r3.FieldSpec(unquoteSQLColumn(parts[0]))
 
-	// Parse direction
 	direction := parseSQLSortDirection(parts[1])
 
-	// Parse nulls position if present
 	nullsPosition := r3.NullsPositionNotSpecified
 	if len(parts) > 2 {
 		restWords := strings.Join(parts[2:], " ")
@@ -413,9 +392,8 @@ func isBetweenOperator(op r3.FilterOperatorSpec) bool {
 	}
 }
 
-// betweenToSQL converts a between filter to a compound SQL condition.
-// Value must be a 2-element slice: [low, high].
-// Between variants:
+// betweenToSQL converts a between filter (value is a [low, high] slice) to a
+// compound condition, per variant:
 //   - Between (inclusive both):              col >= ? AND col <= ?
 //   - BetweenEx (exclusive both):            col > ? AND col < ?
 //   - BetweenExInc (excl low, incl high):    col > ? AND col <= ?
@@ -449,10 +427,9 @@ func betweenToSQL(safeCol string, op r3.FilterOperatorSpec, value any, joins []S
 	}, nil
 }
 
-// inToSQL converts an IN / NOT IN filter into a clause with one placeholder per
-// value: "col IN (?, ?, ?)". The values are flattened into Args so that both the
-// raw database/sql engine and the ORM drivers (which forward Clause + Args to
-// their query builders) bind them as individual positional arguments.
+// inToSQL converts an IN / NOT IN filter into "col IN (?, ?, ?)" with one
+// placeholder per value, flattened into Args so raw database/sql and the ORM
+// drivers alike bind them positionally.
 //
 // An empty set collapses to a constant predicate, since "col IN ()" is invalid
 // SQL: "col IN ()" matches nothing, "col NOT IN ()" matches everything.
@@ -463,8 +440,7 @@ func inToSQL(safeCol string, op SQLClauseOperator, value any, joins []SQLColumn)
 		if op == SQLClauseOperatorNotIn {
 			predicate = sqlTrue
 		}
-		// The join is only needed to reference the column; a constant predicate
-		// references nothing, so it is dropped.
+		// A constant predicate references no column, so drop the join.
 		return SQLClause{Clause: predicate, Args: nil, Joins: nil}
 	}
 
@@ -473,10 +449,9 @@ func inToSQL(safeCol string, op SQLClauseOperator, value any, joins []SQLColumn)
 	return SQLClause{Clause: clause, Args: args, Joins: joins}
 }
 
-// flattenInValues expands an IN value into individual arguments. A slice or
-// array yields one argument per element; any other value (including a scalar
-// passed to In) yields a single-element set. A []byte is treated as one scalar
-// value (a BLOB), not a list of bytes, matching how SQL drivers handle it.
+// flattenInValues expands an IN value into individual arguments: a slice/array
+// yields one per element, any other value a single-element set. A []byte is one
+// scalar (a BLOB), not a list of bytes, matching how SQL drivers handle it.
 func flattenInValues(value any) []any {
 	rv := reflect.ValueOf(value)
 	switch rv.Kind() {

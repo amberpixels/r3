@@ -1,6 +1,6 @@
 package r3
 
-// SortSpec represents a single sort criteria.
+// SortSpec is a single sort criterion.
 type SortSpec struct {
 	Column    *FieldSpec
 	Direction SortDirection // Asc | Desc | Unspecified (default)
@@ -8,9 +8,8 @@ type SortSpec struct {
 	NullsPosition SortNullsPosition // First | Last | Unspecified
 }
 
-// String returns string representation of the sort spec.
+// String returns a debug representation of the sort spec.
 func (s *SortSpec) String() string {
-	// For debugging - use a simple format
 	str := s.Column.String() + " " + s.Direction.String()
 	if s.NullsPosition != NullsPositionNotSpecified {
 		str += " " + s.NullsPosition.String()
@@ -24,7 +23,7 @@ func (s *SortSpec) GetDirection() SortDirection { return s.Direction }
 // GetCriteria returns the sort criteria.
 func (s *SortSpec) GetCriteria() *FieldSpec { return s.Column }
 
-// Clone returns a new pointer to the sort spec (safe and deep clone).
+// Clone returns a deep copy of the sort spec.
 func (s *SortSpec) Clone() *SortSpec {
 	var clone SortSpec
 	clone.Column = s.Column.Clone()
@@ -34,7 +33,7 @@ func (s *SortSpec) Clone() *SortSpec {
 	return &clone
 }
 
-// NewSortSpec is the main SortSpec constructor.
+// NewSortSpec is the primary SortSpec constructor.
 func NewSortSpec(col *FieldSpec, direction SortDirection, nullsPositionArg ...SortNullsPosition) *SortSpec {
 	s := &SortSpec{
 		Column:    col,
@@ -48,23 +47,23 @@ func NewSortSpec(col *FieldSpec, direction SortDirection, nullsPositionArg ...So
 	return s
 }
 
-// NewSortAscSpec returns sort by a given field ordered ASC.
+// NewSortAscSpec sorts by col ascending.
 func NewSortAscSpec(col *FieldSpec) *SortSpec {
 	return NewSortSpec(col, SortDirectionAsc)
 }
 
-// NewSortDescSpec returns sort by a given field ordered DESC.
+// NewSortDescSpec sorts by col descending.
 func NewSortDescSpec(col *FieldSpec) *SortSpec {
 	return NewSortSpec(col, SortDirectionDesc)
 }
 
-// Sorts represents a list of *SortSpec.
+// Sorts is a list of *SortSpec.
 type Sorts []*SortSpec
 
-// MergeWith merges other sorts into ours.
+// MergeWith merges other sorts into these.
 func (sorts Sorts) MergeWith(other Sorts) Sorts { return mergeWith(sorts, other) }
 
-// Clone returns a cloned list of given sorts.
+// Clone returns a deep copy of the sorts.
 func (sorts Sorts) Clone() Sorts {
 	cloned := make(Sorts, len(sorts))
 	for i, s := range sorts {
@@ -73,21 +72,21 @@ func (sorts Sorts) Clone() Sorts {
 	return cloned
 }
 
-// SortNullsPosition represents a position of nulls in sort (first or last).
+// SortNullsPosition is where NULLs sort (first or last).
 type SortNullsPosition int8
 
 const (
-	// NullsPositionNotSpecified means that nulls position won't be specified in the query.
+	// NullsPositionNotSpecified leaves NULLs position out of the query.
 	NullsPositionNotSpecified SortNullsPosition = iota
 
-	// NullsPositionFirst means that nulls will be placed first in the result.
+	// NullsPositionFirst places NULLs first.
 	NullsPositionFirst
 
-	// NullsPositionLast means that nulls will be placed last in the result.
+	// NullsPositionLast places NULLs last.
 	NullsPositionLast
 )
 
-// String is implemented for debugging purposes, so the SortNullsPosition is a fmt.Stringer.
+// String returns a debug label ("nulls first"/"nulls last"/"").
 func (s SortNullsPosition) String() string {
 	switch s {
 	case NullsPositionFirst:
@@ -101,19 +100,19 @@ func (s SortNullsPosition) String() string {
 	}
 }
 
-// SortDirection represents a direction of sorting.
+// SortDirection is a sort direction.
 type SortDirection int8
 
 const (
-	// SortDirectionUnspecified means that direction is not specified by user and will be fallback to default.
+	// SortDirectionUnspecified falls back to the default direction.
 	SortDirectionUnspecified SortDirection = iota
-	// SortDirectionAsc means that sorting will be done in ascending order.
+	// SortDirectionAsc sorts ascending.
 	SortDirectionAsc
-	// SortDirectionDesc means that sorting will be done in descending order.
+	// SortDirectionDesc sorts descending.
 	SortDirectionDesc
 )
 
-// String is implemented for debugging purposes, so the SortDirection is a fmt.Stringer.
+// String returns a debug label ("asc"/"desc"/unspecified).
 func (s SortDirection) String() string {
 	switch s {
 	case SortDirectionAsc:

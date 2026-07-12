@@ -21,28 +21,24 @@ func TOMLToField(tf TOMLField) *r3.FieldSpec {
 	return r3.NewFieldSpec(tf.String())
 }
 
-// FilterToTOML converts a FilterSpec to a TOMLFilter.
-// Returns ErrTOMLNullValue if the filter has a nil value, since TOML
-// has no null type.
+// FilterToTOML converts a FilterSpec to a TOMLFilter. Returns ErrTOMLNullValue
+// for a nil filter value, since TOML has no null type.
 func FilterToTOML(f *r3.FilterSpec) (*TOMLFilter, error) {
 	if f == nil {
 		return nil, newError(errors.New("nil filter spec"))
 	}
 
-	// Relationship ("has") filters are resolved by the driver against the
-	// database; they have no serialized form. Fail loudly rather than silently
-	// drop the relation and emit a match-all filter.
+	// Relationship ("has") filters resolve in the driver and have no serialized
+	// form; fail loudly rather than silently emit a match-all filter.
 	if f.Relation != "" {
 		return nil, newError(fmt.Errorf("relationship filter on %q cannot be serialized to TOML", f.Relation))
 	}
 
 	tf := &TOMLFilter{}
 
-	// Handle simple field-operator-value filters
 	if f.Field != nil {
-		// TOML-specific: reject nil values — except for value-less operators like
-		// "exists", which legitimately carry no value and must round-trip (JSON,
-		// YAML, SQL and BSON all encode them fine).
+		// Reject nil values, except value-less operators like "exists" that carry
+		// no value and must round-trip (other dialects encode them fine).
 		if f.Value == nil && !isValuelessOperator(f.Operator) {
 			return nil, newError(fmt.Errorf("%w: field %q with operator %v",
 				ErrTOMLNullValue, f.Field.String(), f.Operator))
@@ -58,7 +54,6 @@ func FilterToTOML(f *r3.FilterSpec) (*TOMLFilter, error) {
 		tf.Operator = name
 	}
 
-	// Handle AND/OR groups recursively
 	if len(f.And) > 0 {
 		tf.And = make([]*TOMLFilter, len(f.And))
 		for i, child := range f.And {

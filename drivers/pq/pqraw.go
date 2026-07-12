@@ -7,9 +7,9 @@ import (
 	enginesql "github.com/amberpixels/r3/engine/sql"
 )
 
-// PqRaw is a thin wrapper around enginesql.BaseRaw for backward compatibility.
+// PqRaw wraps enginesql.BaseRaw.
 //
-// Deprecated: Use enginesql.BaseRaw directly via PqCRUD.Raw().
+// Deprecated: use enginesql.BaseRaw directly via PqCRUD.Raw().
 type PqRaw[T any, ID any] struct {
 	*enginesql.BaseRaw[T, ID]
 }

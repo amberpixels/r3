@@ -24,13 +24,9 @@ const (
 // labelField is the metric label key naming the entity field a metric refers to.
 const labelField = "field"
 
-// FieldChangeCollector tracks which fields change most often on Update and Patch.
-// Emits one "entity.field_change" entry per changed field.
-// Labels: {"field": "<field_name>"}.
-//
-// For Patch operations, the fields are taken from the Fields list.
-// For Update operations, this does a shallow reflect-based comparison to detect changes.
-// Requires the old entity to be available (IDFunc must be set).
+// FieldChangeCollector emits one "entity.field_change" entry per changed field,
+// labeled {"field": "<name>"}. Patch uses the Fields list; Update/Upsert detect
+// changes via a shallow reflect comparison, so it needs the old entity (HasOld).
 func FieldChangeCollector[T any, ID comparable]() Collector[T, ID] {
 	return CollectorFunc[T, ID](func(_ context.Context, opCtx OperationContext[T, ID]) []MetricEntry {
 		if opCtx.Err != nil {
@@ -42,7 +38,7 @@ func FieldChangeCollector[T any, ID comparable]() Collector[T, ID] {
 
 		switch opCtx.Operation {
 		case OpPatch, OpPatchWhere:
-			// For Patch/PatchWhere, we know exactly which fields were written.
+			// Patch/PatchWhere name exactly the fields written.
 			fieldNames := r3.FieldsToStrings(opCtx.Fields)
 			entries := make([]MetricEntry, 0, len(fieldNames))
 			for _, name := range fieldNames {
@@ -55,7 +51,6 @@ func FieldChangeCollector[T any, ID comparable]() Collector[T, ID] {
 			return entries
 
 		case OpUpdate, OpUpsert:
-			// For Update/Upsert, detect which fields actually changed via reflection.
 			changed := detectChangedFields(opCtx.OldEntity, opCtx.Entity)
 			entries := make([]MetricEntry, 0, len(changed))
 			for _, name := range changed {
@@ -75,8 +70,8 @@ func FieldChangeCollector[T any, ID comparable]() Collector[T, ID] {
 	})
 }
 
-// detectChangedFields performs a shallow comparison of exported fields
-// and returns the names (snake_case) of fields whose values differ.
+// detectChangedFields shallow-compares exported fields and returns the names of
+// those whose values differ.
 func detectChangedFields[T any](old, cur T) []string {
 	oldV := reflect.ValueOf(old)
 	curV := reflect.ValueOf(cur)
@@ -106,11 +101,9 @@ func detectChangedFields[T any](old, cur T) []string {
 	return changed
 }
 
-// LifecycleCollector tracks how long entities live (creation to deletion).
-// Emits one "entity.lifecycle" entry on Delete with value = hours since creation.
-//
-// The createdAtFunc parameter extracts the creation timestamp from the entity.
-// If the entity has no creation time, pass nil and this collector is a no-op.
+// LifecycleCollector emits one "entity.lifecycle" entry on Delete, valued as
+// hours since creation. createdAtFunc extracts the creation timestamp; pass nil
+// (or return a zero time) and the collector is a no-op.
 func LifecycleCollector[T any, ID comparable](createdAtFunc func(T) time.Time) Collector[T, ID] {
 	return CollectorFunc[T, ID](func(_ context.Context, opCtx OperationContext[T, ID]) []MetricEntry {
 		if opCtx.Err != nil || opCtx.Operation != OpDelete {
@@ -133,10 +126,8 @@ func LifecycleCollector[T any, ID comparable](createdAtFunc func(T) time.Time) C
 	})
 }
 
-// PatchSizeCollector tracks how many fields are patched at once.
-// Emits one "entity.patch_size" entry on Patch with value = number of fields.
-//
-// Helps understand usage patterns and API ergonomics.
+// PatchSizeCollector emits one "entity.patch_size" entry on Patch, valued as the
+// number of fields patched at once.
 func PatchSizeCollector[T any, ID comparable]() Collector[T, ID] {
 	return CollectorFunc[T, ID](func(_ context.Context, opCtx OperationContext[T, ID]) []MetricEntry {
 		if opCtx.Err != nil || opCtx.Operation != OpPatch {

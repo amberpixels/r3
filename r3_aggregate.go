@@ -87,9 +87,7 @@ func (as Aggregates) Clone() Aggregates {
 	return cloned
 }
 
-//
-// Ergonomic short-form helpers, mirroring the filter sugar (Eq, Gt, In, ...).
-//
+// Short-form helpers mirroring the filter sugar (Eq, Gt, In, ...).
 
 // AggCount counts rows per group: COUNT(*) AS alias.
 func AggCount(alias string) *AggregateSpec {
@@ -133,11 +131,9 @@ func GroupBy(fields ...string) Fields {
 }
 
 // AggregateRow is one result row of an Aggregate call: group-field values plus
-// one entry per declared aggregate alias.
-//
-// Raw values are backend-native (e.g. SQLite returns MAX over a timestamp
-// column as TEXT, MySQL returns SUM as a decimal string), so prefer the typed
-// accessors — they coerce the common cross-backend representations.
+// one entry per declared aggregate alias. Raw values are backend-native (SQLite
+// returns MAX over a timestamp as TEXT, MySQL returns SUM as a decimal string),
+// so prefer the typed accessors, which coerce the common representations.
 type AggregateRow map[string]any
 
 // Value returns the raw backend value for key (nil if absent).
@@ -273,33 +269,26 @@ func parseTime(s string) (time.Time, bool) {
 	return time.Time{}, false
 }
 
-// Aggregator is the optional aggregation capability of a repository: grouped
-// COUNT/SUM/AVG/MIN/MAX over the records matching a query, without
-// materializing entities.
+// Aggregator is the opt-in grouped-aggregation capability (see [AggregateOf]
+// and the package doc). Of the merged Query, Aggregate honors Filters,
+// IncludeTrashed, GroupBy, Aggregates, Having, Sorts (over group fields and
+// aggregate aliases only - other sorts, e.g. inherited defaults, are dropped),
+// and Pagination (limits grouped rows); Fields, Preloads, and Cursor are
+// ignored. Empty GroupBy with non-empty Aggregates yields a single whole-set
+// row; empty Aggregates is ErrInvalidAggregate.
 //
-// Of the merged Query, Aggregate honors Filters, IncludeTrashed, GroupBy,
-// Aggregates, Having, Sorts (over group fields and aggregate aliases only —
-// other sorts, e.g. inherited defaults, are ignored), and Pagination (limits
-// grouped rows). Fields, Preloads, and Cursor are ignored. An empty GroupBy
-// with non-empty Aggregates yields a single whole-set row; empty Aggregates is
-// ErrInvalidAggregate.
-//
-// All r3 engines implement Aggregator, and every feature decorator forwards it
-// (applying its concern — permissions gates and scopes, metrics instruments),
-// so the capability survives decoration. Reach it via [AggregateOf] rather
-// than asserting inner repos yourself: unwrapping a decorator chain would
-// silently bypass permission scoping.
+// Reach it via [AggregateOf], never by asserting an inner repo - unwrapping the
+// decorator chain would silently bypass permission scoping.
 type Aggregator interface {
 	// Aggregate computes the declared aggregates per group and returns one
 	// row per group.
 	Aggregate(ctx context.Context, qarg ...Query) ([]AggregateRow, error)
 }
 
-// AggregateSorts returns the query's Sorts restricted to what a grouped result
-// can be ordered by: group fields and aggregate aliases. Anything else —
-// typically a default sort inherited from the repo's DefaultListQuery, which
-// references entity columns that no longer exist in grouped rows — is dropped.
-// Engines call this instead of using Query.Sorts directly.
+// AggregateSorts restricts the query's Sorts to what a grouped result can be
+// ordered by - group fields and aggregate aliases. Anything else (typically a
+// default sort over entity columns absent from grouped rows) is dropped. Engines
+// call this instead of Query.Sorts directly.
 func (q Query) AggregateSorts() Sorts {
 	if len(q.Sorts) == 0 {
 		return nil
@@ -325,11 +314,10 @@ func (q Query) AggregateSorts() Sorts {
 	return out
 }
 
-// AggregateOf runs an aggregate query against repo if it (including its
-// decorators, which all forward the capability) implements [Aggregator], and
-// returns ErrAggregateNotSupported otherwise. It deliberately asserts only the
-// outermost value — never walking the decorator chain — so feature concerns
-// (permission scoping in particular) always apply.
+// AggregateOf runs an aggregate query against repo if it implements
+// [Aggregator] (decorators all forward it), else returns ErrAggregateNotSupported.
+// It asserts only the outermost value - never walking the chain - so feature
+// concerns, permission scoping above all, always apply.
 func AggregateOf[T any, ID comparable](
 	ctx context.Context, repo Querier[T, ID], qarg ...Query,
 ) ([]AggregateRow, error) {

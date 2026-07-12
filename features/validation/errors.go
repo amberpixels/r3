@@ -6,20 +6,19 @@ import (
 	"strings"
 )
 
-// ErrValidation is the sentinel error for validation failures.
-// Use errors.Is(err, validation.ErrValidation) to detect validation errors.
+// ErrValidation is the sentinel every validation failure matches via errors.Is.
 var ErrValidation = errors.New("r3/validation: validation failed")
 
 // FieldError describes a validation failure for a single field.
 type FieldError struct {
-	// Field is the name of the field that failed validation (e.g. "name", "email").
+	// Field that failed (e.g. "name", "email").
 	Field string
 
-	// Message is a human-readable description of the failure (e.g. "is required").
+	// Message is the human-readable failure (e.g. "is required").
 	Message string
 
-	// Code is a machine-readable error code (e.g. "required", "min", "email").
-	// Useful for i18n or client-side error mapping.
+	// Code is a machine-readable code (e.g. "required", "min") for i18n or
+	// client-side error mapping.
 	Code string
 }
 
@@ -40,13 +39,13 @@ func NewFieldError(field, message, code string) FieldError {
 	}
 }
 
-// Error provides structured details about validation failures.
-// It satisfies errors.Is(err, ErrValidation) via its Is method.
+// Error carries structured per-field validation failures and matches
+// errors.Is(err, ErrValidation) via its Is method.
 type Error struct {
 	// Operation is the mutation that was attempted.
 	Operation Operation
 
-	// Errors is the list of per-field validation failures.
+	// Errors is the list of per-field failures.
 	Errors []FieldError
 }
 

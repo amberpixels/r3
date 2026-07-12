@@ -13,7 +13,6 @@ type gormTxCRUD[T any, ID comparable] struct {
 	tx *gorm.DB
 }
 
-// Compile-time checks.
 var _ r3.Transactor[any, any] = &GormCRUD[any, any]{}
 var _ r3.TxCRUD[any, any] = &gormTxCRUD[any, any]{}
 

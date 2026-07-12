@@ -15,57 +15,54 @@ import (
 // would re-reflect; drivers used to call GetStructMeta on each call.
 var structMetaCache sync.Map // reflect.Type -> StructMeta
 
-// RelationKind describes the type of relationship between two entities.
-// Alias of r3tag.RelationKind.
+// RelationKind is an alias of r3tag.RelationKind.
 type RelationKind = r3tag.RelationKind
 
 const (
-	// RelHasMany represents a one-to-many relationship (e.g. City has many Translations).
+	// RelHasMany is a one-to-many relationship (City has many Translations).
 	RelHasMany = r3tag.RelHasMany
-	// RelBelongsTo represents a many-to-one relationship (e.g. Location belongs to City).
+	// RelBelongsTo is a many-to-one relationship (Location belongs to City).
 	RelBelongsTo = r3tag.RelBelongsTo
-	// RelManyToMany represents a many-to-many relationship via a join table.
+	// RelManyToMany is a many-to-many relationship via a join table.
 	RelManyToMany = r3tag.RelManyToMany
 )
 
-// RelationMeta holds metadata about a struct field that represents a relation.
+// RelationMeta describes a struct field that represents a relation.
 type RelationMeta struct {
-	FieldName  string       // Go struct field name (matched against PreloadSpec.Name)
+	FieldName  string       // Go field name (matched against PreloadSpec.Name)
 	FieldIndex int          // struct field index for reflection-based assignment
 	Kind       RelationKind // has-many, belongs-to, or many-to-many
-	FKColumn   string       // foreign key column name (on the "many" side, or left FK for M2M)
+	FKColumn   string       // FK column (on the "many" side, or left FK for M2M)
 	RefColumn  string       // right FK column in join table (M2M only)
 	JoinTable  string       // join table name (M2M only)
-	Owned      bool         // if true, children are lifecycle-bound to parent (has-many only)
+	Owned      bool         // children are lifecycle-bound to parent (has-many only)
 	TargetMeta StructMeta   // metadata for the related entity type
-	TargetType reflect.Type // reflect.Type of the target entity (element type, not slice/ptr)
+	TargetType reflect.Type // target element type (not slice/ptr)
 }
 
-// StructMeta holds reflection-based metadata about a struct type T.
-// It is used by BaseCRUD and BaseRaw to build SQL queries and scan results.
+// StructMeta is the reflected metadata for a struct type T, used by BaseCRUD and
+// BaseRaw to build queries and scan results.
 type StructMeta struct {
 	TableName string   // e.g. "cities"
-	Columns   []string // column names in order, e.g. ["id", "name", "country_name", ...]
-	Fields    []int    // corresponding struct field indices for each column
-	PKColumn  string   // primary key column name (defaults to "id")
+	Columns   []string // column names in order
+	Fields    []int    // struct field index per column
+	PKColumn  string   // primary key column (defaults to "id")
 	PKField   int      // index into Columns/Fields for the PK entry
 
-	// SoftDeleteColumn is the column name used for soft-delete (e.g. "deleted_at").
-	// Empty string means soft-delete is not enabled.
-	// Detected via the `r3:"soft_delete"` struct tag.
+	// SoftDeleteColumn is the soft-delete column (e.g. "deleted_at"), detected via
+	// `r3:"soft_delete"`. Empty means soft-delete is off.
 	SoftDeleteColumn string
 
-	// Relations holds metadata about related entities detected via `r3` struct tags.
-	// Example tags: `r3:"rel:has-many,fk:city_id"`, `r3:"rel:belongs-to,fk:city_id"`.
+	// Relations holds relations detected via `r3` tags, e.g.
+	// `r3:"rel:has-many,fk:city_id"`.
 	Relations []RelationMeta
 }
 
-// GetStructMeta derives table name and column info from a generic type T.
+// GetStructMeta derives table name and columns from T.
 //
-// Tag priority: `r3` tag is checked first, `db` tag is used as fallback.
-// Fields with tag value "-" (in either tag) are ignored.
-// Pointer-to-basic types are kept (nullable columns); slices, maps, and
-// struct fields (except time.Time) are treated as relation fields.
+// Tag priority: `r3` first, `db` as fallback; a "-" value in either is ignored.
+// Pointer-to-basic types are nullable columns; slices, maps, and struct fields
+// (except time.Time) are relation fields.
 func GetStructMeta[T any]() StructMeta {
 	typ := reflect.TypeFor[T]()
 	if typ.Kind() == reflect.Pointer {
@@ -81,9 +78,9 @@ func GetStructMeta[T any]() StructMeta {
 	return meta
 }
 
-// getStructMetaForType derives StructMeta from a reflect.Type.
-// Used internally for relation target types where we don't need to parse relations
-// recursively (avoids deep nesting, only column metadata is needed).
+// getStructMetaForType derives StructMeta from a reflect.Type without parsing
+// relations - used for relation targets, where only column metadata is needed
+// (and recursion must stop).
 func getStructMetaForType(typ reflect.Type) StructMeta {
 	if typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
@@ -91,9 +88,9 @@ func getStructMetaForType(typ reflect.Type) StructMeta {
 	return buildStructMeta(typ, false)
 }
 
-// buildStructMeta is the shared implementation for struct metadata extraction.
-// When parseRelations is true, relation fields (slices, pointer-to-struct) are
-// inspected for `r3` relation tags. When false, they are simply skipped.
+// buildStructMeta extracts struct metadata. With parseRelations, relation fields
+// (slices, pointer-to-struct) are inspected for `r3` relation tags; otherwise
+// skipped.
 func buildStructMeta(typ reflect.Type, parseRelations bool) StructMeta {
 	meta := StructMeta{
 		TableName: r3utils.ToSnakeCasePlural(typ.Name()),
@@ -108,7 +105,7 @@ func buildStructMeta(typ reflect.Type, parseRelations bool) StructMeta {
 			continue
 		}
 
-		// Determine if this field looks like a relation (by its Go type).
+		// A relation field (by Go type): parse or skip.
 		if r3utils.IsRelationType(field.Type) {
 			if parseRelations {
 				if rel, ok := buildRelationMeta(field, i); ok {
@@ -118,7 +115,6 @@ func buildStructMeta(typ reflect.Type, parseRelations bool) StructMeta {
 			continue
 		}
 
-		// Parse column tag info (r3 first, db fallback).
 		tag := r3tag.ParseColumnTag(field)
 		if tag.Skip {
 			continue
@@ -140,8 +136,8 @@ func buildStructMeta(typ reflect.Type, parseRelations bool) StructMeta {
 	return meta
 }
 
-// buildRelationMeta parses the `r3` struct tag on a relation field and builds
-// the full RelationMeta including the target type's StructMeta.
+// buildRelationMeta parses a relation field's `r3` tag into a RelationMeta,
+// including the target type's StructMeta.
 func buildRelationMeta(field reflect.StructField, fieldIndex int) (RelationMeta, bool) {
 	tag, ok := r3tag.ParseRelationTag(field)
 	if !ok {
@@ -150,8 +146,7 @@ func buildRelationMeta(field reflect.StructField, fieldIndex int) (RelationMeta,
 
 	targetType := r3utils.ResolveElementType(field.Type)
 
-	// Build StructMeta for the target type (without parsing its relations
-	// to avoid deep/infinite recursion).
+	// No nested relations, to avoid deep/infinite recursion.
 	targetMeta := getStructMetaForType(targetType)
 	if tag.TableName != "" {
 		targetMeta.TableName = tag.TableName
@@ -245,9 +240,8 @@ func (m *StructMeta) SetPKValue(entityPtr any, val any) {
 	}
 }
 
-// FieldIndicesForColumns returns the subset indices into Columns/Fields that match
-// the given column names. It also returns the matching column names (preserving order).
-// If selectedCols is empty, returns all indices.
+// FieldIndicesForColumns returns the Columns/Fields subset (columns and their
+// field indices, in order) matching selectedCols; all of them when empty.
 func (m *StructMeta) FieldIndicesForColumns(selectedCols []string) ([]string, []int) {
 	if len(selectedCols) == 0 {
 		return m.Columns, m.Fields
@@ -256,7 +250,7 @@ func (m *StructMeta) FieldIndicesForColumns(selectedCols []string) ([]string, []
 	for _, c := range selectedCols {
 		selected[c] = true
 	}
-	// Always include PK column for identity
+	// Always include the PK for identity.
 	selected[m.PKColumn] = true
 
 	var columns []string
@@ -270,8 +264,8 @@ func (m *StructMeta) FieldIndicesForColumns(selectedCols []string) ([]string, []
 	return columns, fieldIndices
 }
 
-// ScanDestForColumns returns scan destinations for only the specified columns.
-// If selectedCols is empty, behaves like ScanDest (all columns).
+// ScanDestForColumns returns scan destinations for selectedCols only; like
+// ScanDest (all columns) when empty.
 func (m *StructMeta) ScanDestForColumns(entityPtr any, selectedCols []string) []any {
 	if len(selectedCols) == 0 {
 		return m.ScanDest(entityPtr)
@@ -285,16 +279,14 @@ func (m *StructMeta) ScanDestForColumns(entityPtr any, selectedCols []string) []
 	return dests
 }
 
-// FieldValuesForColumns extracts field values from an entity for the given column names.
-// The returned values are in the same order as the provided columns.
-// Columns that don't exist in the struct are silently skipped (validate beforehand).
+// FieldValuesForColumns extracts an entity's values for the given columns, in
+// order. Columns absent from the struct are silently skipped (validate first).
 func (m *StructMeta) FieldValuesForColumns(entity any, columns []string) []any {
 	v := reflect.ValueOf(entity)
 	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
 	}
 
-	// Build column→field-index lookup
 	colToField := make(map[string]int, len(m.Columns))
 	for i, col := range m.Columns {
 		colToField[col] = m.Fields[i]
@@ -309,14 +301,9 @@ func (m *StructMeta) FieldValuesForColumns(entity any, columns []string) []any {
 	return vals
 }
 
-// ValidatePatchColumns checks that the given columns are valid for a Patch operation.
-// It returns an error if:
-//   - columns is empty
-//   - any column does not exist in the struct
-//   - any column is the primary key
-//   - any column is the soft-delete column
-//
-// On success, it returns the validated column list (same as input).
+// ValidatePatchColumns is the structural floor for Patch: it rejects an empty
+// set, or any unknown, primary-key, or soft-delete column. On success it returns
+// columns unchanged.
 func (m *StructMeta) ValidatePatchColumns(columns []string) ([]string, error) {
 	if len(columns) == 0 {
 		return nil, r3.ErrNoPatchFields

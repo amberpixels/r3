@@ -16,10 +16,9 @@ const (
 	OpDelete Operation = "delete"
 )
 
-// AccessRequest contains all context needed for a permission decision.
-// Not all fields are populated for every operation:
-//   - Entity is nil for List and pre-insert Create checks
-//   - EntityID is nil for List and Create
+// AccessRequest carries the context for a permission decision. Some fields are
+// unset per operation: Entity is nil for List and pre-insert Create; EntityID is
+// nil for List and Create.
 type AccessRequest[T any, ID comparable] struct {
 	Operation Operation // Which CRUD operation
 	Actor     r3.Actor  // Who is performing it (from context)
@@ -27,12 +26,10 @@ type AccessRequest[T any, ID comparable] struct {
 	EntityID  *ID       // The entity ID (for Get, Update, Patch, Delete)
 }
 
-// Checker makes authorization decisions for CRUD operations.
-// Implementations can be as simple or complex as needed:
-// hardcoded rules, RBAC, ABAC, or external policy engines.
-//
-// Check returns nil to allow, or an error (typically *AccessDeniedError) to deny.
-// Returning a non-nil error prevents the operation from reaching the inner CRUD.
+// Checker makes the authorization decision for a CRUD operation: return nil to
+// allow, or an error (typically *AccessDeniedError) to deny. A non-nil error
+// stops the operation before it reaches the inner CRUD. Implement it however you
+// like - hardcoded rules, RBAC, ABAC, an external policy engine.
 type Checker[T any, ID comparable] interface {
 	Check(ctx context.Context, req AccessRequest[T, ID]) error
 }

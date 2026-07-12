@@ -10,12 +10,11 @@ import (
 	"gorm.io/gorm"
 )
 
-// This file implements R3's backend-agnostic resolution of relationship ("has")
-// filters: rather than emitting a subquery, a relationship filter is executed
-// as a small pre-query that yields the set of matching parent keys, then
-// rewritten to a plain key-set In filter — which every dialect already supports.
-// It is the read-side mirror of the preload machinery in assoc.go (which walks
-// the same relation metadata in the opposite direction).
+// This file resolves relationship ("has") filters backend-agnostically: instead of
+// emitting a subquery, a relationship filter runs as a small pre-query yielding the
+// matching parent keys, then is rewritten to a plain key-set In filter that every
+// dialect supports. It is the read-side mirror of the preload machinery in assoc.go
+// (which walks the same relation metadata in the opposite direction).
 
 // hasRelationFilters reports whether any filter in the tree is a relationship
 // filter, so the common (relation-free) path stays a no-op.

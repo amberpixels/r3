@@ -10,40 +10,34 @@ import (
 	"github.com/amberpixels/years"
 )
 
-// RetentionPolicy defines rules for automatic cleanup of old change records.
+// RetentionPolicy defines automatic cleanup rules for old change records. A zero
+// field disables that dimension.
 type RetentionPolicy struct {
-	// MaxAge is the maximum age of change records. Records older than this
-	// are deleted during enforcement. Zero means no age-based retention.
+	// MaxAge deletes records older than this during enforcement.
 	MaxAge time.Duration
 
-	// MaxVersions is the maximum number of versions to keep per entity.
-	// When exceeded, the oldest versions are deleted first.
-	// Zero means no version-based limit.
+	// MaxVersions caps versions kept per entity; the oldest are pruned first.
 	MaxVersions int64
 }
 
-// RetentionEnforcer runs cleanup of old change records according to configured policies.
-//
-// Usage:
+// RetentionEnforcer cleans up old change records per a [RetentionPolicy].
 //
 //	enforcer := history.NewRetentionEnforcer(historyStore, history.RetentionPolicy{
-//	    MaxAge:      90 * 24 * time.Hour,  // delete records older than 90 days
-//	    MaxVersions: 100,                   // keep at most 100 versions per entity
+//	    MaxAge:      90 * 24 * time.Hour,
+//	    MaxVersions: 100,
 //	})
-//
 //	enforcer.Enforce(ctx, "orders")
 type RetentionEnforcer struct {
 	store  r3.CRUD[ChangeRecord, string]
 	policy RetentionPolicy
 }
 
-// NewRetentionEnforcer creates a new enforcer with the given policy.
+// NewRetentionEnforcer creates an enforcer with the given policy.
 func NewRetentionEnforcer(store r3.CRUD[ChangeRecord, string], policy RetentionPolicy) *RetentionEnforcer {
 	return &RetentionEnforcer{store: store, policy: policy}
 }
 
-// Enforce runs a single retention pass for the given record type.
-// Returns the number of records deleted.
+// Enforce runs one retention pass for a record type, returning the count deleted.
 func (e *RetentionEnforcer) Enforce(ctx context.Context, recordType string) int64 {
 	var deleted int64
 
@@ -58,8 +52,8 @@ func (e *RetentionEnforcer) Enforce(ctx context.Context, recordType string) int6
 	return deleted
 }
 
-// Start runs periodic retention enforcement in a background goroutine.
-// Returns a stop function that cancels the background loop.
+// Start runs periodic enforcement in a background goroutine, returning a stop
+// function that cancels the loop.
 func (e *RetentionEnforcer) Start(ctx context.Context, recordType string, interval time.Duration) func() {
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -86,16 +80,15 @@ func (e *RetentionEnforcer) Start(ctx context.Context, recordType string, interv
 	return cancel
 }
 
-// enforceMaxAge prunes change records older than MaxAge. Rather than deleting old
-// records outright — which would strip the v1 baseline (and intermediate diffs)
-// that Reconstruct/RevertTo replay from — it folds each entity's pruned-away
-// versions into its oldest surviving record, keeping that record a self-sufficient
-// full baseline.
+// enforceMaxAge prunes records older than MaxAge. Rather than deleting outright -
+// which would strip the v1 baseline (and intermediate diffs) that Reconstruct/
+// RevertTo replay from - it folds each entity's pruned versions into its oldest
+// survivor, keeping that record a self-sufficient full baseline.
 func (e *RetentionEnforcer) enforceMaxAge(ctx context.Context, recordType string) int64 {
 	cutoff := years.Now().UTC().Add(-e.policy.MaxAge)
 
-	// Fetch all versions of the type so we can see, per entity, both the
-	// pre-cutoff versions to prune and the survivors to compact into.
+	// Fetch all versions so, per entity, we see both the pre-cutoff versions to
+	// prune and the survivors to compact into.
 	records, _, err := e.store.List(ctx, QueryForType(recordType))
 	if err != nil {
 		slog.ErrorContext(ctx, "r3history: retention query failed",
@@ -122,9 +115,9 @@ func (e *RetentionEnforcer) enforceMaxAge(ctx context.Context, recordType string
 	return deleted
 }
 
-// enforceMaxVersions prunes versions exceeding MaxVersions per entity, folding the
-// pruned-away versions into the oldest surviving record so it remains a full
-// baseline (see compactAndPrune).
+// enforceMaxVersions prunes versions above MaxVersions per entity, folding the
+// pruned versions into the oldest survivor so it stays a full baseline (see
+// compactAndPrune).
 func (e *RetentionEnforcer) enforceMaxVersions(ctx context.Context, recordType string) int64 {
 	records, _, err := e.store.List(ctx, QueryForType(recordType))
 	if err != nil {
@@ -160,24 +153,23 @@ func groupByRecordSortedByVersion(records []ChangeRecord) map[string][]ChangeRec
 	return groups
 }
 
-// compactAndPrune removes the oldest deleteCount versions from a single entity's
+// compactAndPrune removes the oldest deleteCount versions from one entity's
 // version-ascending history without breaking diff-based reconstruction.
 //
-// Reconstruct replays field diffs from a full baseline (normally v1, the create),
-// so deleting the baseline — or any intermediate version — would leave the oldest
-// survivor as a partial diff and corrupt every revert. To avoid that, the pruned
-// versions are folded (together with the oldest survivor) into a single full-state
-// baseline that replaces the survivor's diff. The survivor keeps its own version,
-// id and timestamp; only its Changes become a complete baseline.
+// Reconstruct replays diffs from a full baseline (normally v1), so deleting the
+// baseline - or any intermediate version - would leave the oldest survivor a
+// partial diff and corrupt every revert. So the pruned versions plus the oldest
+// survivor are folded into a single full-state baseline that replaces the
+// survivor's Changes; the survivor keeps its own version, id, and timestamp.
 //
-// If the baseline write fails, nothing is deleted — it is safer to keep redundant
-// history than to prune into a corrupt chain. Returns the number of records deleted.
+// If the baseline write fails, nothing is deleted - redundant history beats a
+// corrupt chain. Returns the number of records deleted.
 func (e *RetentionEnforcer) compactAndPrune(ctx context.Context, recs []ChangeRecord, deleteCount int) int64 {
 	if deleteCount <= 0 {
 		return 0
 	}
 	if deleteCount >= len(recs) {
-		// The whole history expired — no survivor to preserve a baseline for.
+		// The whole history expired - no survivor to preserve a baseline for.
 		return e.deleteRecords(ctx, recs)
 	}
 
@@ -196,10 +188,10 @@ func (e *RetentionEnforcer) compactAndPrune(ctx context.Context, recs []ChangeRe
 	return e.deleteRecords(ctx, recs[:deleteCount])
 }
 
-// foldBaseline collapses a version-ascending slice of one entity's change records
-// into a single full-state baseline: every field that ever held a value appears
-// once with OldValue=nil and NewValue set to its latest value across the slice.
-// This mirrors a v1 create record, so Reconstruct can replay from it unchanged.
+// foldBaseline collapses a version-ascending slice of one entity's records into a
+// full-state baseline: every field that ever held a value appears once with
+// OldValue=nil and NewValue=latest. This mirrors a v1 create, so Reconstruct
+// replays from it unchanged.
 func foldBaseline(recs []ChangeRecord) []FieldChange {
 	state := make(map[string]any)
 	order := make([]string, 0)

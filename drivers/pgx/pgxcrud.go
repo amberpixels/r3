@@ -7,27 +7,23 @@ import (
 	enginesql "github.com/amberpixels/r3/engine/sql"
 )
 
-// PgxCRUD is a CRUD repository based on database/sql with jackc/pgx (via pgx/v5/stdlib).
-// It embeds enginesql.BaseCRUD which provides the full r3.CRUD implementation.
+// PgxCRUD is a pgx repository (via pgx/v5/stdlib); enginesql.BaseCRUD supplies the
+// r3.CRUD impl.
 type PgxCRUD[T any, ID comparable] struct {
 	*enginesql.BaseCRUD[T, ID]
 }
 
 var _ r3.CRUD[any, any] = &PgxCRUD[any, any]{}
 
-// NewPgxCRUD creates a new pgx-based CRUD repository.
-// Models should use `db:"column_name"` struct tags for column mapping.
-// The primary key field should be tagged with `db:"id,pk"` (defaults to "id").
-//
-// Accepts optional [r3.Option] values for framework-level configuration.
+// NewPgxCRUD builds a repository. Map columns with `db:"column_name"` and mark the
+// PK with `db:"id,pk"` (defaults to "id").
 func NewPgxCRUD[T any, ID comparable](db *sql.DB, opts ...r3.Option) *PgxCRUD[T, ID] {
 	return &PgxCRUD[T, ID]{
 		BaseCRUD: enginesql.NewBaseCRUD[T, ID](db, enginesql.FlavorPostgres, opts...),
 	}
 }
 
-// NewPgxQuerier creates a read-only pgx-based repository.
-// Returns [r3.Querier] — a compile-time guarantee of read-only access.
+// NewPgxQuerier builds a read-only repository ([r3.Querier] enforces it).
 func NewPgxQuerier[T any, ID comparable](db *sql.DB, opts ...r3.Option) r3.Querier[T, ID] {
 	return NewPgxCRUD[T, ID](db, opts...)
 }

@@ -1,15 +1,6 @@
-// Package r3gorm provides an r3.CRUD[T, ID] driver backed by GORM.
-//
-// Driver: gorm.io/gorm
-// Source: https://gorm.io
-//
-// Supported r3 features:
-//   - Full CRUD (Create, Get, List, Update, Patch, Delete)
-//   - Filters, Sorts, Pagination via the r3 SQL dialect
-//   - Preloads via GORM's Preload()
-//   - Soft-delete via GORM's Unscoped()
-//   - Restore and HardDelete via the features/softdelete SoftDeleter interface
-//   - Transactions via the r3.Transactor interface
-//   - Thread-safe default queries (SetDefaultListQuery, SetDefaultGetQuery)
-//   - Raw escape hatch (GormRaw) for custom gorm.DB usage
+// Package r3gorm is an r3.CRUD[T, ID] driver backed by GORM (gorm.io/gorm). It is
+// the most complete SQL driver: alongside CRUD it wires preloads (native
+// Preload plus r3-managed relations), soft-delete (Unscoped, Restore, HardDelete),
+// transactions, aggregation, upsert, bulk patch, relationship ("has") filters, and
+// transparent value-codec support via GORM serializers.
 package r3gorm

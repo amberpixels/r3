@@ -17,9 +17,9 @@ const (
 	BucketMonthly  BucketSize = "monthly"
 )
 
-// ComputeBucket truncates a timestamp to the given bucket boundary
-// and returns it as an ISO8601/RFC3339 string. Truncation is delegated to the
-// years library so the boundary semantics stay consistent across the codebase.
+// ComputeBucket truncates t to the bucket boundary and returns it as RFC3339.
+// Truncation is delegated to the years library so boundary semantics stay
+// consistent across the codebase.
 func ComputeBucket(t time.Time, size BucketSize) string {
 	t = t.UTC()
 	mt := years.Mutate(&t)

@@ -5,20 +5,16 @@ import (
 	"errors"
 )
 
-// ErrRelationAggregateNotSupported is returned by [AggregateThroughRelation]
-// when the repository (or its outermost decorator) does not implement
-// [RelationAggregator] — for example a non-GORM backend, which currently does
-// not support relation aggregation.
+// ErrRelationAggregateNotSupported is returned by [AggregateThroughRelation] when
+// the repository does not implement [RelationAggregator] (relation aggregation is
+// GORM-only today).
 var ErrRelationAggregateNotSupported = errors.New("relation aggregation not supported by this repository")
 
-// RelationAggregator is the optional capability of aggregating an entity's
-// RELATED rows through a declared relation — grouped COUNT/SUM/AVG/MIN/MAX like
+// RelationAggregator is the opt-in capability of aggregating an entity's RELATED
+// rows through a declared relation: grouped COUNT/SUM/AVG/MIN/MAX like
 // [Aggregator], but folded over the related rows (a has-many child table or a
-// many-to-many join table) rather than the entity's own table.
-//
-// This lets counts and rollups that live in a join or child table be expressed
-// on the r3 store instead of dropping to raw SQL — e.g. "members per group" over
-// a membership join table.
+// many-to-many join table) rather than the entity's own - e.g. "members per
+// group" over a membership join table, without dropping to raw SQL.
 //
 // Query semantics (of the merged Query):
 //   - GroupBy and Aggregates resolve against the RELATED base table: the child
@@ -44,12 +40,10 @@ type RelationAggregator interface {
 	AggregateThroughRelation(ctx context.Context, relation string, qarg ...Query) ([]AggregateRow, error)
 }
 
-// AggregateThroughRelation aggregates repo's related rows through the named
-// relation if repo (including its decorators, which all forward the capability)
-// implements [RelationAggregator], and returns [ErrRelationAggregateNotSupported]
-// otherwise. Like [AggregateOf], it asserts only the outermost value — never
-// walking the decorator chain — so feature concerns (permission scoping in
-// particular) always apply.
+// AggregateThroughRelation folds repo's related rows through the named relation,
+// or returns [ErrRelationAggregateNotSupported] if repo does not implement
+// [RelationAggregator]. Like [AggregateOf], it asserts only the outermost value -
+// never the decorator chain - so permission scoping is never bypassed.
 func AggregateThroughRelation[T any, ID comparable](
 	ctx context.Context, repo Querier[T, ID], relation string, qarg ...Query,
 ) ([]AggregateRow, error) {

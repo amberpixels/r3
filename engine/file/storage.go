@@ -19,10 +19,7 @@ type storage interface {
 	save(codec Codec, source any) error
 }
 
-// --------------------------------------------------------------------------
-// Single-file storage: one file per collection (e.g. cities.json)
-// --------------------------------------------------------------------------
-
+// singleFileStorage holds an entire collection in one file (e.g. cities.json).
 type singleFileStorage struct {
 	filePath string
 }
@@ -37,14 +34,13 @@ func (s *singleFileStorage) load(codec Codec, target any) error {
 	f, err := os.Open(s.filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			// File doesn't exist yet — treat as empty collection.
+			// No file yet: an empty collection.
 			return nil
 		}
 		return fmt.Errorf("open file %s: %w", s.filePath, err)
 	}
 	defer f.Close()
 
-	// Check if file is empty
 	info, err := f.Stat()
 	if err != nil {
 		return fmt.Errorf("stat file %s: %w", s.filePath, err)
@@ -69,7 +65,7 @@ func (s *singleFileStorage) save(codec Codec, source any) error {
 		return fmt.Errorf("create directory %s: %w", dir, err)
 	}
 
-	// Atomic write: write to temp file, then rename
+	// Atomic write: encode to a temp file, then rename over the target.
 	tmpPath := s.filePath + ".tmp"
 	f, err := os.Create(tmpPath)
 	if err != nil {
@@ -96,10 +92,7 @@ func (s *singleFileStorage) save(codec Codec, source any) error {
 	return nil
 }
 
-// --------------------------------------------------------------------------
-// Directory storage: one file per entity (e.g. cities/1.json, cities/2.json)
-// --------------------------------------------------------------------------
-
+// directoryStorage holds one file per entity (e.g. cities/1.json, cities/2.json).
 type directoryStorage struct {
 	dirPath string
 	meta    *StructMeta
@@ -129,7 +122,7 @@ func (s *directoryStorage) load(codec Codec, target any) error {
 		return fmt.Errorf("read directory %s: %w", s.dirPath, err)
 	}
 
-	// Sort entries for deterministic ordering
+	// Deterministic ordering across runs.
 	sort.Slice(entries, func(i, j int) bool {
 		return entries[i].Name() < entries[j].Name()
 	})
@@ -165,8 +158,8 @@ func (s *directoryStorage) load(codec Codec, target any) error {
 	return nil
 }
 
-// tmpFilePrefix marks the per-entity temp files written during an atomic save.
-// It deliberately does not end with a codec extension so load() ignores it.
+// tmpFilePrefix marks per-entity temp files written during a save. It has no
+// codec extension, so load() skips it.
 const tmpFilePrefix = ".tmp-"
 
 func (s *directoryStorage) save(codec Codec, source any) error {
@@ -176,10 +169,9 @@ func (s *directoryStorage) save(codec Codec, source any) error {
 
 	ext := codec.FileExtension()
 
-	// Resolve every target filename up front. An invalid/unsafe PK or a
-	// duplicate aborts the whole save before anything is written, so a crafted
-	// string id can never escape the storage directory and a key collision can
-	// never silently overwrite another entity.
+	// Resolve every filename up front: an unsafe PK or a duplicate aborts the
+	// save before any write, so a crafted id can never escape the storage dir and
+	// a key collision can never silently overwrite another entity.
 	sourceVal := reflect.ValueOf(source)
 	type pendingWrite struct {
 		filename string
@@ -200,17 +192,17 @@ func (s *directoryStorage) save(codec Codec, source any) error {
 		items = append(items, pendingWrite{filename: filename, entity: entity})
 	}
 
-	// Write each entity atomically (temp file + rename) WITHOUT removing
-	// anything first. If a write fails the existing collection is left intact,
-	// so a partial save never destroys data.
+	// Write each entity (temp file + rename) without removing anything first: a
+	// failed write leaves the existing collection intact, so a partial save
+	// never destroys data.
 	for _, it := range items {
 		if err := s.writeEntityFile(codec, it.filename, it.entity); err != nil {
 			return err
 		}
 	}
 
-	// All writes succeeded — only now remove files for entities that no longer
-	// exist (deletions), plus any leftover temp files from a crashed save.
+	// All writes succeeded: only now remove files for entities that no longer
+	// exist (deletions), plus leftover temp files from a crashed save.
 	entries, err := os.ReadDir(s.dirPath)
 	if err != nil {
 		return fmt.Errorf("read directory %s: %w", s.dirPath, err)
@@ -233,8 +225,8 @@ func (s *directoryStorage) save(codec Codec, source any) error {
 	return nil
 }
 
-// writeEntityFile writes a single entity to its file atomically: encode into a
-// temp file in the same directory, then rename it over the target path.
+// writeEntityFile writes one entity atomically: encode into a temp file in the
+// same directory, then rename it over the target path.
 func (s *directoryStorage) writeEntityFile(codec Codec, filename string, entity any) error {
 	tmp, err := os.CreateTemp(s.dirPath, tmpFilePrefix+"*")
 	if err != nil {
@@ -261,12 +253,11 @@ func (s *directoryStorage) writeEntityFile(codec Codec, filename string, entity 
 	return nil
 }
 
-// safeEntityFilename builds a filesystem-safe filename for an entity's primary
-// key. The key is used verbatim as a single path segment, so it must not be
-// empty, "." / "..", or contain a path separator — otherwise a crafted string
-// id (e.g. "../../etc/passwd") could escape the storage directory. Unsafe keys
-// are rejected rather than rewritten, since rewriting could map two distinct
-// keys onto the same file and lose data.
+// safeEntityFilename builds a filesystem-safe filename from an entity's primary
+// key. The key is used verbatim as one path segment, so it must not be empty,
+// "." / "..", or contain a separator - otherwise a crafted id (e.g.
+// "../../etc/passwd") could escape the storage dir. Unsafe keys are rejected,
+// not rewritten, since rewriting could map two keys onto the same file.
 func safeEntityFilename(pkVal any, ext string) (string, error) {
 	key := fmt.Sprintf("%v", pkVal)
 	if key == "" || key == "." || key == ".." || strings.ContainsAny(key, `/\`) {

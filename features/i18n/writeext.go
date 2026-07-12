@@ -11,10 +11,9 @@ var (
 	_ r3.BulkPatcher[struct{}, int64] = &CRUD[struct{}, int64]{}
 )
 
-// Upsert inserts-or-updates via the inner CRUD, then marks translations whose
-// source text changed as stale — the same best-effort staleness tracking as
-// Update/Patch. Returns r3.ErrUpsertNotSupported when the inner repo has no
-// upsert capability.
+// Upsert inserts-or-updates via the inner CRUD, then marks translations of
+// changed source text stale - the same best-effort tracking as Update/Patch.
+// Returns r3.ErrUpsertNotSupported when the inner repo can't upsert.
 func (c *CRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.UpsertOption) (T, error) {
 	up, ok := c.inner.(r3.Upserter[T, ID])
 	if !ok {
@@ -30,10 +29,10 @@ func (c *CRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.UpsertOpt
 }
 
 // PatchWhere forwards a bulk conditional update to the inner CRUD. It does NOT
-// mark translations stale: a bulk update has no per-row result to hash source
-// text from, and this capability is intended for non-translatable status-style
-// columns. If a bulk update can touch a translated source field, mark the
-// affected translations stale explicitly via Translations().
+// mark translations stale: a bulk update has no per-row result to hash, and this
+// capability targets non-translatable status-style columns. If a bulk update can
+// touch a translated source field, mark the affected translations stale explicitly
+// via Translations().
 func (c *CRUD[T, ID]) PatchWhere(
 	ctx context.Context, filters r3.Filters, entity T, fields r3.Fields,
 ) (int64, error) {

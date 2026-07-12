@@ -7,18 +7,16 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// JSONField is just a string value that represents a field inside a JSON object
-// e.g. `{"fields":["id", "status"]}.
+// JSONField is a field name inside a JSON object, e.g. {"fields":["id","status"]}.
 type JSONField string
 
-// JSONFields as of collection of json.JSONField's.
+// JSONFields is a collection of JSONField.
 type JSONFields []JSONField
 
-// String returns string representation of the field.
+// String returns the field name.
 func (f *JSONField) String() string { return string(*f) }
 
-// String returns string representation of the fields
-// E.g. JSONFields{"id", "status"} => "id,status".
+// String joins the fields comma-separated, e.g. {"id","status"} => "id,status".
 func (fields JSONFields) String() string {
 	parts := make([]string, len(fields))
 	for i, f := range fields {
@@ -27,14 +25,13 @@ func (fields JSONFields) String() string {
 	return strings.Join(parts, ",")
 }
 
-// UnmarshalJSON is optional, depending on how you want to handle the Value.
+// UnmarshalJSON implements json.Unmarshaler.
 func (f *JSONField) UnmarshalJSON(data []byte) error {
 	type alias JSONField
 	return json.Unmarshal(data, (*alias)(f))
 }
 
-// UnmarshalText implements the encoding.TextUnmarshaler interface.
-// This is used to decode operator from plain text.
+// UnmarshalText implements encoding.TextUnmarshaler.
 func (f *JSONField) UnmarshalText(text []byte) error {
 	*f = JSONField(string(text))
 	return nil

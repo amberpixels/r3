@@ -5,21 +5,17 @@ import (
 	"errors"
 )
 
-// NoValidation returns a validator that allows everything.
-// Useful for testing or prototyping when you want the decorator in the chain
-// but don't have validation rules yet.
+// NoValidation returns a validator that allows everything - for tests or
+// prototyping when the decorator is in the chain but rules aren't ready.
 func NoValidation[T any, ID comparable]() Validator[T, ID] {
 	return ValidatorFunc[T, ID](func(_ context.Context, _ Request[T, ID]) error {
 		return nil
 	})
 }
 
-// Compose chains multiple validators. All validators are called, and their
-// errors are collected into a single [Error]. If any validator returns
-// a *Error, the field errors are merged. If a validator returns a
-// non-Error, it is returned immediately (short-circuit).
-//
-// An empty list of validators allows everything.
+// Compose runs all validators, merging their *Error field errors into one
+// [Error]. A non-*Error short-circuits and is returned immediately. An empty list
+// allows everything.
 func Compose[T any, ID comparable](validators ...Validator[T, ID]) Validator[T, ID] {
 	return ValidatorFunc[T, ID](func(ctx context.Context, req Request[T, ID]) error {
 		var collected []FieldError

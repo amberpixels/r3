@@ -7,19 +7,14 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
-// CursorToBSON generates a keyset pagination filter from decoded cursor values
-// and the current sort specification.
-//
-// For a single sort column (e.g., created_at DESC), it produces:
-//
-//	{created_at: {$lt: value}}
-//
-// For multiple sort columns (e.g., created_at DESC, id ASC), it produces:
+// CursorToBSON builds a keyset pagination filter from decoded cursor values and
+// the active sorts. A single column yields {col: {$lt: v}}; multiple columns
+// yield the lexicographic $or/$and expansion, e.g.
 //
 //	{$or: [{created_at: {$lt: v1}}, {$and: [{created_at: {$eq: v1}}, {id: {$gt: v2}}]}]}
 //
-// The direction parameter controls whether comparison operators are $gt (forward) or $lt (backward),
-// flipped based on the sort direction of each column.
+// $gt vs $lt is chosen per column from its sort direction, flipped for a backward
+// cursor.
 func CursorToBSON(values r3.CursorValues, sorts r3.Sorts, direction r3.CursorDirection) (bson.D, error) {
 	if len(sorts) == 0 {
 		return nil, r3.ErrCursorRequiresSort
@@ -29,7 +24,7 @@ func CursorToBSON(values r3.CursorValues, sorts r3.Sorts, direction r3.CursorDir
 		return bson.D{}, nil
 	}
 
-	// Validate that all sort columns have cursor values
+	// Every sort column needs a cursor value.
 	for _, s := range sorts {
 		col := s.Column.String()
 		if _, ok := values[col]; !ok {
@@ -37,12 +32,9 @@ func CursorToBSON(values r3.CursorValues, sorts r3.Sorts, direction r3.CursorDir
 		}
 	}
 
-	// Single column: simple comparison
 	if len(sorts) == 1 {
 		return singleColumnCursorBSON(sorts[0], values, direction)
 	}
-
-	// Multi-column: compound $or condition
 	return multiColumnCursorBSON(sorts, values, direction)
 }
 
@@ -71,8 +63,7 @@ func singleColumnCursorBSON(sort *r3.SortSpec, values r3.CursorValues, direction
 }
 
 func multiColumnCursorBSON(sorts r3.Sorts, values r3.CursorValues, direction r3.CursorDirection) (bson.D, error) {
-	// Build compound $or condition for multi-column keyset pagination.
-	// For sorts [a DESC, b ASC]:
+	// Lexicographic keyset expansion. For sorts [a DESC, b ASC]:
 	//   $or: [{a: {$lt: v1}}, {$and: [{a: {$eq: v1}}, {b: {$gt: v2}}]}]
 	orConditions := make(bson.A, 0, len(sorts))
 
@@ -83,7 +74,7 @@ func multiColumnCursorBSON(sorts r3.Sorts, values r3.CursorValues, direction r3.
 		}
 
 		if i == 0 {
-			// First level: just the comparison
+			// First level: bare comparison.
 			op := cursorBSONOp(sorts[i].Direction, direction)
 			orConditions = append(orConditions, bson.D{
 				{Key: col, Value: bson.D{{Key: string(op), Value: values[col]}}},
@@ -91,7 +82,7 @@ func multiColumnCursorBSON(sorts r3.Sorts, values r3.CursorValues, direction r3.
 			continue
 		}
 
-		// Deeper levels: preceding columns must be equal + current comparison
+		// Deeper levels: preceding columns equal, this one compared.
 		andConditions := make(bson.A, 0, i+1)
 		for j := range i {
 			prevCol := sorts[j].Column.String()

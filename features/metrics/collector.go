@@ -23,58 +23,53 @@ const (
 	OpPatchWhere Operation = "patch_where"
 )
 
-// OperationContext carries contextual information about a CRUD operation.
-// It is passed to collectors so they can emit metrics based on what happened.
+// OperationContext carries everything a collector needs about a completed CRUD
+// operation. Fields not relevant to a given Operation hold their zero value.
 type OperationContext[T any, ID comparable] struct {
 	// Operation is the CRUD method that was invoked.
 	Operation Operation
 
-	// Duration is the wall-clock time the inner CRUD operation took.
+	// Duration is the wall-clock time the inner operation took.
 	Duration time.Duration
 
-	// Entity is the result entity (after mutation for create/update/patch,
-	// before deletion for delete, fetched entity for get).
-	// For list operations, this is the zero value — use Entities instead.
+	// Entity is the result: post-mutation for create/update/patch, pre-deletion
+	// for delete, fetched for get. Zero for list - use Entities.
 	Entity T
 
-	// Entities is the result set for List operations. Nil for other operations.
+	// Entities is the result set for List. Nil otherwise.
 	Entities []T
 
-	// OldEntity is the entity state before mutation (for update/patch/delete).
-	// Zero value for create/get/list.
+	// OldEntity is the state before mutation (update/patch/delete).
 	OldEntity T
 
-	// HasOld indicates whether OldEntity is valid.
+	// HasOld reports whether OldEntity is valid.
 	HasOld bool
 
-	// ID is the entity primary key (for get/delete). Zero value for create/list.
+	// EntityID is the primary key (get/delete).
 	EntityID ID
 
-	// TotalCount is the total matching count from List (before pagination). Zero for other ops.
+	// TotalCount is List's total match count before pagination.
 	TotalCount int64
 
-	// Query is the r3.Query passed to Get or List. Empty for mutations.
+	// Query is the r3.Query passed to Get or List.
 	Query r3.Query
 
-	// Fields is the field list passed to Patch. Nil for other operations.
+	// Fields is the field list passed to Patch.
 	Fields r3.Fields
 
-	// Err is the error returned by the inner CRUD operation (nil on success).
-	// Most collectors only fire on success, but ErrorCollector uses this.
+	// Err is the inner operation's error, nil on success. Most collectors fire
+	// only on success; ErrorCollector uses this.
 	Err error
 }
 
-// Collector defines what metrics to emit for CRUD operations.
-// Each collector is called after every CRUD operation and returns zero or more
-// MetricEntry values to record. Returning nil means "don't record anything."
-//
-// Collectors receive a rich OperationContext with all the information they need.
-// They should NOT perform I/O or side effects — just compute and return entries.
+// Collector emits zero or more MetricEntry values for a completed CRUD operation.
+// It is called after every operation; nil means record nothing. Collectors must
+// be pure - no I/O or side effects, just compute from the OperationContext.
 type Collector[T any, ID comparable] interface {
 	Collect(ctx context.Context, opCtx OperationContext[T, ID]) []MetricEntry
 }
 
-// CollectorFunc is a function adapter for Collector, enabling inline collectors:
+// CollectorFunc adapts a function to Collector for inline collectors:
 //
 //	metrics.CollectorFunc[Order, int64](func(ctx context.Context, opCtx metrics.OperationContext[Order, int64]) []metrics.MetricEntry {
 //	    // custom logic

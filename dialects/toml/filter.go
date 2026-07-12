@@ -9,7 +9,6 @@ import (
 )
 
 // TOMLFilter represents a filter criteria in TOML format.
-// Uses human-readable field names (field/operator/value) for configuration files.
 type TOMLFilter struct {
 	Field    string        `toml:"field,omitempty"`
 	Operator string        `toml:"operator,omitempty"` // canonical: "eq", "gt", etc.
@@ -27,7 +26,6 @@ func (tf *TOMLFilter) ToFilterSpec() (*r3.FilterSpec, error) {
 		return nil, newError(errors.New("nil TOML filter"))
 	}
 
-	// Convert AND children
 	var andFilters r3.Filters
 	if len(tf.And) > 0 {
 		andFilters = make(r3.Filters, len(tf.And))
@@ -40,7 +38,6 @@ func (tf *TOMLFilter) ToFilterSpec() (*r3.FilterSpec, error) {
 		}
 	}
 
-	// Convert OR children
 	var orFilters r3.Filters
 	if len(tf.Or) > 0 {
 		orFilters = make(r3.Filters, len(tf.Or))
@@ -53,7 +50,7 @@ func (tf *TOMLFilter) ToFilterSpec() (*r3.FilterSpec, error) {
 		}
 	}
 
-	// For AND/OR group filters, don't need field-level validation
+	// Group filters skip field-level validation.
 	if len(andFilters) > 0 || len(orFilters) > 0 {
 		return &r3.FilterSpec{
 			And: andFilters,
@@ -61,7 +58,6 @@ func (tf *TOMLFilter) ToFilterSpec() (*r3.FilterSpec, error) {
 		}, nil
 	}
 
-	// For simple filters, parse field and operator
 	if tf.Field == "" {
 		return nil, newError(errors.New("empty field in TOML filter"))
 	}

@@ -19,12 +19,9 @@ const (
 	MetricListTotalCount = "crud.list.total_count"
 )
 
-// ListFilterCollector tracks which fields and operators users use in List queries.
-// Emits one "crud.list.filter" entry per leaf filter in the query.
-// Labels: {"field": "<name>", "operator": "<op>"}.
-//
-// This helps answer "what do users search for?" --
-// e.g. 80% of queries filter by "status", so you need an index.
+// ListFilterCollector emits one "crud.list.filter" entry per leaf filter,
+// labeled {"field": "<name>", "operator": "<op>"} - answering "what do users
+// filter by?".
 func ListFilterCollector[T any, ID comparable]() Collector[T, ID] {
 	return CollectorFunc[T, ID](func(_ context.Context, opCtx OperationContext[T, ID]) []MetricEntry {
 		if opCtx.Err != nil || opCtx.Operation != OpList {
@@ -42,14 +39,14 @@ func ListFilterCollector[T any, ID comparable]() Collector[T, ID] {
 	})
 }
 
-// walkFilters recursively traverses the filter tree and emits a metric entry for each leaf filter.
+// walkFilters emits a metric entry for each leaf filter in the tree.
 func walkFilters(filters r3.Filters, entries *[]MetricEntry) {
 	for _, f := range filters {
 		if f == nil {
 			continue
 		}
 
-		// If this is a leaf filter (has a field), emit a metric
+		// A leaf filter carries a field.
 		if f.Field != nil {
 			labels := Labels{labelField: f.Field.String()}
 			op := f.Operator
@@ -63,7 +60,6 @@ func walkFilters(filters r3.Filters, entries *[]MetricEntry) {
 			})
 		}
 
-		// Recurse into AND/OR groups
 		if len(f.And) > 0 {
 			walkFilters(f.And, entries)
 		}
@@ -73,10 +69,8 @@ func walkFilters(filters r3.Filters, entries *[]MetricEntry) {
 	}
 }
 
-// ListResultSizeCollector tracks the number of results returned by each List query.
-// Emits one "crud.list.result_size" entry with value = len(results).
-//
-// Helps identify inefficient queries (too many results) or empty searches.
+// ListResultSizeCollector emits one "crud.list.result_size" entry per List,
+// valued as the number of results returned.
 func ListResultSizeCollector[T any, ID comparable]() Collector[T, ID] {
 	return CollectorFunc[T, ID](func(_ context.Context, opCtx OperationContext[T, ID]) []MetricEntry {
 		if opCtx.Err != nil || opCtx.Operation != OpList {
@@ -94,10 +88,8 @@ func ListResultSizeCollector[T any, ID comparable]() Collector[T, ID] {
 	})
 }
 
-// ListTotalCountCollector tracks the total number of matching entities for each List query.
-// Emits one "crud.list.total_count" entry with value = totalCount.
-//
-// Useful for tracking data volume growth over time.
+// ListTotalCountCollector emits one "crud.list.total_count" entry per List,
+// valued as the total matching count (before pagination) - tracks data growth.
 func ListTotalCountCollector[T any, ID comparable]() Collector[T, ID] {
 	return CollectorFunc[T, ID](func(_ context.Context, opCtx OperationContext[T, ID]) []MetricEntry {
 		if opCtx.Err != nil || opCtx.Operation != OpList {

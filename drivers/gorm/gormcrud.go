@@ -30,18 +30,16 @@ var _ r3.Aggregator = &GormCRUD[any, any]{}
 var _ r3.Upserter[any, any] = &GormCRUD[any, any]{}
 var _ r3.BulkPatcher[any, any] = &GormCRUD[any, any]{}
 
-// NewGormCRUD creates a new GORM-based CRUD repository.
-//
-// Accepts optional [r3.Option] values for framework-level configuration.
+// NewGormCRUD builds a GORM-based repository.
 func NewGormCRUD[T any, ID comparable](db *gorm.DB, opts ...r3.Option) *GormCRUD[T, ID] {
 	resolved := r3.ResolveOptions(opts...)
-	// Relations declared explicitly (by table+column names) supplement the ones
-	// reflected from struct tags, so filters/aggregates can resolve relations to
-	// tables the entity does not import as a Go type.
+	// Explicitly declared relations (by table+column) supplement the tag-reflected
+	// ones, so filters/aggregates can resolve relations to tables the entity does
+	// not import as a Go type.
 	meta := enginesql.WithDeclaredRelations(enginesql.GetStructMeta[T](), resolved.Relations)
 	schema := r3.SchemaOf[T](r3.WithSchemaNaming(resolved.Config.Naming))
-	// Transparently bridge any r3:"codec:..." attributes to GORM's serializer
-	// mechanism so reads/writes apply the codec (see codec.go). No-op without codecs.
+	// Bridge any r3:"codec:..." attribute to a GORM serializer so reads/writes
+	// apply the codec (see codec.go). No-op without codecs.
 	wireCodecs[T](db, schema)
 	return &GormCRUD[T, ID]{
 		db:              db,
@@ -55,10 +53,9 @@ func NewGormCRUD[T any, ID comparable](db *gorm.DB, opts ...r3.Option) *GormCRUD
 
 func (r *GormCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 	db := r.db.WithContext(ctx)
-	// Omit non-creatable columns (readonly feed columns, the soft-delete column)
-	// so the DB fills their defaults. The PK is never omitted, so GORM keeps
-	// handling it (auto-increment or a caller-set key) exactly as before. Managed
-	// timestamps are stamped with server time and written, not omitted.
+	// Omit non-creatable columns (readonly, soft-delete) so the DB fills defaults.
+	// The PK is never omitted, so GORM's key handling (auto-increment or caller-set)
+	// is unchanged; managed timestamps are stamped and written, not omitted.
 	if omit := r.writeOmit(ctx, &entity, r3.WriteOpCreate); len(omit) > 0 {
 		db = db.Omit(omit...)
 	}
@@ -71,12 +68,11 @@ func (r *GormCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 	return entity, nil
 }
 
-// writeOmit returns the non-PK columns to Omit from a GORM write for the given
-// op, and stamps the entity's managed timestamp columns (created_at/updated_at)
-// with server time. Managed timestamps are kept OUT of the omit set so GORM
-// writes the engine-set values — they are system-written, not omitted. The omit
-// set is empty (and no stamping happens) when the write guard is bypassed or no
-// schema is present, so the write proceeds unrestricted with caller values.
+// writeOmit returns the non-PK columns to Omit for op, and stamps the managed
+// timestamps (created_at/updated_at) with server time. Managed timestamps are kept
+// OUT of the omit set - they are system-written, not omitted. Returns nil (and
+// stamps nothing) under a write-guard bypass or a zero schema, leaving the write
+// unrestricted with caller values.
 func (r *GormCRUD[T, ID]) writeOmit(ctx context.Context, entityPtr *T, op r3.WriteOp) []string {
 	nonPK := r.meta.NonPKColumns()
 	writable := enginesql.WriteColumns(ctx, r.schema, nonPK, op)
@@ -113,7 +109,6 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 	var entity T
 	query := r.db.WithContext(ctx).Model(&entity)
 
-	// Apply fields selection
 	if fieldCols := r3.FieldsToStrings(prep.Query.Fields); len(fieldCols) > 0 {
 		query = query.Select(fieldCols)
 	}
@@ -124,22 +119,18 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		query = query.Preload(preload.GetName())
 	}
 
-	// Handle soft-deleted records
 	if prep.Query.IncludeTrashed.Some(true) {
 		query = query.Unscoped()
 	}
 
-	// Apply joins
 	for _, join := range prep.Joins() {
 		query = query.Joins(join.String())
 	}
 
-	// Apply filters
 	for _, clause := range prep.Clauses {
 		query = query.Where(clause.Clause, clause.Args...)
 	}
 
-	// Apply sorts
 	for _, sort := range prep.Sorts {
 		query = query.Order(sort.String())
 	}
@@ -276,7 +267,6 @@ func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 
 	query := r.db.WithContext(ctx)
 
-	// Apply fields selection
 	if fieldCols := r3.FieldsToStrings(q.Fields); len(fieldCols) > 0 {
 		query = query.Select(fieldCols)
 	}
@@ -287,14 +277,13 @@ func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 		query = query.Preload(preload.GetName())
 	}
 
-	// Handle soft-deleted records
 	if q.IncludeTrashed.Some(true) {
 		query = query.Unscoped()
 	}
 
-	// Match the PK explicitly (clause.Eq binds id as a parameter). Passing id as
-	// a gorm cond — First(&entity, id) — is unsafe for non-integer keys: gorm
-	// treats a string id as a raw SQL expression (e.g. "rec-1" -> rec - 1).
+	// Match the PK explicitly so clause.Eq binds id as a parameter. First(&entity,
+	// id) is unsafe for non-integer keys: gorm treats a string id as a raw SQL
+	// expression (e.g. "rec-1" -> rec - 1).
 	if err := query.Where(clause.Eq{Column: meta.PKColumn, Value: id}).
 		First(&entity).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -317,12 +306,11 @@ func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 
 func (r *GormCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	db := r.db.WithContext(ctx)
-	// Omit non-mutable columns (created_at, readonly feed columns, the
-	// soft-delete column) so a full Update can't clobber them or resurrect a
-	// soft-deleted row, while updated_at is stamped with server time and written.
-	// This keeps Save's semantics (associations, zero-value writes) for every
-	// other column. With nothing to protect (or under a bypass), Omit is empty
-	// and this is the original full Save.
+	// Omit non-mutable columns (created_at, readonly, soft-delete) so a full Update
+	// can't clobber them or resurrect a soft-deleted row; updated_at is stamped and
+	// written. Save's semantics (associations, zero-value writes) hold for every
+	// other column, and with nothing to protect (or under a bypass) this is the
+	// plain full Save.
 	if omit := r.writeOmit(ctx, &entity, r3.WriteOpMutate); len(omit) > 0 {
 		db = db.Omit(omit...)
 	}
@@ -397,8 +385,8 @@ func (r *GormCRUD[T, ID]) HardDelete(ctx context.Context, id ID) error {
 		Delete(new(T)).Error
 }
 
-// syncAssociations syncs M2M and owned has-many relations after Create/Update.
-// Uses direct SQL based on R3 relation metadata — no GORM association tags needed.
+// syncAssociations syncs M2M and owned has-many relations after Create/Update via
+// direct SQL over R3 relation metadata, needing no GORM association tags.
 func (r *GormCRUD[T, ID]) syncAssociations(ctx context.Context, entityPtr *T) error {
 	meta := r.meta
 	if len(meta.Relations) == 0 {
@@ -410,10 +398,9 @@ func (r *GormCRUD[T, ID]) syncAssociations(ctx context.Context, entityPtr *T) er
 	db := r.db.WithContext(ctx)
 
 	for _, rel := range meta.Relations {
-		// A nil relation slice means "not loaded": skip it so an Update that did
-		// not load the relation never wipes existing rows. A non-nil slice
-		// (including an empty one) is authoritative and is synced — an empty
-		// slice intentionally clears the relation.
+		// A nil relation slice means "not loaded": skip it so an Update that did not
+		// load the relation never wipes existing rows. A non-nil slice is
+		// authoritative and is synced - an empty one intentionally clears the relation.
 		relField := entityVal.Field(rel.FieldIndex)
 		if relField.Kind() == reflect.Slice && relField.IsNil() {
 			continue
@@ -436,14 +423,12 @@ func (r *GormCRUD[T, ID]) syncAssociations(ctx context.Context, entityPtr *T) er
 
 // syncM2M replaces all join table rows for a many-to-many relation using direct SQL.
 func syncM2M[T any](db *gorm.DB, rel enginesql.RelationMeta, pkVal any, entityPtr *T) error {
-	// Delete existing join rows
 	if err := db.Exec(
 		"DELETE FROM "+rel.JoinTable+" WHERE "+rel.FKColumn+" = ?", pkVal,
 	).Error; err != nil {
 		return err
 	}
 
-	// Insert new join rows
 	slice := reflect.ValueOf(entityPtr).Elem().Field(rel.FieldIndex)
 	for i := range slice.Len() {
 		childPK := rel.TargetMeta.PKValue(slice.Index(i).Interface())
@@ -461,7 +446,6 @@ func syncM2M[T any](db *gorm.DB, rel enginesql.RelationMeta, pkVal any, entityPt
 // syncOwnedHasMany replaces all owned children for a has-many relation.
 // Deletes all existing children by FK, then creates the new set.
 func syncOwnedHasMany[T any](db *gorm.DB, rel enginesql.RelationMeta, pkVal any, entityPtr *T) error {
-	// Delete all existing children with this FK
 	childTable := rel.TargetMeta.TableName
 	if err := db.Exec(
 		"DELETE FROM "+childTable+" WHERE "+rel.FKColumn+" = ?", pkVal,
@@ -469,13 +453,12 @@ func syncOwnedHasMany[T any](db *gorm.DB, rel enginesql.RelationMeta, pkVal any,
 		return err
 	}
 
-	// Insert new children with FK set
 	slice := reflect.ValueOf(entityPtr).Elem().Field(rel.FieldIndex)
 	if slice.Len() == 0 {
 		return nil
 	}
 
-	// Find the FK field index on the child struct so we can set it
+	// Locate the child's FK field so we can point it at the parent.
 	fkFieldIdx := -1
 	for i, col := range rel.TargetMeta.Columns {
 		if col == rel.FKColumn {
@@ -486,10 +469,9 @@ func syncOwnedHasMany[T any](db *gorm.DB, rel enginesql.RelationMeta, pkVal any,
 
 	for i := range slice.Len() {
 		child := slice.Index(i)
-		// Zero out PK so GORM creates a new record
+		// Zero the PK so GORM inserts a new row, then point the FK at the parent.
 		pkFieldIdx := rel.TargetMeta.Fields[rel.TargetMeta.PKField]
 		child.Field(pkFieldIdx).SetZero()
-		// Set FK to parent's PK
 		if fkFieldIdx >= 0 {
 			child.Field(fkFieldIdx).Set(reflect.ValueOf(pkVal).Convert(child.Field(fkFieldIdx).Type()))
 		}
@@ -498,18 +480,16 @@ func syncOwnedHasMany[T any](db *gorm.DB, rel enginesql.RelationMeta, pkVal any,
 	return db.Create(slice.Interface()).Error
 }
 
-// NewGormQuerier creates a read-only GORM-based repository.
-// Returns [r3.Querier] — a compile-time guarantee of read-only access.
+// NewGormQuerier builds a read-only GORM repository ([r3.Querier] enforces it).
 func NewGormQuerier[T any, ID comparable](db *gorm.DB, opts ...r3.Option) r3.Querier[T, ID] {
 	return NewGormCRUD[T, ID](db, opts...)
 }
 
-// prepareList merges the query args with defaults, resolves any relationship
-// ("has") filters against the DB (lowering them into key-set In filters), then
-// builds the SQL components. Relationship lowering must happen before clause
-// building, which is why this drives the merge/prepare split itself rather than
-// calling PrepareListQuery. The relation resolution is skipped entirely when the
-// query has no relationship filters, leaving the common path untouched.
+// prepareList merges args with defaults, lowers any relationship ("has") filters
+// against the DB into key-set In filters, then builds the SQL. Lowering must
+// happen before clause building, so this drives the merge/prepare split itself
+// instead of calling PrepareListQuery. It is skipped when no relationship filters
+// are present, leaving the common path untouched.
 func (r *GormCRUD[T, ID]) prepareList(
 	ctx context.Context, qarg ...r3.Query,
 ) (enginesql.PreparedListQuery, error) {

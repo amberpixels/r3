@@ -1,12 +1,10 @@
 package r3
 
-// Option is a functional option for configuring R3 repositories.
-// Pass options to engine/driver constructors to customize behavior.
+// Option is a functional option passed to engine/driver constructors.
 type Option func(*Options)
 
-// Options holds the resolved configuration for a repository.
-// Engine and driver constructors call [ResolveOptions] to apply
-// functional options and get the final values.
+// Options is the resolved repository configuration; constructors build it from
+// functional options via [ResolveOptions].
 type Options struct {
 	// Config is the framework-level configuration.
 	Config Config
@@ -17,15 +15,14 @@ type Options struct {
 	Relations []RelationSpec
 }
 
-// DefaultOptions returns Options initialized with sensible defaults.
+// DefaultOptions returns Options with sensible defaults.
 func DefaultOptions() Options {
 	return Options{
 		Config: DefaultConfig(),
 	}
 }
 
-// ResolveOptions applies functional options to the default [Options]
-// and returns the result.
+// ResolveOptions applies functional options over [DefaultOptions].
 func ResolveOptions(opts ...Option) Options {
 	o := DefaultOptions()
 	for _, opt := range opts {
@@ -41,12 +38,11 @@ func WithConfig(cfg Config) Option {
 	}
 }
 
-// WithRelations registers relations declared explicitly by table and column
-// names (see [RelationSpec]), letting a repository resolve relations to tables
-// it does not import as Go types. Declared relations supplement the relations
-// reflected from `r3:"rel:..."` tags; a declared relation whose name matches a
-// reflected one takes precedence. They are resolvable through [Has]/[HasNo]
-// filters and [AggregateThroughRelation].
+// WithRelations registers relations by table and column name (see [RelationSpec]),
+// letting a repository resolve relations to tables it does not import as Go types.
+// These supplement the relations reflected from `r3:"rel:..."` tags, and a
+// declared relation whose name matches a reflected one takes precedence. Resolvable
+// through [Has]/[HasNo] filters and [AggregateThroughRelation].
 //
 //	repo := r3gorm.NewGormCRUD[Photo, int64](db,
 //		r3.WithRelations(

@@ -9,7 +9,6 @@ import (
 )
 
 // YAMLFilter represents a filter criteria in YAML format.
-// Uses human-readable field names (field/operator/value) for configuration files.
 type YAMLFilter struct {
 	Field    string        `yaml:"field,omitempty"`
 	Operator string        `yaml:"operator,omitempty"` // canonical: "eq", "gt", etc.
@@ -27,7 +26,6 @@ func (yf *YAMLFilter) ToFilterSpec() (*r3.FilterSpec, error) {
 		return nil, newError(errors.New("nil YAML filter"))
 	}
 
-	// Convert AND children
 	var andFilters r3.Filters
 	if len(yf.And) > 0 {
 		andFilters = make(r3.Filters, len(yf.And))
@@ -40,7 +38,6 @@ func (yf *YAMLFilter) ToFilterSpec() (*r3.FilterSpec, error) {
 		}
 	}
 
-	// Convert OR children
 	var orFilters r3.Filters
 	if len(yf.Or) > 0 {
 		orFilters = make(r3.Filters, len(yf.Or))
@@ -53,7 +50,7 @@ func (yf *YAMLFilter) ToFilterSpec() (*r3.FilterSpec, error) {
 		}
 	}
 
-	// For AND/OR group filters, don't need field-level validation
+	// Group filters skip field-level validation.
 	if len(andFilters) > 0 || len(orFilters) > 0 {
 		return &r3.FilterSpec{
 			And: andFilters,
@@ -61,7 +58,6 @@ func (yf *YAMLFilter) ToFilterSpec() (*r3.FilterSpec, error) {
 		}, nil
 	}
 
-	// For simple filters, parse field and operator
 	if yf.Field == "" {
 		return nil, newError(errors.New("empty field in YAML filter"))
 	}

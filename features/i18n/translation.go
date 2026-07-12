@@ -19,7 +19,7 @@ const (
 	// freely re-translate AI rows when they go stale.
 	SourceAI Source = "ai"
 	// SourceHuman marks a translation written or corrected by a person.
-	// Workers must not overwrite human rows — flag them for review instead.
+	// Workers must not overwrite human rows - flag them for review instead.
 	SourceHuman Source = "human"
 	// SourceImport marks a translation that arrived with the data itself
 	// (e.g. a video that ships titles in several languages).
@@ -27,11 +27,9 @@ const (
 )
 
 // Translation is one translated value of one field of one entity, in one
-// language. It is a first-class r3 entity: store it via any
-// r3.CRUD[Translation, string] implementation (SQL, GORM, MongoDB, ...).
-//
-// Uniqueness is (EntityType, EntityID, Field, Lang) — enforce it with a
-// unique index in your storage; Upsert respects it.
+// language - a first-class r3 entity, stored via any r3.CRUD[Translation, string].
+// Uniqueness is (EntityType, EntityID, Field, Lang); enforce it with a unique
+// index in your storage, and Upsert respects it.
 type Translation struct {
 	// ID is the unique identifier for this translation row (UUID).
 	ID string `json:"id" db:"id,pk" bson:"_id"`
@@ -43,7 +41,7 @@ type Translation struct {
 	// EntityID is the primary key of the translated entity, stringified.
 	EntityID string `json:"entity_id" db:"entity_id" bson:"entity_id"`
 
-	// Field is the storage name of the translated field (e.g. "title") —
+	// Field is the storage name of the translated field (e.g. "title") -
 	// the db tag of the struct field, or its snake_cased Go name.
 	Field string `json:"field" db:"field" bson:"field"`
 
@@ -54,10 +52,9 @@ type Translation struct {
 	// translation" and never overlaid.
 	Value string `json:"value" db:"value" bson:"value"`
 
-	// ValueNorm is an optional normalized copy of Value for search
-	// (fold case/diacritics as the application defines). R3 never computes
-	// or reads it — it exists so translated content is searchable with the
-	// same normalization the application applies to source text.
+	// ValueNorm is an optional normalized copy of Value for search (case/diacritics
+	// folded as the app defines). R3 never computes or reads it; it exists so
+	// translated content is searchable with the app's own normalization.
 	ValueNorm string `json:"value_norm,omitempty" db:"value_norm" bson:"value_norm,omitempty"`
 
 	// Source records who produced this translation: ai, human, or import.
@@ -91,11 +88,10 @@ func Hash(sourceText string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-// Upsert writes a translation for (EntityType, EntityID, Field, Lang):
-// updating the existing row when one exists, creating it otherwise. The
-// row's identity fields come from tr; Value, ValueNorm, Source, Model,
-// SourceHash are applied; Stale is cleared (an upsert IS the re-translation).
-// Timestamps are maintained via years-agnostic time.Now.
+// Upsert writes a translation for (EntityType, EntityID, Field, Lang), updating
+// the existing row or creating it. Identity fields come from tr; Value, ValueNorm,
+// Source, Model, SourceHash are applied; Stale is cleared (an upsert IS the
+// re-translation). Timestamps are set from time.Now.
 func Upsert(ctx context.Context, store r3.CRUD[Translation, string], tr Translation) (Translation, error) {
 	existing, _, err := store.List(ctx, QueryFor(tr.EntityType, tr.EntityID, tr.Lang, tr.Field))
 	if err != nil {

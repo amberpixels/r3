@@ -6,17 +6,13 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// CRUD is a decorator that wraps any r3.CRUD[T, ID] and adds Restore and
-// HardDelete capabilities. All seven standard CRUD methods are passed through
-// to the inner implementation unchanged.
-//
-// Restore and HardDelete are delegated to the inner CRUD if it implements the
-// SoftDeleter[ID] interface. Otherwise, ErrNotSoftDeletable is returned.
+// CRUD adds Restore and HardDelete to the inner repo (delegated when it
+// implements SoftDeleter[ID], else ErrNotSoftDeletable); standard methods pass
+// through unchanged. See the package doc.
 type CRUD[T any, ID comparable] struct {
 	inner r3.CRUD[T, ID]
 }
 
-// Compile-time check that CRUD satisfies r3.CRUD.
 var _ r3.CRUD[any, any] = &CRUD[any, any]{}
 var _ r3.Aggregator = &CRUD[any, any]{}
 var _ r3.RelationAggregator = &CRUD[any, any]{}
@@ -84,10 +80,10 @@ func (s *CRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 	return s.inner.Delete(ctx, id)
 }
 
-// Restore un-deletes a soft-deleted record by clearing its deleted_at field.
-// It looks for SoftDeleter support anywhere in the inner decorator chain, so it
-// works even when other decorators sit between this one and the backend.
-// Returns ErrNotSoftDeletable if no layer implements SoftDeleter.
+// Restore un-deletes a soft-deleted record by clearing its deleted_at field. It
+// finds SoftDeleter anywhere in the inner chain, so it works even with other
+// decorators between here and the backend. Returns ErrNotSoftDeletable if no
+// layer implements it.
 func (s *CRUD[T, ID]) Restore(ctx context.Context, id ID) error {
 	sd, ok := r3.As[SoftDeleter[ID]](s.inner)
 	if !ok {
@@ -96,9 +92,9 @@ func (s *CRUD[T, ID]) Restore(ctx context.Context, id ID) error {
 	return sd.Restore(ctx, id)
 }
 
-// HardDelete permanently removes a record, bypassing soft-delete.
-// It looks for SoftDeleter support anywhere in the inner decorator chain.
-// Returns ErrNotSoftDeletable if no layer implements SoftDeleter.
+// HardDelete permanently removes a record, bypassing soft-delete. It finds
+// SoftDeleter anywhere in the inner chain. Returns ErrNotSoftDeletable if no
+// layer implements it.
 func (s *CRUD[T, ID]) HardDelete(ctx context.Context, id ID) error {
 	sd, ok := r3.As[SoftDeleter[ID]](s.inner)
 	if !ok {
@@ -112,14 +108,14 @@ func (s *CRUD[T, ID]) Inner() r3.CRUD[T, ID] {
 	return s.inner
 }
 
-// Unwrap returns the wrapped CRUD so capability detection and transaction
-// propagation can walk the decorator chain.
+// Unwrap returns the wrapped CRUD so decorator-chain walks (capability
+// detection, transaction propagation) can reach the backend.
 func (s *CRUD[T, ID]) Unwrap() r3.CRUD[T, ID] {
 	return s.inner
 }
 
-// Rewrap rebuilds this decorator around a different inner CRUD (used to
-// re-apply the soft-delete layer on top of a transaction-bound CRUD).
+// Rewrap rebuilds this decorator around inner, re-applying the soft-delete layer
+// on top of a transaction-bound CRUD.
 func (s *CRUD[T, ID]) Rewrap(inner r3.CRUD[T, ID]) r3.CRUD[T, ID] {
 	return WithSoftDelete[T, ID](inner)
 }

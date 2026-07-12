@@ -8,10 +8,10 @@ import (
 	r3utils "github.com/amberpixels/r3/internal/utils"
 )
 
-// resolveFields maps requested storage field names (e.g. "title") to struct
-// field indexes on T. A struct field matches by the first token of its `db`
-// tag, or by the snake_case of its Go name when untagged. Only string-kind
-// fields are translatable; anything else is a configuration error.
+// resolveFields maps requested storage names (e.g. "title") to struct field
+// indexes on T, matching by the first token of the `db` tag or the snake_case Go
+// name when untagged. Only string fields are translatable; anything else is a
+// configuration error.
 func resolveFields[T any](names []string) (map[string]int, error) {
 	var zero T
 	t := reflect.TypeOf(zero)

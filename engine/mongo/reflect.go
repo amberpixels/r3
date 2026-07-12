@@ -33,35 +33,30 @@ type RelationMeta struct {
 	TargetType reflect.Type // reflect.Type of the target entity (element type, not slice/ptr)
 }
 
-// StructMeta holds reflection-based metadata about a struct type T.
-// It is the MongoDB equivalent of enginesql.StructMeta.
+// StructMeta is reflection-based metadata about a struct type T, the MongoDB
+// equivalent of enginesql.StructMeta.
 type StructMeta struct {
 	CollectionName string   // e.g. "cities"
-	Fields         []string // BSON field names in order, e.g. ["_id", "name", "country_name", ...]
-	FieldIndices   []int    // corresponding struct field indices for each BSON field
+	Fields         []string // BSON field names in order, e.g. ["_id", "name", ...]
+	FieldIndices   []int    // struct field index per BSON field
 	IDField        string   // primary key BSON field name (defaults to "_id")
 	IDFieldIdx     int      // index into Fields/FieldIndices for the ID entry
 
-	// SoftDeleteField is the BSON field name used for soft-delete (e.g. "deleted_at").
-	// Empty string means soft-delete is not enabled.
+	// SoftDeleteField is the soft-delete BSON field name; empty disables soft-delete.
 	SoftDeleteField string
 
-	// SoftDeleteZero is the zero value of the soft-delete field when it is a
-	// non-pointer type. A live (never-deleted) record stores this zero value
-	// rather than null — a non-pointer time.Time persists as the zero BSON Date,
-	// not as null — so the "not deleted" filter must match it as well as null.
-	// Nil when the field is a pointer (live records store null) or when
-	// soft-delete is disabled.
+	// SoftDeleteZero is the zero value of a non-pointer soft-delete field, which a
+	// live record persists (a time.Time stores the zero BSON Date, not null), so
+	// the "not deleted" filter must match it as well as null. Nil for a pointer
+	// field (live records store null) or when soft-delete is disabled.
 	SoftDeleteZero any
 
-	// Relations holds metadata about related entities.
 	Relations []RelationMeta
 }
 
-// GetStructMeta derives collection name and field info from a generic type T.
-//
-// Tag priority: `r3` tag first, `bson` tag as fallback, then `db` tag, then snake_case.
-// Fields with tag value "-" (in any tag) are ignored.
+// GetStructMeta derives collection name and field info from T. Field-name
+// priority: `r3` tag, then `bson`, then `db`, then snake_case; a "-" in any tag
+// skips the field.
 func GetStructMeta[T any]() StructMeta {
 	var t T
 	typ := reflect.TypeOf(t)
@@ -71,7 +66,7 @@ func GetStructMeta[T any]() StructMeta {
 	return buildStructMeta(typ, true)
 }
 
-// getStructMetaForType derives StructMeta from a reflect.Type (without parsing relations).
+// getStructMetaForType derives StructMeta from a type, skipping relation parsing.
 func getStructMetaForType(typ reflect.Type) StructMeta {
 	if typ.Kind() == reflect.Pointer {
 		typ = typ.Elem()
@@ -94,7 +89,7 @@ func buildStructMeta(typ reflect.Type, parseRelations bool) StructMeta {
 			continue
 		}
 
-		// Detect relation fields by Go type.
+		// Relation fields are detected by Go type.
 		if r3utils.IsRelationType(field.Type) {
 			if parseRelations {
 				if rel, ok := buildRelationMeta(field, i); ok {
@@ -104,7 +99,6 @@ func buildStructMeta(typ reflect.Type, parseRelations bool) StructMeta {
 			continue
 		}
 
-		// Parse field tag: r3 -> bson -> db -> snake_case
 		bsonName, isPK, isSoftDelete, skip := parseMongoFieldTag(field)
 		if skip {
 			continue
@@ -120,9 +114,8 @@ func buildStructMeta(typ reflect.Type, parseRelations bool) StructMeta {
 
 		if isSoftDelete {
 			meta.SoftDeleteField = bsonName
-			// A non-pointer soft-delete field (e.g. time.Time) stores its zero
-			// value for live records, not null; capture it so the "not deleted"
-			// filter can match it. Pointer fields store null and need no zero.
+			// Capture a non-pointer field's zero value: live records store it,
+			// not null, so the "not deleted" filter must match it. See SoftDeleteZero.
 			if field.Type.Kind() != reflect.Pointer {
 				meta.SoftDeleteZero = reflect.Zero(field.Type).Interface()
 			}
@@ -132,50 +125,43 @@ func buildStructMeta(typ reflect.Type, parseRelations bool) StructMeta {
 	return meta
 }
 
-// parseMongoFieldTag reads field metadata from struct tags.
-// Priority: `r3` tag first, `bson` tag as fallback, `db` tag as second fallback.
-// Returns (bsonFieldName, isPK, isSoftDelete, skip).
+// parseMongoFieldTag resolves a field's (bsonName, isPK, isSoftDelete, skip) from
+// its tags. The `r3` tag wins, with the `bson` tag name used when r3 sets only
+// flags (pk, soft_delete) but no explicit name.
 func parseMongoFieldTag(field reflect.StructField) (string, bool, bool, bool) {
 	r3Raw := field.Tag.Get("r3")
 	bsonRaw := field.Tag.Get("bson")
 	dbRaw := field.Tag.Get("db")
 
-	// Check for skip
 	if r3Raw == "-" || bsonRaw == "-" || dbRaw == "-" {
 		return "", false, false, true
 	}
 
-	// Check for relation tags in r3 (skip those)
+	// Relation fields are handled elsewhere.
 	if strings.HasPrefix(r3Raw, "rel:") || strings.Contains(r3Raw, ",rel:") {
 		return "", false, false, true
 	}
 
-	// Parse r3 tag first
 	tag := r3tag.ParseColumnTag(field)
 	if tag.Skip {
 		return "", false, false, true
 	}
 
-	// If r3 tag gave us a column name, use it
 	bsonName := tag.Column
 	isPK := tag.IsPK
 	isSoftDelete := tag.SoftDelete
 
-	// Override column name with bson tag if r3 didn't provide a specific name
-	// and bson tag is available
 	if bsonRaw != "" && bsonRaw != "-" {
 		bsonParts := strings.Split(bsonRaw, ",")
 		bsonTagName := strings.TrimSpace(bsonParts[0])
 		if bsonTagName != "" {
-			// If the r3 tag only set flags (pk, soft_delete) but no explicit name,
-			// prefer the bson tag name
 			if r3Raw == "" || isR3OnlyFlags(r3Raw) {
 				bsonName = bsonTagName
 			}
 		}
 	}
 
-	// Map "id" to "_id" for MongoDB convention
+	// MongoDB convention: the PK "id" is stored as "_id".
 	if bsonName == "id" && isPK {
 		bsonName = bsonIDField
 	}
@@ -183,7 +169,7 @@ func parseMongoFieldTag(field reflect.StructField) (string, bool, bool, bool) {
 	return bsonName, isPK, isSoftDelete, false
 }
 
-// isR3OnlyFlags returns true if the r3 tag only contains known flags (no column name).
+// isR3OnlyFlags reports whether the r3 tag holds only known flags, no column name.
 func isR3OnlyFlags(raw string) bool {
 	for p := range strings.SplitSeq(raw, ",") {
 		p = strings.TrimSpace(p)
@@ -251,7 +237,7 @@ func (m *StructMeta) FieldValues(entity any) []any {
 	return vals
 }
 
-// NonIDFieldValues extracts field values excluding the ID, for insert operations.
+// NonIDFieldValues extracts field values excluding the ID, for inserts.
 func (m *StructMeta) NonIDFieldValues(entity any) []any {
 	v := reflect.ValueOf(entity)
 	if v.Kind() == reflect.Pointer {
@@ -334,8 +320,8 @@ func (m *StructMeta) ValidatePatchFields(fields []string) ([]string, error) {
 	return fields, nil
 }
 
-// ToBSONDoc converts an entity to a bson.D document using the struct metadata.
-// This is used for insert/update operations.
+// ToBSONDoc converts an entity to a BSON document for insert/update, optionally
+// omitting the ID.
 func (m *StructMeta) ToBSONDoc(entity any, includeID bool) map[string]any {
 	v := reflect.ValueOf(entity)
 	if v.Kind() == reflect.Pointer {

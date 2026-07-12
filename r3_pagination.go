@@ -7,7 +7,7 @@ import (
 )
 
 const (
-	// PageSizeDefault is a GLOBAL per-package default page size if no pagination was specified.
+	// PageSizeDefault is the package-wide default page size when none is specified.
 	PageSizeDefault = 100
 )
 
@@ -38,20 +38,14 @@ func NoPagination() *PaginationSpec {
 	return &PaginationSpec{}
 }
 
-// Unpaginated returns a PaginationSpec that disables the default page-size cap,
-// so List returns every matching record.
-//
-// By default List paginates (PageSizeDefault items per page); a caller that
-// expects "give me everything" would otherwise silently get a truncated slice.
-// Make the intent explicit:
+// Unpaginated disables the default page-size cap so List returns every matching
+// record - otherwise a "give me everything" caller silently gets a truncated
+// slice. It overrides any configured default page size on merge:
 //
 //	all, total, err := repo.List(ctx, r3.Query{Pagination: r3.Unpaginated()})
 //
-// Passing this on a query overrides any configured default page size (it clears
-// the inherited cap during query merge). To make a whole repo unpaginated by
-// default instead, set Config.Defaults.Unpaginated.
-//
-// Unpaginated is an intention-revealing alias for NoPagination.
+// To make a whole repo unpaginated by default, set Config.Defaults.Unpaginated.
+// It is an intention-revealing alias for [NoPagination].
 func Unpaginated() *PaginationSpec {
 	return NoPagination()
 }
@@ -136,9 +130,8 @@ func (p *PaginationSpec) ToLimitOffset() (int, int) {
 	return limit, offset
 }
 
-// FinalizeCount returns (entities, totalCount) with the correct total.
-// If pagination was not active, totalCount is simply len(entities).
-// This is a backend-agnostic helper reused by sqlbase, mongobase, etc.
+// FinalizeCount returns (entities, totalCount): the backend's paginatedCount when
+// pagination was active, otherwise len(entities). Shared by every engine.
 func FinalizeCount[T any](entities []T, paginatedCount int64, isPaginated bool) ([]T, int64) {
 	if !isPaginated {
 		return entities, int64(len(entities))

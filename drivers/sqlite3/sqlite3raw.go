@@ -7,9 +7,9 @@ import (
 	enginesql "github.com/amberpixels/r3/engine/sql"
 )
 
-// Sqlite3Raw is a thin wrapper around enginesql.BaseRaw for backward compatibility.
+// Sqlite3Raw wraps enginesql.BaseRaw.
 //
-// Deprecated: Use enginesql.BaseRaw directly via Sqlite3CRUD.Raw().
+// Deprecated: use enginesql.BaseRaw directly via Sqlite3CRUD.Raw().
 type Sqlite3Raw[T any, ID any] struct {
 	*enginesql.BaseRaw[T, ID]
 }

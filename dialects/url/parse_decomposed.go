@@ -6,8 +6,7 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// parseDecomposed parses decomposed URL parameters into an r3.Query.
-// Each R3 component is read from its own URL parameter.
+// parseDecomposed reads each r3 component from its own URL parameter into an r3.Query.
 func parseDecomposed(values url.Values, cfg Config) (r3.Query, error) {
 	q := r3.NewQuery()
 

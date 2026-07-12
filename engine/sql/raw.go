@@ -5,15 +5,13 @@ import (
 	"database/sql"
 )
 
-// BaseRaw is a database/sql wrapper that allows executing arbitrary queries
-// with automatic struct scanning based on StructMeta.
+// BaseRaw executes arbitrary SQL with automatic StructMeta-based struct scanning.
 type BaseRaw[T any, ID any] struct {
-	// Executor is the SQL executor (either *sql.DB or *sql.Tx).
-	Executor SQLExecutor
+	Executor SQLExecutor // *sql.DB or *sql.Tx
 	Meta     StructMeta
 }
 
-// NewBaseRaw creates a new BaseRaw instance.
+// NewBaseRaw creates a BaseRaw.
 func NewBaseRaw[T any, ID comparable](executor SQLExecutor, meta StructMeta) *BaseRaw[T, ID] {
 	return &BaseRaw[T, ID]{
 		Executor: executor,
@@ -21,7 +19,7 @@ func NewBaseRaw[T any, ID comparable](executor SQLExecutor, meta StructMeta) *Ba
 	}
 }
 
-// Query executes a raw SQL query and scans results into a slice of T.
+// Query runs a raw query and scans the rows into a slice of T.
 func (r *BaseRaw[T, ID]) Query(ctx context.Context, query string, args ...any) ([]T, error) {
 	rows, err := r.Executor.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -32,7 +30,7 @@ func (r *BaseRaw[T, ID]) Query(ctx context.Context, query string, args ...any) (
 	return ScanEntities[T](rows, &r.Meta)
 }
 
-// QueryRow executes a raw SQL query expected to return a single row and scans it into T.
+// QueryRow runs a raw single-row query and scans it into T.
 func (r *BaseRaw[T, ID]) QueryRow(ctx context.Context, query string, args ...any) (T, error) {
 	var entity T
 	dests := r.Meta.ScanDest(&entity)
@@ -43,7 +41,7 @@ func (r *BaseRaw[T, ID]) QueryRow(ctx context.Context, query string, args ...any
 	return entity, nil
 }
 
-// Exec executes a raw SQL query that does not return rows (INSERT, UPDATE, DELETE).
+// Exec runs a raw non-returning query (INSERT, UPDATE, DELETE).
 func (r *BaseRaw[T, ID]) Exec(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	return r.Executor.ExecContext(ctx, query, args...)
 }

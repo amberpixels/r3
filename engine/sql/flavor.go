@@ -15,35 +15,33 @@ const (
 	PlaceholderDollar
 )
 
-// Flavor describes the SQL dialect differences between database backends.
-// It is passed to NewBaseCRUD to configure SQL generation.
+// Flavor describes the SQL dialect differences between backends, passed to
+// NewBaseCRUD to configure SQL generation.
 type Flavor struct {
 	// Placeholder controls the parameter placeholder style (? vs $N).
 	Placeholder PlaceholderStyle
 
-	// SupportsRETURNING indicates whether the database supports the RETURNING clause
-	// in INSERT statements (PostgreSQL, SQLite 3.35+).
-	// When false, Create() uses INSERT + last-insert-id + SELECT.
+	// SupportsRETURNING reports whether INSERT supports RETURNING (Postgres,
+	// SQLite 3.35+). When false, Create() falls back to INSERT + last-insert-id +
+	// SELECT.
 	SupportsRETURNING bool
 
-	// TimestampFunc is the SQL expression for the current timestamp.
-	// Used by soft-delete to set the deleted_at column.
-	// Examples: "NOW()" (PostgreSQL), "CURRENT_TIMESTAMP" (MySQL), "datetime('now')" (SQLite).
+	// TimestampFunc is the current-timestamp SQL expression used by soft-delete to
+	// set deleted_at: "NOW()" (Postgres), "CURRENT_TIMESTAMP" (MySQL),
+	// "datetime('now')" (SQLite).
 	TimestampFunc string
 
-	// IdentifierQuote is the character this backend uses to quote SQL identifiers.
-	// The dialect layer emits ANSI double quotes (`"col"`); the engine rewrites
-	// them to this character when assembling the final query (see QuoteIdentifiers).
-	// Empty means ANSI double quotes (Postgres, SQLite). MySQL needs backticks,
-	// because without ANSI_QUOTES mode it reads `"col"` as a string literal — which
-	// silently breaks every filter and sort built from the dialect.
+	// IdentifierQuote is this backend's identifier quote char; the engine rewrites
+	// the dialect's ANSI double quotes to it (see QuoteIdentifiers). Empty = ANSI
+	// double quotes (Postgres, SQLite). MySQL needs backticks: without ANSI_QUOTES
+	// mode it reads `"col"` as a string literal, silently breaking every filter and
+	// sort.
 	IdentifierQuote string
 
-	// UsesOnConflictClause selects the upsert dialect. When true the backend
-	// speaks Postgres/SQLite `ON CONFLICT (cols) DO UPDATE SET ...` (the conflict
-	// target is explicit and EXCLUDED refers to the would-be-inserted row). When
-	// false it speaks MySQL `ON DUPLICATE KEY UPDATE col = VALUES(col)` (the
-	// conflict target is any unique key, so the columns are ignored).
+	// UsesOnConflictClause selects the upsert dialect. True = Postgres/SQLite
+	// `ON CONFLICT (cols) DO UPDATE SET ...` (explicit target; EXCLUDED is the
+	// would-be-inserted row). False = MySQL `ON DUPLICATE KEY UPDATE col =
+	// VALUES(col)` (target is any unique key, so cols are ignored).
 	UsesOnConflictClause bool
 }
 
@@ -69,9 +67,8 @@ var (
 	}
 )
 
-// Placeholders generates a placeholder string for count parameters.
-// For PlaceholderDollar starting from startIdx: "$1, $2, $3"
-// For PlaceholderQuestion: "?, ?, ?".
+// Placeholders builds a placeholder list: "$1, $2, $3" from startIdx (dollar) or
+// "?, ?, ?" (question).
 func (f Flavor) Placeholders(count int, startIdx int) string {
 	parts := make([]string, count)
 	switch f.Placeholder {
@@ -87,8 +84,8 @@ func (f Flavor) Placeholders(count int, startIdx int) string {
 	return strings.Join(parts, ", ")
 }
 
-// SetExprs generates "col1 = $1, col2 = $2, ..." or "col1 = ?, col2 = ?, ..."
-// for UPDATE SET clauses.
+// SetExprs builds an UPDATE SET body: "col1 = $1, col2 = $2, ..." or
+// "col1 = ?, col2 = ?, ...".
 func (f Flavor) SetExprs(cols []string, startIdx int) string {
 	parts := make([]string, len(cols))
 	switch f.Placeholder {
@@ -104,8 +101,8 @@ func (f Flavor) SetExprs(cols []string, startIdx int) string {
 	return strings.Join(parts, ", ")
 }
 
-// WhereEq generates "column = $N" or "column = ?" depending on the placeholder style.
-// nextIdx is the 1-based parameter index (used only for dollar-style).
+// WhereEq builds "column = $N" or "column = ?". nextIdx is the 1-based parameter
+// index (dollar-style only).
 func (f Flavor) WhereEq(column string, nextIdx int) string {
 	switch f.Placeholder {
 	case PlaceholderQuestion:
@@ -116,12 +113,11 @@ func (f Flavor) WhereEq(column string, nextIdx int) string {
 	return column + " = ?" // fallback
 }
 
-// UpsertClause builds the trailing on-conflict clause of an upsert INSERT for
-// this flavor: `ON CONFLICT (target) DO UPDATE SET col = EXCLUDED.col, ...` for
-// Postgres/SQLite, `ON DUPLICATE KEY UPDATE col = VALUES(col), ...` for MySQL.
-// conflictCols is the conflict target (ignored by MySQL, which keys off any
-// unique index). An empty updateCols yields DO NOTHING (a self-assign no-op on
-// MySQL) so a conflict leaves the existing row untouched.
+// UpsertClause builds an upsert INSERT's trailing on-conflict clause:
+// `ON CONFLICT (target) DO UPDATE SET col = EXCLUDED.col, ...` (Postgres/SQLite)
+// or `ON DUPLICATE KEY UPDATE col = VALUES(col), ...` (MySQL). conflictCols is the
+// target (MySQL ignores it, keying off any unique index). Empty updateCols yields
+// DO NOTHING (a self-assign no-op on MySQL), leaving the existing row untouched.
 func (f Flavor) UpsertClause(conflictCols, updateCols []string) string {
 	if f.UsesOnConflictClause {
 		target := strings.Join(conflictCols, ", ")
@@ -135,9 +131,8 @@ func (f Flavor) UpsertClause(conflictCols, updateCols []string) string {
 		return fmt.Sprintf("ON CONFLICT (%s) DO UPDATE SET %s", target, strings.Join(sets, ", "))
 	}
 
-	// MySQL: the conflict target is implicit (any unique key). With no columns to
-	// update, self-assign the first conflict column so the statement still parses
-	// and behaves as a no-op on duplicate.
+	// MySQL: with no columns to update, self-assign the first conflict column so
+	// the statement still parses and no-ops on duplicate.
 	if len(updateCols) == 0 {
 		if len(conflictCols) == 0 {
 			return ""
@@ -152,16 +147,15 @@ func (f Flavor) UpsertClause(conflictCols, updateCols []string) string {
 	return "ON DUPLICATE KEY UPDATE " + strings.Join(sets, ", ")
 }
 
-// QuoteIdentifiers rewrites the ANSI double-quoted identifiers emitted by the
-// dialect layer (`"col"`, `"tbl"."col"`) to this flavor's identifier quote. It is
-// a no-op for flavors that use ANSI double quotes (Postgres, SQLite).
+// QuoteIdentifiers rewrites the dialect's ANSI double-quoted identifiers (`"col"`,
+// `"tbl"."col"`) to this flavor's quote char; a no-op for ANSI flavors (Postgres,
+// SQLite).
 //
-// It is safe to apply to a fully assembled query: values are always bound as
-// parameters (`?` / `$N`), never inlined, so the only double quotes in generated
-// SQL are identifier quotes. The dialect escapes an embedded quote by doubling it
-// (`""`), and a plain ReplaceAll maps that to the doubled target quote — which is
-// also the correct escape — so escaping is preserved. (In practice identifiers are
-// validated to contain no quotes, so escaping never actually occurs.)
+// Safe on a fully assembled query: values are always bound as parameters, never
+// inlined, so the only double quotes in the SQL are identifier quotes. A doubled
+// embedded quote (`""`, the dialect's escape) maps to the doubled target quote,
+// which is also correct - so escaping survives. (Identifiers are validated to
+// contain no quotes, so this never actually occurs.)
 func (f Flavor) QuoteIdentifiers(sql string) string {
 	if f.IdentifierQuote == "" || f.IdentifierQuote == `"` {
 		return sql
@@ -169,12 +163,11 @@ func (f Flavor) QuoteIdentifiers(sql string) string {
 	return strings.ReplaceAll(sql, `"`, f.IdentifierQuote)
 }
 
-// ConvertPlaceholders converts `?` placeholders in clause to `$1, $2, ...`
-// starting from startIdx. Returns the converted string and the next available index.
-// This is a no-op when the flavor uses `?` placeholders.
+// ConvertPlaceholders rewrites `?` placeholders in clause to `$1, $2, ...` from
+// startIdx, returning the result and the next free index. No-op (but still
+// advances the index) for `?`-style flavors.
 func (f Flavor) ConvertPlaceholders(clause string, startIdx int) (string, int) {
 	if f.Placeholder == PlaceholderQuestion {
-		// Count ?'s to advance the index correctly
 		count := strings.Count(clause, "?")
 		return clause, startIdx + count
 	}

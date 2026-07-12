@@ -7,19 +7,16 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// CursorToSQLClause generates a keyset pagination WHERE clause from decoded cursor values
-// and the current sort specification.
-//
-// For a single sort column (e.g., created_at DESC), it produces:
+// CursorToSQLClause builds a keyset pagination WHERE clause from decoded cursor
+// values and the sort spec. A single column (created_at DESC) gives:
 //
 //	WHERE "created_at" < ?
 //
-// For multiple sort columns (e.g., created_at DESC, id ASC), it produces a compound condition:
+// Multiple columns (created_at DESC, id ASC) give a compound condition:
 //
 //	WHERE ("created_at" < ?) OR ("created_at" = ? AND "id" > ?)
 //
-// The direction parameter controls whether comparison operators are > (forward) or < (backward),
-// flipped based on the sort direction of each column.
+// direction picks > (forward) or < (backward), flipped per column sort direction.
 func CursorToSQLClause(values r3.CursorValues, sorts r3.Sorts, direction r3.CursorDirection) (SQLClause, error) {
 	if len(sorts) == 0 {
 		return SQLClause{}, r3.ErrCursorRequiresSort
@@ -29,7 +26,7 @@ func CursorToSQLClause(values r3.CursorValues, sorts r3.Sorts, direction r3.Curs
 		return SQLClause{}, nil
 	}
 
-	// Validate that all sort columns have cursor values
+	// Every sort column must carry a cursor value.
 	for _, s := range sorts {
 		col := s.Column.String()
 		if _, ok := values[col]; !ok {
@@ -37,21 +34,16 @@ func CursorToSQLClause(values r3.CursorValues, sorts r3.Sorts, direction r3.Curs
 		}
 	}
 
-	// Single column: simple comparison
 	if len(sorts) == 1 {
 		return singleColumnCursor(sorts[0], values, direction)
 	}
-
-	// Multi-column: compound OR condition
 	return multiColumnCursor(sorts, values, direction)
 }
 
-// cursorComparisonOp returns the SQL comparison operator for cursor pagination.
-// For forward direction + DESC sort: use "<" (get items with smaller values).
-// For forward direction + ASC sort: use ">" (get items with larger values).
-// Backward direction flips the operator.
+// cursorComparisonOp returns the keyset comparison operator: forward+ASC uses >,
+// forward+DESC uses <, and backward flips it.
 func cursorComparisonOp(sortDir r3.SortDirection, cursorDir r3.CursorDirection) SQLClauseOperator {
-	// Default unspecified to DESC (matching SortToSQL behavior)
+	// Unspecified defaults to DESC, matching SortToSQL.
 	isAsc := sortDir == r3.SortDirectionAsc
 
 	if cursorDir == r3.CursorBackward {
@@ -81,8 +73,7 @@ func singleColumnCursor(sort *r3.SortSpec, values r3.CursorValues, direction r3.
 }
 
 func multiColumnCursor(sorts r3.Sorts, values r3.CursorValues, direction r3.CursorDirection) (SQLClause, error) {
-	// Build compound OR condition for multi-column keyset pagination.
-	// For sorts [a DESC, b ASC, c DESC]:
+	// Compound OR for multi-column keyset. For sorts [a DESC, b ASC, c DESC]:
 	//   (a < ?)
 	//   OR (a = ? AND b > ?)
 	//   OR (a = ? AND b = ? AND c < ?)
@@ -93,7 +84,7 @@ func multiColumnCursor(sorts r3.Sorts, values r3.CursorValues, direction r3.Curs
 		var andParts []string
 		var args []any
 
-		// All preceding columns must be equal
+		// All preceding columns must be equal.
 		for j := range i {
 			safeCol, err := SafeColumnExpr(sorts[j].Column)
 			if err != nil {
@@ -103,7 +94,7 @@ func multiColumnCursor(sorts r3.Sorts, values r3.CursorValues, direction r3.Curs
 			args = append(args, values[sorts[j].Column.String()])
 		}
 
-		// Current column uses comparison
+		// Current column uses the comparison operator.
 		safeCol, err := SafeColumnExpr(sorts[i].Column)
 		if err != nil {
 			return SQLClause{}, fmt.Errorf("unsafe cursor column: %w", err)

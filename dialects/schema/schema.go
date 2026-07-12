@@ -45,11 +45,10 @@ type jsonAttribute struct {
 	Computed bool          `json:"computed"`
 }
 
-// MarshalSchema serializes a schema to the public JSON shape: a version plus the
-// ordered list of Queryable attributes, each with its capability booleans,
-// allowed filter operators (canonical names), enum values, relation target, and
-// the reserved computed flag. Non-queryable attributes are omitted so the
-// system/worker bypass is never advertised.
+// MarshalSchema serializes s to the public JSON shape: a version plus the
+// ordered Queryable attributes, each with capability booleans, allowed filter
+// operators (canonical names), enum values, relation target, and the reserved
+// computed flag.
 func MarshalSchema(s r3.Schema) ([]byte, error) {
 	out := jsonSchema{Version: Version, Attributes: marshalAttributes(s)}
 	data, err := json.Marshal(out)

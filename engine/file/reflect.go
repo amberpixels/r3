@@ -35,10 +35,8 @@ type StructMeta struct {
 	SoftDeleteField string
 }
 
-// GetStructMeta derives resource name and field info from a generic type T.
-//
-// Tag priority for field names: `r3` tag first, then `json` tag, then `yaml` tag,
-// then `db` tag, then snake_case of the Go field name.
+// GetStructMeta derives the resource name and field info for T. Field-name
+// priority: `r3`, then `json`, then `yaml`, then `db`, then snake_case.
 func GetStructMeta[T any]() StructMeta {
 	var t T
 	typ := reflect.TypeOf(t)
@@ -63,7 +61,7 @@ func buildStructMeta(typ reflect.Type) StructMeta {
 			continue
 		}
 
-		// Skip relation-type fields (slices, maps, pointer-to-struct, structs except time.Time)
+		// Relation-type fields aren't stored (see isRelationType).
 		if isRelationType(field.Type) {
 			continue
 		}
@@ -89,25 +87,23 @@ func buildStructMeta(typ reflect.Type) StructMeta {
 	return meta
 }
 
-// parseFileFieldTag reads field metadata from struct tags.
-// Priority: `r3` tag first, then `json`, then `yaml`, then `db`, then snake_case.
+// parseFileFieldTag reads a field's name and flags from its struct tags.
 // Returns (fieldName, isPK, isSoftDelete, skip).
 func parseFileFieldTag(field reflect.StructField) (string, bool, bool, bool) {
 	r3Raw := field.Tag.Get("r3")
 	jsonRaw := field.Tag.Get("json")
 	yamlRaw := field.Tag.Get("yaml")
 
-	// Check for skip in any tag
 	if r3Raw == "-" || jsonRaw == "-" || yamlRaw == "-" {
 		return "", false, false, true
 	}
 
-	// Check for relation tags in r3 (skip those)
+	// Relation fields are handled elsewhere, never stored.
 	if strings.HasPrefix(r3Raw, "rel:") || strings.Contains(r3Raw, ",rel:") {
 		return "", false, false, true
 	}
 
-	// Parse r3 tag to get PK / soft-delete flags and possibly a column name
+	// r3 tag: PK / soft-delete flags and an optional column name.
 	tag := r3tag.ParseColumnTag(field)
 	if tag.Skip {
 		return "", false, false, true
@@ -117,7 +113,7 @@ func parseFileFieldTag(field reflect.StructField) (string, bool, bool, bool) {
 	isPK := tag.IsPK
 	isSoftDelete := tag.SoftDelete
 
-	// If r3 tag didn't provide an explicit name (only flags), try json/yaml tags
+	// No explicit name in r3 (flags only): fall back to json/yaml.
 	if r3Raw == "" || isOnlyFlags(r3Raw) {
 		if name := extractTagName(jsonRaw); name != "" {
 			fieldName = name
@@ -161,7 +157,7 @@ func isOnlyFlags(raw string) bool {
 }
 
 // isRelationType returns true if the Go type represents a relation field
-// (slice, map, pointer-to-struct, or struct — except time.Time).
+// (slice, map, pointer-to-struct, or struct - except time.Time).
 func isRelationType(t reflect.Type) bool {
 	switch t.Kind() {
 	case reflect.Slice, reflect.Map:
@@ -174,10 +170,6 @@ func isRelationType(t reflect.Type) bool {
 		return false
 	}
 }
-
-// --------------------------------------------------------------------------
-// StructMeta methods
-// --------------------------------------------------------------------------
 
 // PKValue extracts the primary key value from an entity.
 func (m *StructMeta) PKValue(entity any) any {

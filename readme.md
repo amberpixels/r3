@@ -190,8 +190,8 @@ Stateless, bidirectional converters between r3 types and format-specific represe
 - `dialects/toml` - Configuration files
 - `dialects/url` - URL query parameters (`?sort=name:asc&page=2&status=active`)
 
-Dialects are pure functions. They have no I/O, no database connections, no state.
-Engines and drivers consume them; most application code doesn't import them directly.
+Engines and drivers consume dialects internally; most application code never
+imports them directly.
 
 ### Engines
 

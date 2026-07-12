@@ -9,16 +9,11 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// CRUD is a decorator that wraps any r3.CRUD[T, ID] and localizes reads:
-// Get and List overlay translated field values for the context locale
-// (r3.GetLocale); Update and Patch mark translations of changed source
-// fields stale. It transparently satisfies r3.CRUD[T, ID].
-//
-// The translation store is any r3.CRUD[Translation, string] — the same CRUD
-// abstraction used everywhere in r3. "Everything is a R3po."
-//
-// Wrap read-facing repositories only — see the package doc's
-// read-modify-write warning.
+// CRUD localizes reads (Get/List overlay translated values for the r3.GetLocale
+// locale) and tracks staleness on writes (Update/Patch mark translations of
+// changed source fields stale). The translation store is any
+// r3.CRUD[Translation, string]. Wrap read-facing repos only - see the package
+// doc's read-modify-write warning.
 type CRUD[T any, ID comparable] struct {
 	inner  r3.CRUD[T, ID]
 	store  r3.CRUD[Translation, string]
@@ -26,21 +21,14 @@ type CRUD[T any, ID comparable] struct {
 	fields map[string]int // storage field name -> struct field index on T
 }
 
-// Compile-time check that CRUD satisfies r3.CRUD.
 var _ r3.CRUD[struct{}, int64] = &CRUD[struct{}, int64]{}
 var _ r3.Aggregator = &CRUD[struct{}, int64]{}
 var _ r3.RelationAggregator = &CRUD[struct{}, int64]{}
 
-// WithTranslations wraps an existing r3.CRUD with locale-aware reads and
-// staleness tracking. IDFunc and Fields are required. It panics on a
-// misconfiguration (unknown or non-string field, missing IDFunc) — wiring
-// errors should fail at startup, not at request time.
-//
-//	repo := i18n.WithTranslations[Location, int64](
-//	    inner, store,
-//	    i18n.WithIDFunc[Location, int64](func(l Location) int64 { return l.ID }),
-//	    i18n.WithFields[Location, int64]("title", "description"),
-//	)
+// WithTranslations wraps inner with locale-aware reads and staleness tracking.
+// IDFunc and Fields are required; it panics on misconfiguration (unknown or
+// non-string field, missing IDFunc) so wiring errors fail at startup, not at
+// request time.
 func WithTranslations[T any, ID comparable](
 	inner r3.CRUD[T, ID],
 	store r3.CRUD[Translation, string],
@@ -69,18 +57,18 @@ func WithTranslations[T any, ID comparable](
 // Inner returns the underlying CRUD repository (unwrapped).
 func (c *CRUD[T, ID]) Inner() r3.CRUD[T, ID] { return c.inner }
 
-// Unwrap returns the wrapped CRUD so capability detection and transaction
-// propagation can walk the decorator chain.
+// Unwrap returns the wrapped CRUD so decorator-chain walks (capability
+// detection, transaction propagation) can reach the backend.
 func (c *CRUD[T, ID]) Unwrap() r3.CRUD[T, ID] { return c.inner }
 
-// Rewrap rebuilds this decorator around a different inner CRUD (used to
-// re-apply the i18n layer on top of a transaction-bound CRUD).
+// Rewrap rebuilds this decorator around inner, re-applying the i18n layer on top
+// of a transaction-bound CRUD.
 func (c *CRUD[T, ID]) Rewrap(inner r3.CRUD[T, ID]) r3.CRUD[T, ID] {
 	return &CRUD[T, ID]{inner: inner, store: c.store, opts: c.opts, fields: c.fields}
 }
 
 // Translations returns the translation store for querying or writing rows
-// directly (workers, admin editors) — use with the Query* builders and Upsert.
+// directly (workers, admin editors) - use with the Query* builders and Upsert.
 func (c *CRUD[T, ID]) Translations() r3.CRUD[Translation, string] { return c.store }
 
 // Get retrieves an entity and overlays translations for the context locale.
@@ -109,9 +97,8 @@ func (c *CRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, error
 	return c.inner.Count(ctx, qarg...)
 }
 
-// Aggregate passes through to the inner CRUD's Aggregate. Aggregated values
-// are not localized: grouped rows carry counts/sums over source-language
-// columns, not translatable text.
+// Aggregate passes through: aggregated rows carry counts/sums, not translatable
+// text, so nothing is localized.
 func (c *CRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.AggregateRow, error) {
 	agg, ok := c.inner.(r3.Aggregator)
 	if !ok {
@@ -120,8 +107,8 @@ func (c *CRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.Agg
 	return agg.Aggregate(ctx, qarg...)
 }
 
-// AggregateThroughRelation passes through to the inner CRUD. Aggregated values
-// are not localized (they are counts/sums, not translatable text).
+// AggregateThroughRelation passes through: aggregated values are counts/sums,
+// not translatable text.
 func (c *CRUD[T, ID]) AggregateThroughRelation(
 	ctx context.Context, relation string, qarg ...r3.Query,
 ) ([]r3.AggregateRow, error) {
@@ -132,8 +119,7 @@ func (c *CRUD[T, ID]) AggregateThroughRelation(
 	return agg.AggregateThroughRelation(ctx, relation, qarg...)
 }
 
-// Create inserts a new entity. No translations can exist yet, so it is a
-// pure passthrough.
+// Create passes through: a new entity has no translations yet.
 func (c *CRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 	return c.inner.Create(ctx, entity)
 }
@@ -172,9 +158,8 @@ func (c *CRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 	return nil
 }
 
-// overlay localizes either a slice of entities (items) or a single one
-// (single != nil) for the context locale. It is best-effort: on a store
-// failure the entities are returned untranslated.
+// overlay localizes a slice (items) or one entity (single != nil) for the context
+// locale. Best-effort: on a store failure the entities are left untranslated.
 func (c *CRUD[T, ID]) overlay(ctx context.Context, items []T, single *T) {
 	if c.opts.SkipOverlay {
 		return
@@ -238,9 +223,9 @@ func (c *CRUD[T, ID]) overlay(ctx context.Context, items []T, single *T) {
 	}
 }
 
-// markStale compares the entity's current source text against each stored
-// translation's SourceHash and patches changed ones Stale=true. Best-effort:
-// failures are reported via the error handler, never to the caller.
+// markStale patches Stale=true on translations whose SourceHash no longer matches
+// the entity's current source text. Best-effort: failures go to the error handler,
+// never to the caller.
 func (c *CRUD[T, ID]) markStale(ctx context.Context, entity T) {
 	translations, _, err := c.store.List(ctx, QueryForEntity(c.opts.EntityType, c.entityID(entity)))
 	if err != nil {

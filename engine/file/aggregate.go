@@ -12,8 +12,8 @@ import (
 
 var _ r3.Aggregator = (*BaseCRUD[any, any])(nil)
 
-// Aggregate computes grouped aggregates over the entities matching the query,
-// evaluated in memory. See r3.Aggregator for the query semantics.
+// Aggregate computes grouped aggregates in memory. See [r3.Aggregator] for the
+// query semantics.
 func (r *BaseCRUD[T, ID]) Aggregate(_ context.Context, qarg ...r3.Query) ([]r3.AggregateRow, error) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -111,8 +111,8 @@ func groupAndFold[T any](entities []T, q r3.Query, meta *StructMeta) ([]r3.Aggre
 		b.members = append(b.members, e)
 	}
 
-	// A whole-set aggregate (no GroupBy) over zero rows still yields one row —
-	// matching SQL, where SELECT COUNT(*) without GROUP BY always returns a row.
+	// A whole-set aggregate (no GroupBy) over zero rows still yields one row,
+	// matching SQL: SELECT COUNT(*) without GROUP BY always returns a row.
 	if len(groupNames) == 0 && len(buckets) == 0 {
 		buckets[""] = &bucket{}
 		order = append(order, "")

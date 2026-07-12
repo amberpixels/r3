@@ -12,28 +12,22 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// SQLExecutor is the common interface between *sql.DB and *sql.Tx.
-// Both types satisfy this interface, allowing BaseCRUD to operate
-// transparently in both normal and transactional modes.
+// SQLExecutor is the common interface of *sql.DB and *sql.Tx, letting BaseCRUD
+// run transparently in normal and transactional modes.
 type SQLExecutor interface {
 	QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error)
 	QueryRowContext(ctx context.Context, query string, args ...any) *sql.Row
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
-// BaseCRUD is a generic CRUD repository backed by database/sql.
-// It implements the full r3.CRUD[T, ID] interface using reflection-based struct scanning
-// and the r3 SQL dialect for filters, sorts, and pagination.
-//
-// Database-specific drivers embed this type and may override individual methods
-// (e.g. MySQL overrides Create because it lacks RETURNING support).
+// BaseCRUD is a generic r3.CRUD[T, ID] over database/sql, using reflection-based
+// struct scanning and the r3 SQL dialect. Drivers embed it and may override
+// methods (e.g. MySQL overrides Create, lacking RETURNING).
 type BaseCRUD[T any, ID comparable] struct {
-	// Executor is the SQL executor used for all queries. It is either a *sql.DB
-	// or a *sql.Tx, both of which implement [SQLExecutor].
+	// Executor is the *sql.DB or *sql.Tx used for all queries.
 	Executor SQLExecutor
 
-	// sqlDB holds the original *sql.DB, used for starting transactions.
-	// It is nil when BaseCRUD is operating inside a transaction.
+	// sqlDB is the original *sql.DB for starting transactions; nil inside a tx.
 	sqlDB *sql.DB
 
 	DefaultsManager
@@ -47,12 +41,9 @@ type BaseCRUD[T any, ID comparable] struct {
 
 var _ r3.CRUD[any, any] = &BaseCRUD[any, any]{}
 
-// NewBaseCRUD creates a new BaseCRUD with the given database connection and flavor.
-// Models should use `db:"column_name"` struct tags for column mapping.
-// The primary key field should be tagged with `db:"id,pk"` (defaults to "id").
-//
-// Accepts optional [r3.Option] values for framework-level configuration
-// (e.g. [r3.WithConfig] for custom naming conventions or default page size).
+// NewBaseCRUD builds a BaseCRUD for db and flavor. Columns map via `db:"col"`
+// tags; the PK is tagged `db:"id,pk"` (defaults to "id"). Options configure
+// framework-level behavior (e.g. [r3.WithConfig]).
 func NewBaseCRUD[T any, ID comparable](db *sql.DB, flavor Flavor, opts ...r3.Option) *BaseCRUD[T, ID] {
 	resolved := r3.ResolveOptions(opts...)
 	meta := GetStructMeta[T]()
@@ -72,9 +63,8 @@ func NewBaseCRUD[T any, ID comparable](db *sql.DB, flavor Flavor, opts ...r3.Opt
 	}
 }
 
-// SQLDB returns the underlying *sql.DB for advanced usage (opening new connections,
-// starting transactions manually, etc.).
-// Panics if BaseCRUD is operating inside a transaction (use the transaction's CRUD instead).
+// SQLDB returns the underlying *sql.DB for advanced use. Panics inside a
+// transaction (use the transaction's CRUD instead).
 func (r *BaseCRUD[T, ID]) SQLDB() *sql.DB {
 	if r.sqlDB == nil {
 		panic("r3/engine/sql: SQLDB() called on a transactional BaseCRUD (use the transaction's CRUD instead)")
@@ -82,9 +72,8 @@ func (r *BaseCRUD[T, ID]) SQLDB() *sql.DB {
 	return r.sqlDB
 }
 
-// Create inserts a new record and returns it with the auto-generated PK populated.
-// This implementation uses RETURNING and works for PostgreSQL and SQLite 3.35+.
-// MySQL drivers should override this method.
+// Create inserts a record and returns it with the auto-generated PK populated,
+// via RETURNING (Postgres, SQLite 3.35+). MySQL drivers override this.
 func (r *BaseCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 	if !r.Flavor.SupportsRETURNING {
 		return r.createWithLastInsertID(ctx, entity)
@@ -109,30 +98,28 @@ func (r *BaseCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 	return entity, nil
 }
 
-// createColumns returns the columns an INSERT writes and stamps the entity with
-// server time on the managed timestamp columns (created_at/updated_at). The
-// caller-writable set is the Creatable columns (or all non-PK under a bypass);
-// the managed timestamps are appended on top — they are system-written, not
-// caller-written — unless the caller already supplies them (bypass).
+// createColumns returns the columns an INSERT writes and stamps server time on
+// managed created_at/updated_at. The caller-writable set is Creatable (or all
+// non-PK under a bypass); managed timestamps are appended on top as
+// system-written, unless the caller already supplies them (bypass).
 func (r *BaseCRUD[T, ID]) createColumns(ctx context.Context, entityPtr *T) []string {
 	cols := WriteColumns(ctx, r.Schema, r.Meta.NonPKColumns(), r3.WriteOpCreate)
 	return append(cols, r.stampManagedTimestamps(ctx, entityPtr, cols, r3.WriteOpCreate)...)
 }
 
-// updateColumns returns the columns an UPDATE writes and stamps the entity with
-// server time on updated_at. The caller-writable set is the Mutable columns (so
-// created_at and other read-only columns are never clobbered, and a soft-deleted
-// row is not resurrected), or all non-PK columns under a bypass.
+// updateColumns returns the columns an UPDATE writes and stamps server time on
+// updated_at. The caller-writable set is Mutable (so read-only columns like
+// created_at are never clobbered and a soft-deleted row is not resurrected), or
+// all non-PK under a bypass.
 func (r *BaseCRUD[T, ID]) updateColumns(ctx context.Context, entityPtr *T) []string {
 	cols := WriteColumns(ctx, r.Schema, r.Meta.NonPKColumns(), r3.WriteOpMutate)
 	return append(cols, r.stampManagedTimestamps(ctx, entityPtr, cols, r3.WriteOpMutate)...)
 }
 
-// stampManagedTimestamps sets server time on the managed timestamp columns the op
-// writes and returns them so the caller can add them to the write set. It is a
-// no-op under the write-guard bypass (a worker supplies explicit timestamps), for
-// a zero schema (legacy "write everything" behavior), and for any timestamp the
-// caller already lists.
+// stampManagedTimestamps sets server time on the managed timestamp columns this op
+// writes and returns them for the caller to add to the write set. No-op under the
+// write-guard bypass (worker supplies its own), for a zero schema, and for any
+// timestamp the caller already lists.
 func (r *BaseCRUD[T, ID]) stampManagedTimestamps(
 	ctx context.Context, entityPtr *T, callerCols []string, op r3.WriteOp,
 ) []string {
@@ -149,7 +136,7 @@ func (r *BaseCRUD[T, ID]) stampManagedTimestamps(
 	return inject
 }
 
-// createWithLastInsertID is the fallback Create for databases without RETURNING (MySQL).
+// createWithLastInsertID is Create for backends without RETURNING (MySQL).
 func (r *BaseCRUD[T, ID]) createWithLastInsertID(ctx context.Context, entity T) (T, error) {
 	cols := r.createColumns(ctx, &entity)
 	vals := r.Meta.FieldValuesForColumns(entity, cols)
@@ -190,12 +177,12 @@ func (r *BaseCRUD[T, ID]) createWithLastInsertID(ctx context.Context, entity T) 
 }
 
 // buildFilterSQL converts the prepared query's filters into WHERE parts (with
-// flavor-specific placeholders), their args, and a JOIN fragment. It is the
-// shared core of List and Count. The returned argIdx is the next free
-// placeholder index, so callers (List) can append further clauses (e.g. cursor).
+// flavor placeholders), their args, and a JOIN fragment - the shared core of List
+// and Count. The returned argIdx is the next free placeholder index, so List can
+// append further clauses (e.g. cursor).
 //
-// JOINs use JOIN ... ON TRUE because the raw SQL engine lacks schema metadata to
-// infer ON conditions. ORM-based drivers (GORM, Bun, go-pg) handle proper JOINs.
+// JOINs use JOIN ... ON TRUE: the raw SQL engine lacks the schema metadata to
+// infer ON conditions. ORM drivers (GORM, Bun, go-pg) do proper JOINs.
 func (r *BaseCRUD[T, ID]) buildFilterSQL(
 	prep PreparedListQuery,
 ) ([]string, []any, string, int) {
@@ -203,7 +190,7 @@ func (r *BaseCRUD[T, ID]) buildFilterSQL(
 	var whereArgs []any
 	argIdx := 1
 
-	// Soft-delete: auto-add WHERE deleted_at IS NULL unless IncludeTrashed is true
+	// Soft-delete: add WHERE deleted_at IS NULL unless IncludeTrashed.
 	if r.Meta.SoftDeleteColumn != "" && !prep.Query.IncludeTrashed.Some(true) {
 		whereParts = append(whereParts, fmt.Sprintf("%s IS NULL", r.Meta.SoftDeleteColumn))
 	}
@@ -227,10 +214,9 @@ func (r *BaseCRUD[T, ID]) buildFilterSQL(
 	return whereParts, whereArgs, joinSQL, argIdx
 }
 
-// prepareList merges the query args with defaults, validates the merged query
-// against the schema (so an unknown/non-filterable/non-sortable/non-queryable
-// field is a typed error before any SQL is built), then builds the SQL
-// components. A zero schema validates nothing.
+// prepareList merges args with defaults, validates against the schema (an
+// unknown/non-filterable/non-sortable field is a typed error before any SQL is
+// built; a zero schema validates nothing), then builds the SQL components.
 func (r *BaseCRUD[T, ID]) prepareList(qarg ...r3.Query) (PreparedListQuery, error) {
 	merged := r.MergeListQuery(qarg...)
 	if err := r.Schema.ValidateQuery(merged); err != nil {
@@ -271,10 +257,9 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		return nil, 0, err
 	}
 
-	// Build WHERE/JOIN clauses (with placeholder conversion for this flavor)
 	whereParts, whereArgs, joinSQL, argIdx := r.buildFilterSQL(prep)
 
-	// Pagination: count first if needed (skip for cursor pagination)
+	// Offset pagination counts first; cursor pagination skips the count.
 	var totalCount int64
 	if prep.IsPaginated {
 		countWhereSQL := ""
@@ -293,7 +278,7 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		}
 	}
 
-	// Cursor pagination: add keyset WHERE clause after count query
+	// Cursor pagination: append the keyset WHERE after the count query.
 	if prep.IsCursorPaginated && prep.CursorClause.Clause != "" {
 		converted, nextIdx := r.Flavor.ConvertPlaceholders(prep.CursorClause.Clause, argIdx)
 		whereParts = append(whereParts, converted)
@@ -320,7 +305,6 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		orderSQL = " ORDER BY " + strings.Join(sortParts, ", ")
 	}
 
-	// Build LIMIT/OFFSET
 	var limitSQL string
 	if prep.IsCursorPaginated {
 		limitSQL = fmt.Sprintf(" LIMIT %d", prep.CursorLimit)
@@ -328,11 +312,9 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		limitSQL = fmt.Sprintf(" LIMIT %d OFFSET %d", prep.Limit, prep.Offset)
 	}
 
-	// Resolve selected columns (Fields selection)
 	selectedCols := FieldsToColumns(prep.Query.Fields)
 	selectCols, _ := r.Meta.FieldIndicesForColumns(selectedCols)
 
-	// Execute the main SELECT
 	selectQuery := r.Flavor.QuoteIdentifiers(fmt.Sprintf(
 		"SELECT %s FROM %s%s%s%s%s",
 		ColumnsString(selectCols),
@@ -373,7 +355,6 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		entities, totalCount = FinalizeCount(entities, totalCount, prep.IsPaginated)
 	}
 
-	// Run preloads if any are requested and the model has relations
 	if len(prep.Query.Preloads) > 0 && len(r.Meta.Relations) > 0 {
 		if err := RunPreloads(ctx, r.Executor, &r.Meta, r.Flavor, &entities, prep.Query.Preloads); err != nil {
 			return nil, 0, fmt.Errorf("preload failed: %w", err)
@@ -392,11 +373,10 @@ func (r *BaseCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 		return entity, err
 	}
 
-	// Resolve selected columns (Fields selection)
 	selectedCols := FieldsToColumns(q.Fields)
 	selectCols, _ := r.Meta.FieldIndicesForColumns(selectedCols)
 
-	// Build WHERE clause: pk = ? [AND deleted_at IS NULL]
+	// WHERE pk = ? [AND deleted_at IS NULL]
 	whereParts := []string{r.Flavor.WhereEq(r.Meta.PKColumn, 1)}
 	if r.Meta.SoftDeleteColumn != "" && !q.IncludeTrashed.Some(true) {
 		whereParts = append(whereParts, fmt.Sprintf("%s IS NULL", r.Meta.SoftDeleteColumn))
@@ -418,7 +398,6 @@ func (r *BaseCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 		return entity, err
 	}
 
-	// Run preloads if any are requested and the model has relations
 	if len(q.Preloads) > 0 && len(r.Meta.Relations) > 0 {
 		entities := []T{entity}
 		if err := RunPreloads(ctx, r.Executor, &r.Meta, r.Flavor, &entities, q.Preloads); err != nil {
@@ -430,17 +409,17 @@ func (r *BaseCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 	return entity, nil
 }
 
-// Update modifies an existing record identified by its primary key.
+// Update modifies the record identified by its primary key.
 //
-// Only Mutable columns are written (schema-shaped): a full Update can no longer
-// clobber created_at or resurrect a soft-deleted row. A model with no mutable
-// columns makes Update a verified no-op. The write guard can be bypassed for
-// audited system/worker writes (see r3.WithoutWriteGuard).
+// Only Mutable columns are written, so a full Update cannot clobber created_at or
+// resurrect a soft-deleted row; a model with no mutable columns makes it a
+// verified no-op. Bypass the write guard for audited system/worker writes (see
+// r3.WithoutWriteGuard).
 func (r *BaseCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	cols := r.updateColumns(ctx, &entity)
 	if len(cols) == 0 {
-		// Nothing to write — confirm the row exists to preserve Update's
-		// not-found contract, then return the entity unchanged.
+		// Nothing to write: confirm the row exists to honor the not-found
+		// contract, then return unchanged.
 		if err := r.requireExists(ctx, r.Meta.PKValue(entity)); err != nil {
 			return entity, err
 		}
@@ -468,8 +447,8 @@ func (r *BaseCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	return entity, nil
 }
 
-// Patch performs a partial update, modifying only the columns specified by fields.
-// The entity must have its primary key set. Returns the full entity after the update.
+// Patch updates only the columns named by fields; entity must have its PK set.
+// Returns the full entity after the update.
 func (r *BaseCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields) (T, error) {
 	cols := FieldsToColumns(fields)
 
@@ -503,8 +482,7 @@ func (r *BaseCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields)
 	err = r.Executor.QueryRowContext(ctx, query, args...).Scan(dests...)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			// No row matched the PK: normalize to the cross-backend sentinel
-			// instead of leaking the raw driver error (matches Get).
+			// No row matched the PK: normalize to the sentinel, like Get.
 			return entity, r3.ErrNotFound
 		}
 		return entity, err
@@ -512,7 +490,7 @@ func (r *BaseCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields)
 	return entity, nil
 }
 
-// patchWithoutRETURNING is the fallback Patch for databases without RETURNING (MySQL).
+// patchWithoutRETURNING is Patch for backends without RETURNING (MySQL).
 func (r *BaseCRUD[T, ID]) patchWithoutRETURNING(ctx context.Context, entity T, cols []string) (T, error) {
 	vals := r.Meta.FieldValuesForColumns(entity, cols)
 	pkVal := r.Meta.PKValue(entity)
@@ -530,7 +508,6 @@ func (r *BaseCRUD[T, ID]) patchWithoutRETURNING(ctx context.Context, entity T, c
 		return entity, err
 	}
 
-	// Re-fetch the full entity
 	selectQuery := fmt.Sprintf(
 		"SELECT %s FROM %s WHERE %s",
 		ColumnsString(r.Meta.Columns),
@@ -542,10 +519,9 @@ func (r *BaseCRUD[T, ID]) patchWithoutRETURNING(ctx context.Context, entity T, c
 	err = r.Executor.QueryRowContext(ctx, selectQuery, pkVal).Scan(dests...)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			// The row does not exist (the UPDATE matched nothing): report the
-			// cross-backend sentinel. The re-fetch is a reliable not-found
-			// signal even on MySQL, where RowsAffected counts changed (not
-			// matched) rows and so cannot distinguish a no-op from a miss.
+			// UPDATE matched nothing: report the sentinel. The re-fetch is a
+			// reliable not-found signal even on MySQL, where RowsAffected counts
+			// changed (not matched) rows and can't tell a no-op from a miss.
 			return entity, r3.ErrNotFound
 		}
 		return entity, err
@@ -553,10 +529,9 @@ func (r *BaseCRUD[T, ID]) patchWithoutRETURNING(ctx context.Context, entity T, c
 	return entity, nil
 }
 
-// Delete removes a record by its ID.
-// If the model has a soft-delete column (tagged with `r3:"soft_delete"`),
-// it performs a soft-delete by setting the column to the current timestamp.
-// Otherwise, it performs a hard delete.
+// Delete removes a record by ID. With a soft-delete column (tagged
+// `r3:"soft_delete"`) it sets that column to the current timestamp; otherwise it
+// hard-deletes.
 func (r *BaseCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 	if r.Meta.SoftDeleteColumn != "" {
 		// Soft-delete: UPDATE SET deleted_at = NOW() WHERE pk = ?
@@ -574,7 +549,6 @@ func (r *BaseCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 		return r.requireUpdatedRow(ctx, res, id)
 	}
 
-	// Hard delete
 	query := fmt.Sprintf(
 		"DELETE FROM %s WHERE %s",
 		r.Meta.TableName,
@@ -587,8 +561,8 @@ func (r *BaseCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 	return requireDeletedRow(res)
 }
 
-// Restore clears the soft-delete column, un-deleting a soft-deleted record.
-// Returns an error if the model has no soft-delete column.
+// Restore clears the soft-delete column, un-deleting a record. Errors if the
+// model has no soft-delete column.
 func (r *BaseCRUD[T, ID]) Restore(ctx context.Context, id ID) error {
 	if r.Meta.SoftDeleteColumn == "" {
 		return errors.New("r3/engine/sql: model has no soft-delete column")
@@ -620,10 +594,10 @@ func (r *BaseCRUD[T, ID]) HardDelete(ctx context.Context, id ID) error {
 	return requireDeletedRow(res)
 }
 
-// requireDeletedRow returns r3.ErrNotFound when a DELETE matched no row. For a
-// DELETE the affected-row count equals the matched-row count on every supported
-// backend, so a zero count unambiguously means "not found". When the driver
-// cannot report RowsAffected the check is skipped (success is assumed, as before).
+// requireDeletedRow returns r3.ErrNotFound when a DELETE matched no row. A
+// DELETE's affected-row count equals its matched-row count on every backend, so
+// zero unambiguously means "not found". Skipped when the driver can't report
+// RowsAffected.
 func requireDeletedRow(res sql.Result) error {
 	n, err := res.RowsAffected()
 	if err != nil {
@@ -637,12 +611,11 @@ func requireDeletedRow(res sql.Result) error {
 
 // requireUpdatedRow returns r3.ErrNotFound when an UPDATE matched no row.
 //
-// Unlike DELETE, a zero affected-row count on an UPDATE is ambiguous on MySQL,
-// which reports *changed* rows rather than *matched* rows — a no-op update of an
-// existing row reports zero. So when the count is zero we confirm existence by
-// primary key before concluding the row is missing. On Postgres/SQLite the count
-// already reflects matched rows, so the extra lookup only runs in the rare
-// zero-count case. If the driver cannot report RowsAffected the check is skipped.
+// Unlike DELETE, a zero count is ambiguous on MySQL, which reports *changed*
+// rather than *matched* rows - a no-op update of an existing row reports zero. So
+// on zero we confirm existence by PK before concluding "missing"; the extra
+// lookup only runs in that rare case (Postgres/SQLite already count matched rows).
+// Skipped when the driver can't report RowsAffected.
 func (r *BaseCRUD[T, ID]) requireUpdatedRow(ctx context.Context, res sql.Result, pkVal any) error {
 	n, err := res.RowsAffected()
 	if err != nil {
@@ -662,9 +635,8 @@ func (r *BaseCRUD[T, ID]) requireUpdatedRow(ctx context.Context, res sql.Result,
 	return nil
 }
 
-// requireExists returns r3.ErrNotFound when no row has the given primary key.
-// Used by Update when there are no mutable columns to write, so the no-op still
-// honors the not-found contract.
+// requireExists returns r3.ErrNotFound when no row has the given PK. Used by
+// Update's no-mutable-columns no-op so it still honors the not-found contract.
 func (r *BaseCRUD[T, ID]) requireExists(ctx context.Context, pkVal any) error {
 	exists, err := r.existsByPK(ctx, pkVal)
 	if err != nil {
@@ -676,8 +648,8 @@ func (r *BaseCRUD[T, ID]) requireExists(ctx context.Context, pkVal any) error {
 	return nil
 }
 
-// existsByPK reports whether a row with the given primary key exists, regardless
-// of soft-delete state (it matches the physical row the way UPDATE does).
+// existsByPK reports whether a row with the given PK exists, regardless of
+// soft-delete state (matching the physical row the way UPDATE does).
 func (r *BaseCRUD[T, ID]) existsByPK(ctx context.Context, pkVal any) (bool, error) {
 	query := fmt.Sprintf(
 		"SELECT 1 FROM %s WHERE %s",

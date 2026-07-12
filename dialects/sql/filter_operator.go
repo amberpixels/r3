@@ -18,8 +18,8 @@ const (
 	SQLClauseOperatorNotIn   SQLClauseOperator = "NOT IN"
 )
 
-// String so we implement fmt.Stringer.
+// String implements fmt.Stringer.
 func (op SQLClauseOperator) String() string { return string(op) }
 
-// ToSQL is the string representation that will be used inside generated SQL.
+// ToSQL returns the operator as it appears in generated SQL.
 func (op SQLClauseOperator) ToSQL() string { return string(op) }

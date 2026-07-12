@@ -10,25 +10,8 @@ import (
 	"github.com/google/uuid"
 )
 
-// CRUD is a decorator that wraps any r3.CRUD[T, ID] and records every
-// mutation as a ChangeRecord in the configured history store.
-//
-// It transparently satisfies the r3.CRUD[T, ID] interface, so it can be used
-// as a drop-in replacement for any CRUD repository. Read operations (Get, List)
-// are delegated directly to the inner CRUD without recording anything.
-//
-// The history store is any r3.CRUD[ChangeRecord, string] — the same CRUD
-// abstraction used everywhere in r3. "Everything is a R3po."
-//
-// Usage:
-//
-//	repo := r3history.WithHistory[Order, int64](
-//	    gormOrderCRUD,
-//	    historyStore,  // any r3.CRUD[ChangeRecord, string]
-//	    r3history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
-//	    r3history.WithMetadataFunc[Order, int64](metadataFromCtx),
-//	)
-//	// repo satisfies r3.CRUD[Order, int64]
+// CRUD records every mutation on the wrapped repo as a [ChangeRecord] in the
+// history store. Reads (Get, List, Count) pass through unrecorded.
 type CRUD[T any, ID comparable] struct {
 	inner r3.CRUD[T, ID]
 	store r3.CRUD[ChangeRecord, string]
@@ -38,23 +21,19 @@ type CRUD[T any, ID comparable] struct {
 	versionLocks *versionLocker
 }
 
-// Compile-time check that CRUD satisfies r3.CRUD.
 var _ r3.CRUD[any, any] = &CRUD[any, any]{}
 var _ r3.Aggregator = &CRUD[any, any]{}
 var _ r3.RelationAggregator = &CRUD[any, any]{}
 
-// WithHistory wraps an existing r3.CRUD with history tracking.
-// The IDFunc option is required — the decorator must know how to extract
-// the primary key from an entity.
-//
-// The store parameter is any r3.CRUD[ChangeRecord, string] — use the same
-// CRUD implementation you use for everything else (SQL, GORM, MongoDB, etc.).
-//
-// Example:
+// WithHistory wraps a repo with history tracking. store is any
+// r3.CRUD[ChangeRecord, string]; the IDFunc option is required so the decorator
+// can extract an entity's primary key.
 //
 //	repo := r3history.WithHistory[Order, int64](
-//	    innerRepo, store,
+//	    gormOrderCRUD,
+//	    historyStore,
 //	    r3history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
+//	    r3history.WithMetadataFunc[Order, int64](metadataFromCtx),
 //	)
 func WithHistory[T any, ID comparable](
 	inner r3.CRUD[T, ID],
@@ -75,34 +54,30 @@ func WithHistory[T any, ID comparable](
 	}
 }
 
-// Inner returns the underlying CRUD repository (unwrapped).
-// Useful when you need to bypass history tracking for a specific operation.
+// Inner returns the wrapped repo, bypassing history tracking.
 func (h *CRUD[T, ID]) Inner() r3.CRUD[T, ID] {
 	return h.inner
 }
 
-// Unwrap returns the wrapped CRUD so capability detection and transaction
-// propagation can walk the decorator chain.
+// Unwrap returns the wrapped CRUD for chain walking (capability detection, tx).
 func (h *CRUD[T, ID]) Unwrap() r3.CRUD[T, ID] {
 	return h.inner
 }
 
-// Rewrap rebuilds this decorator around a different inner CRUD (used to
-// re-apply the history layer on top of a transaction-bound CRUD). The change
-// store, options, and version locks are shared with the rebuilt instance so
-// version assignment stays serialized across the original and tx-bound layers.
+// Rewrap re-applies this layer over a different inner CRUD (e.g. a tx-bound one).
+// The store, options, and version locks are shared so version assignment stays
+// serialized across the original and tx-bound layers.
 func (h *CRUD[T, ID]) Rewrap(inner r3.CRUD[T, ID]) r3.CRUD[T, ID] {
 	return &CRUD[T, ID]{inner: inner, store: h.store, opts: h.opts, versionLocks: h.versionLocks}
 }
 
-// History returns the change record CRUD for querying history directly.
-// Use it with the query builders (QueryForRecord, QueryForType, etc.)
-// to retrieve change records.
+// History returns the change-record CRUD, for use with the query builders
+// (QueryForRecord, QueryForType, ...).
 func (h *CRUD[T, ID]) History() r3.CRUD[ChangeRecord, string] {
 	return h.store
 }
 
-// Reverter returns a Reverter for undo/revert operations on this entity type.
+// Reverter returns a Reverter for undo/revert on this entity type.
 func (h *CRUD[T, ID]) Reverter() *Reverter[T, ID] {
 	return &Reverter[T, ID]{
 		crud:         h.inner,
@@ -148,8 +123,7 @@ func (h *CRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, error
 	return h.inner.Count(ctx, qarg...)
 }
 
-// Aggregate passes through to the inner CRUD's Aggregate. No history is
-// recorded for reads.
+// Aggregate passes through to the inner CRUD (read, unrecorded).
 func (h *CRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.AggregateRow, error) {
 	agg, ok := h.inner.(r3.Aggregator)
 	if !ok {
@@ -158,8 +132,7 @@ func (h *CRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.Agg
 	return agg.Aggregate(ctx, qarg...)
 }
 
-// AggregateThroughRelation passes through to the inner CRUD. No history is
-// recorded for reads.
+// AggregateThroughRelation passes through to the inner CRUD (read, unrecorded).
 func (h *CRUD[T, ID]) AggregateThroughRelation(
 	ctx context.Context, relation string, qarg ...r3.Query,
 ) ([]r3.AggregateRow, error) {
@@ -170,9 +143,9 @@ func (h *CRUD[T, ID]) AggregateThroughRelation(
 	return agg.AggregateThroughRelation(ctx, relation, qarg...)
 }
 
-// Update modifies an existing entity and records an "update" change with field-level diff.
+// Update modifies an entity and records an "update" change with field-level diff.
 func (h *CRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
-	// Fetch old state for diffing
+	// Fetch old state for diffing.
 	var old T
 	var hasOld bool
 	if h.opts.IDFunc != nil {
@@ -207,7 +180,7 @@ func (h *CRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 
 // Patch performs a partial update and records a "patch" change with field-level diff.
 func (h *CRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields) (T, error) {
-	// Fetch old state for diffing
+	// Fetch old state for diffing.
 	var old T
 	var hasOld bool
 	if h.opts.IDFunc != nil {
@@ -243,7 +216,7 @@ func (h *CRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields) (T,
 
 // Delete removes an entity and records a "delete" change.
 func (h *CRUD[T, ID]) Delete(ctx context.Context, id ID) error {
-	// Fetch the entity before deletion for the diff and snapshot rules
+	// Fetch pre-deletion state for the diff and snapshot rules.
 	var old T
 	var hasOld bool
 	oldEntity, err := h.inner.Get(ctx, id)
@@ -271,12 +244,9 @@ func (h *CRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 	return nil
 }
 
-// RecordEvent appends a domain or synthetic event to an entity's activity
-// timeline (Action ActionEvent), separate from field-level changes. eventType
-// names the event (e.g. "comment_added", "activity_logging_started"); data is an
-// optional structured payload. The actor is resolved like any change (the fixed
-// actor if configured, else the context actor). The event takes the next
-// timeline version and is skipped by state reconstruction (it carries no diff).
+// RecordEvent appends a timeline event (Action ActionEvent) to an entity, separate
+// from field-level changes. It takes the next timeline version but is skipped by
+// state reconstruction (no diff). The actor is resolved like any change.
 func (h *CRUD[T, ID]) RecordEvent(
 	ctx context.Context, id ID, eventType string, data map[string]any,
 ) (ChangeRecord, error) {
@@ -295,11 +265,9 @@ func (h *CRUD[T, ID]) RecordEvent(
 	return persistVersioned(ctx, h.store, h.versionLocks, rec)
 }
 
-// RecordSyntheticCreate writes a best-effort "create" for an entity that already
-// existed before tracking began: it captures the entity's CURRENT state as the
-// create diff, dated `at` (the entity's real creation time), and flags the
-// record Synthetic with an explanatory Note. Use during backfill so an entity
-// with no recorded history still shows an origin point.
+// RecordSyntheticCreate writes a best-effort "create" for an entity that predates
+// tracking: it captures the CURRENT state as the create diff, dates it `at`, and
+// flags the record Synthetic. Use during backfill so the entity has an origin point.
 func (h *CRUD[T, ID]) RecordSyntheticCreate(
 	ctx context.Context, entity T, at time.Time,
 ) (ChangeRecord, error) {
@@ -323,7 +291,7 @@ func (h *CRUD[T, ID]) RecordSyntheticCreate(
 	return persistVersioned(ctx, h.store, h.versionLocks, rec)
 }
 
-// recordInfo holds context for building a change record and evaluating snapshot rules.
+// recordInfo carries state for building a change record and evaluating snapshots.
 type recordInfo[T any] struct {
 	entity T      // the entity after mutation (or before deletion)
 	old    T      // the entity before mutation (zero value for create)
@@ -331,14 +299,10 @@ type recordInfo[T any] struct {
 	action Action // the mutation type
 }
 
-// record creates and persists a ChangeRecord. If Async is enabled, it runs in a
-// background goroutine and always returns nil (errors are reported via
-// handleError). In synchronous mode a failed change-record write is reported via
-// handleError and, if FailOnError is set, returned to the caller — otherwise nil
-// is returned and recording is best-effort.
-//
-// After a successful record, snapshot rules are evaluated — snapshots are stored
-// separately via each rule's snapshot CRUD.
+// record builds and persists a ChangeRecord, then evaluates snapshot rules. In
+// Async mode it runs in a background goroutine and always returns nil (errors go
+// to handleError). Synchronously, a failed write goes to handleError and is
+// returned only if FailOnError is set; otherwise recording is best-effort.
 func (h *CRUD[T, ID]) record(ctx context.Context, info recordInfo[T], diffFn func() []FieldChange) error {
 	buildRecord := func() ChangeRecord {
 		recordID := ""
@@ -357,13 +321,11 @@ func (h *CRUD[T, ID]) record(ctx context.Context, info recordInfo[T], diffFn fun
 			CreatedAt:  time.Now(),
 		}
 
-		// Metadata carries only the surrounding context (Source, Extra); the
-		// actor is a first-class field, resolved above from r3.GetActor(ctx).
+		// Metadata is surrounding context only; the actor is first-class above.
 		if h.opts.MetadataFunc != nil {
 			record.Metadata = r3.NewJSONColumn(h.opts.MetadataFunc(ctx))
 		}
 
-		// Parent reference
 		if h.opts.ParentRef != nil {
 			record.ParentType = h.opts.ParentRef.ParentType
 			record.ParentID = extractFieldByName(info.entity, h.opts.ParentRef.FKField)
@@ -373,11 +335,10 @@ func (h *CRUD[T, ID]) record(ctx context.Context, info recordInfo[T], diffFn fun
 	}
 
 	if h.opts.Async {
-		// Detach from the request lifetime (so the write isn't cancelled when the
-		// request returns) while preserving request-scoped values like the Actor.
+		// Detach from the request lifetime so the write isn't cancelled on return,
+		// while preserving request-scoped values like the Actor.
 		asyncCtx := context.WithoutCancel(ctx)
 		go func() {
-			// Assign version + ID and persist atomically per record key.
 			record, err := persistVersioned(asyncCtx, h.store, h.versionLocks, buildRecord())
 			if err != nil {
 				h.handleError(asyncCtx, err)
@@ -420,8 +381,8 @@ func (h *CRUD[T, ID]) evaluateSnapshots(ctx context.Context, record ChangeRecord
 	)
 }
 
-// handleError reports a failed change-record write. It calls the configured
-// ErrorHandler if set, otherwise logs via slog.
+// handleError reports a failed change-record write via the configured ErrorHandler,
+// or slog if none is set.
 func (h *CRUD[T, ID]) handleError(ctx context.Context, err error) {
 	if h.opts.ErrorHandler != nil {
 		h.opts.ErrorHandler(err)
@@ -430,9 +391,8 @@ func (h *CRUD[T, ID]) handleError(ctx context.Context, err error) {
 	slog.ErrorContext(ctx, "r3history: record failed", "record_type", h.opts.RecordType, "error", err)
 }
 
-// resolveActor returns the actor to attribute a change to: the decorator's
-// fixed actor when configured (a system/worker repo), otherwise the context
-// actor (r3.GetActor, which defaults to SystemActor when none is set).
+// resolveActor attributes a change to the decorator's fixed actor when set (a
+// system/worker repo), else the context actor (r3.GetActor, SystemActor by default).
 func resolveActor(ctx context.Context, fixed *r3.Actor) r3.Actor {
 	if fixed != nil {
 		return *fixed
@@ -440,9 +400,8 @@ func resolveActor(ctx context.Context, fixed *r3.Actor) r3.Actor {
 	return r3.GetActor(ctx)
 }
 
-// metadataFromCtx returns the surrounding-context Metadata (Source, Extra) from
-// the user-provided MetadataFunc, or a zero Metadata if none is configured. The
-// actor is resolved separately as a first-class field via r3.GetActor(ctx).
+// metadataFromCtx returns the Metadata from the user MetadataFunc, or zero if none.
+// The actor is resolved separately as a first-class field.
 func metadataFromCtx(ctx context.Context, metadataFunc MetadataFunc) Metadata {
 	if metadataFunc == nil {
 		return Metadata{}
@@ -450,8 +409,8 @@ func metadataFromCtx(ctx context.Context, metadataFunc MetadataFunc) Metadata {
 	return metadataFunc(ctx)
 }
 
-// nextVersion computes the next version number for a (recordType, recordID) pair
-// by querying the latest version and incrementing it.
+// nextVersion returns the next version for a (recordType, recordID) pair by
+// incrementing the latest recorded version (1 if none).
 func nextVersion(ctx context.Context, store r3.CRUD[ChangeRecord, string], recordType, recordID string) int64 {
 	q := QueryLatestVersion(recordType, recordID)
 	records, _, err := store.List(ctx, q)
@@ -461,7 +420,7 @@ func nextVersion(ctx context.Context, store r3.CRUD[ChangeRecord, string], recor
 	return records[0].Version + 1
 }
 
-// generateID creates a unique, collision-resistant ID for a change record.
+// generateID returns a unique change-record ID.
 func generateID() string {
 	return uuid.NewString()
 }

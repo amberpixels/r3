@@ -1,52 +1,41 @@
 package r3
 
-// Config holds framework-level configuration for R3 repositories.
-// It controls naming conventions, default query behavior, and other
-// cross-cutting concerns that are not specific to any single model.
-//
-// Use [DefaultConfig] to get a Config with sensible defaults,
-// then override individual fields as needed.
-//
-// Config is intended to be read-only after construction. Pass it to
-// engine/driver constructors via [WithConfig].
+// Config holds framework-level configuration (naming, default query behavior)
+// shared across models. Build it with [DefaultConfig], override fields, then pass
+// it to a constructor via [WithConfig]. Treat as read-only after construction.
 type Config struct {
-	// Naming controls how R3 maps well-known fields to storage column names.
+	// Naming maps well-known fields to storage column names.
 	Naming NamingConfig
 
 	// Defaults controls default query behavior (e.g. page size).
 	Defaults DefaultsConfig
 }
 
-// NamingConfig controls how R3 maps well-known fields to storage column names.
-// Empty strings mean "use the default".
+// NamingConfig maps well-known fields to storage column names. Empty means
+// "use the default".
 type NamingConfig struct {
-	// CreatedAtField is the storage column name for creation timestamps.
-	// Default: "created_at"
+	// CreatedAtField is the creation-timestamp column. Default: "created_at".
 	CreatedAtField string
 
-	// UpdatedAtField is the storage column name for update timestamps.
-	// Default: "updated_at"
+	// UpdatedAtField is the update-timestamp column. Default: "updated_at".
 	UpdatedAtField string
 
-	// DeletedAtField is the storage column name for soft-delete timestamps.
-	// Default: "deleted_at"
+	// DeletedAtField is the soft-delete-timestamp column. Default: "deleted_at".
 	DeletedAtField string
 }
 
 // DefaultsConfig controls default query behavior.
 type DefaultsConfig struct {
-	// PageSize is the default number of items per page when pagination
-	// is active but no explicit page size is provided.
-	// Default: 100 (same as PageSizeDefault)
+	// PageSize is the default page size when pagination is active but no explicit
+	// size is given. Default: [PageSizeDefault].
 	PageSize int
 
-	// Unpaginated, when true, makes List return ALL matching rows by default —
-	// no implicit page-size cap. Individual queries can still opt back into
-	// pagination per call by setting Query.Pagination. Takes precedence over
-	// PageSize.
+	// Unpaginated, when true, makes List return ALL matching rows by default (no
+	// page-size cap); a per-query Query.Pagination still opts back in. Takes
+	// precedence over PageSize.
 	//
-	// Use with care on large tables; prefer the per-query r3.Unpaginated()
-	// escape hatch when only some call sites need everything.
+	// Use with care on large tables; prefer the per-query [Unpaginated] escape
+	// hatch when only some call sites need everything.
 	Unpaginated bool
 }
 

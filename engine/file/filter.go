@@ -9,7 +9,7 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// filterEntities applies filters to a slice of entities, returning only those that match.
+// filterEntities returns only the entities matching every filter.
 func filterEntities[T any](entities []T, filters r3.Filters, meta *StructMeta) ([]T, error) {
 	if len(filters) == 0 {
 		return entities, nil
@@ -48,7 +48,6 @@ func matchesFilter[T any](entity T, filter *r3.FilterSpec, meta *StructMeta) (bo
 		return true, nil
 	}
 
-	// Handle compound filters (AND/OR groups)
 	if len(filter.And) > 0 {
 		for _, f := range filter.And {
 			match, err := matchesFilter(entity, f, meta)
@@ -75,7 +74,7 @@ func matchesFilter[T any](entity T, filter *r3.FilterSpec, meta *StructMeta) (bo
 		return false, nil
 	}
 
-	// Leaf filter: evaluate Field/Operator/Value
+	// Leaf: Field/Operator/Value.
 	if filter.Field == nil {
 		return true, nil
 	}
@@ -158,19 +157,18 @@ func compareEqual(a, b any) bool {
 		return false
 	}
 
-	// Try direct comparison first
 	if reflect.DeepEqual(a, b) {
 		return true
 	}
 
-	// Try numeric coercion (handles float64 vs int from JSON)
+	// Numeric coercion first (JSON decodes numbers as float64), then a string
+	// fallback for everything else.
 	aFloat, aOk := toFloat64(a)
 	bFloat, bOk := toFloat64(b)
 	if aOk && bOk {
 		return aFloat == bFloat
 	}
 
-	// Try string comparison
 	return fmt.Sprintf("%v", a) == fmt.Sprintf("%v", b)
 }
 
@@ -186,7 +184,6 @@ func compareOrdered(a, b any) int {
 		return 1
 	}
 
-	// Time comparison.
 	aTime, aIsTime := toTime(a)
 	bTime, bIsTime := toTime(b)
 	if aIsTime && bIsTime {
@@ -199,7 +196,6 @@ func compareOrdered(a, b any) int {
 		return 0
 	}
 
-	// Numeric comparison.
 	aFloat, aOk := toFloat64(a)
 	bFloat, bOk := toFloat64(b)
 	if aOk && bOk {
@@ -212,7 +208,7 @@ func compareOrdered(a, b any) int {
 		return 0
 	}
 
-	// String comparison.
+	// Fall back to string ordering.
 	aStr := fmt.Sprintf("%v", a)
 	bStr := fmt.Sprintf("%v", b)
 	if aStr < bStr {
@@ -224,8 +220,8 @@ func compareOrdered(a, b any) int {
 	return 0
 }
 
-// evaluateBetween checks if fieldVal is between two bounds.
-// filterVal must be a slice/array with exactly 2 elements [low, high].
+// evaluateBetween reports whether fieldVal lies between two bounds. filterVal
+// must be a 2-element slice/array [low, high].
 func evaluateBetween(fieldVal, filterVal any, inclusiveLow, inclusiveHigh bool) (bool, error) {
 	rv := reflect.ValueOf(filterVal)
 	if rv.Kind() != reflect.Slice && rv.Kind() != reflect.Array {
@@ -261,8 +257,8 @@ func valueIn(fieldVal, filterVal any) bool {
 	return false
 }
 
-// matchLike implements SQL LIKE pattern matching.
-// Pattern: % matches any sequence of characters, _ matches any single character.
+// matchLike implements SQL LIKE matching: % matches any run of characters, _
+// matches a single character.
 func matchLike(fieldVal, filterVal any, caseInsensitive bool) (bool, error) {
 	fieldStr := fmt.Sprintf("%v", fieldVal)
 	pattern := fmt.Sprintf("%v", filterVal)
@@ -277,7 +273,6 @@ func matchLike(fieldVal, filterVal any, caseInsensitive bool) (bool, error) {
 
 // matchLikePattern matches a string against a SQL LIKE pattern.
 func matchLikePattern(s, pattern string) bool {
-	// Convert LIKE pattern to a simple recursive match
 	return likeMatch(s, pattern, 0, 0)
 }
 
@@ -344,11 +339,10 @@ func toTime(v any) (time.Time, bool) {
 }
 
 // isNullValue reports whether a value represents SQL NULL: an absent field, a
-// nil interface, or a nil pointer (and nil maps/slices). A present non-pointer
-// zero value (0, "", false, the zero time) is NOT null — it is a real value, so
-// nulls-ordering and the `exists` operator must treat it as present, matching
-// SQL and Mongo semantics. (The reflection layer returns the raw field value, so
-// a nil pointer arrives here as a typed nil whose reflect Kind is Pointer.)
+// nil interface, or a nil pointer/map/slice. A present non-pointer zero (0, "",
+// false, the zero time) is NOT null - it is a real value, so nulls-ordering and
+// the `exists` operator treat it as present, matching SQL and Mongo. (A nil
+// pointer arrives here as a typed nil whose reflect Kind is Pointer.)
 func isNullValue(v any) bool {
 	if v == nil {
 		return true

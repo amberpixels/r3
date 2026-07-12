@@ -11,9 +11,9 @@ var (
 	_ r3.BulkPatcher[any, any] = &CRUD[any, any]{}
 )
 
-// Upsert validates the full entity (OpUpsert), then delegates to inner.Upsert.
-// An upsert carries the whole entity, so validation mirrors Create. Returns
-// r3.ErrUpsertNotSupported when the inner repo has no upsert capability.
+// Upsert validates the full entity (OpUpsert, mirroring Create since an upsert
+// carries the whole entity), then delegates to inner.Upsert. Returns
+// r3.ErrUpsertNotSupported when the inner repo can't upsert.
 func (v *CRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.UpsertOption) (T, error) {
 	up, ok := v.inner.(r3.Upserter[T, ID])
 	if !ok {
@@ -33,9 +33,9 @@ func (v *CRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.UpsertOpt
 }
 
 // PatchWhere validates the entity/fields (OpPatchWhere), then delegates to
-// inner.PatchWhere. Like Patch, only the patched Fields are meaningful; there is
-// no single Existing row to fetch, so Existing/Merged are not populated. Returns
-// r3.ErrBulkPatchNotSupported when the inner repo has no bulk-patch capability.
+// inner.PatchWhere. Like Patch, only Fields are meaningful; there is no single
+// Existing row, so Existing/Merged stay nil. Returns r3.ErrBulkPatchNotSupported
+// when the inner repo can't bulk-patch.
 func (v *CRUD[T, ID]) PatchWhere(
 	ctx context.Context, filters r3.Filters, entity T, fields r3.Fields,
 ) (int64, error) {

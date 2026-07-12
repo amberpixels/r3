@@ -6,10 +6,8 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// Canonical operator strings used by all serialization dialects.
-// These are the primary names; dialects may define additional aliases
-// (e.g., JSON's "==" for "eq") that they resolve before calling
-// ParseFilterOperator.
+// operatorByName holds the primary names. A dialect may add its own aliases
+// (e.g. JSON's "==" for "eq") and resolve them before calling ParseFilterOperator.
 var operatorByName = map[string]r3.FilterOperatorSpec{
 	"eq":              r3.OperatorEq,
 	"ne":              r3.OperatorNe,
@@ -29,13 +27,11 @@ var operatorByName = map[string]r3.FilterOperatorSpec{
 	"ilike":           r3.OperatorILike,
 }
 
-// nameByOperator is the reverse mapping: r3 operator → canonical string.
+// nameByOperator is the reverse of operatorByName.
 var nameByOperator = func() map[r3.FilterOperatorSpec]string {
 	m := make(map[r3.FilterOperatorSpec]string, len(operatorByName))
 	for name, op := range operatorByName {
-		// If an operator already has a name, keep the first one.
-		// Since we control the map above, every operator has exactly one
-		// canonical name (no duplicates for the same value).
+		// Each operator has exactly one canonical name; keep the first seen.
 		if _, exists := m[op]; !exists {
 			m[op] = name
 		}
@@ -43,10 +39,8 @@ var nameByOperator = func() map[r3.FilterOperatorSpec]string {
 	return m
 }()
 
-// ParseFilterOperator parses a canonical operator string to r3.FilterOperatorSpec.
-// Recognized strings: "eq", "ne", "exists", "gt", "gte", "lt", "lte",
-// "between", "between_exc", "between_exc_inc", "between_inc_exc",
-// "in", "nin", "like", "notlike", "ilike".
+// ParseFilterOperator parses a canonical operator string (the keys of
+// operatorByName) to r3.FilterOperatorSpec.
 func ParseFilterOperator(s string) (r3.FilterOperatorSpec, error) {
 	op, ok := operatorByName[s]
 	if !ok {

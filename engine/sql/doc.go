@@ -1,23 +1,15 @@
-// Package enginesql provides the SQL engine for r3.
+// Package enginesql is r3's SQL engine, serving two roles:
 //
-// It serves two roles:
+//  1. Full CRUD via [BaseCRUD]: a generic r3.CRUD over database/sql with
+//     reflection-based struct scanning. Raw SQL drivers (pq, pgx, mysql, sqlite3)
+//     embed it and configure only a [Flavor].
 //
-//  1. Full CRUD via [BaseCRUD]: a generic r3.CRUD implementation using database/sql
-//     and reflection-based struct scanning. Raw SQL drivers (pq, pgx, mysql, sqlite3)
-//     embed BaseCRUD and only configure it via [Flavor] (placeholder style,
-//     RETURNING support, timestamp function).
+//  2. Shared query preparation via [PreparedListQuery]: ORM drivers (GORM, Bun,
+//     go-pg) execute through their own API but reuse this to translate r3 filters,
+//     sorts, and pagination into SQL-ready pieces instead of duplicating it.
 //
-//  2. Shared query preparation via [PreparedListQuery]: ORM-based drivers (GORM, Bun,
-//     go-pg) do NOT embed BaseCRUD — they use their own ORM API for query execution.
-//     However, they share PreparedListQuery to convert r3 filters, sorts, and pagination
-//     into SQL-ready components, avoiding duplicated translation logic.
+// Key types: [BaseCRUD], [BaseRaw] (arbitrary-query escape hatch), [StructMeta]
+// (reflected columns/PK/relations/soft-delete), [Flavor], [PreparedListQuery].
 //
-// Key types:
-//   - [BaseCRUD]: full r3.CRUD backed by database/sql
-//   - [BaseRaw]: escape hatch for arbitrary SQL queries
-//   - [StructMeta]: reflection-based struct metadata (columns, PK, relations, soft-delete)
-//   - [Flavor]: database-specific SQL variations (placeholders, RETURNING, timestamps)
-//   - [PreparedListQuery]: pre-computed SQL clauses from an r3.Query, shared by all SQL drivers
-//
-// This package is public so that third-party drivers can reuse it.
+// Public so third-party drivers can reuse it.
 package enginesql

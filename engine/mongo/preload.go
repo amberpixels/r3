@@ -10,16 +10,13 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
-// RunPreloads executes preload queries for the given entities based on the requested
-// preload names and the relation metadata in StructMeta.
+// RunPreloads loads the requested relations for entities (a pointer to a slice,
+// e.g. *[]City) via key-set $in queries, one per relation:
 //
-// For has-many relations: collects parent IDs, queries child collection WHERE fk IN (...),
-// groups results by FK, and assigns them to the parent's slice field.
-//
-// For belongs-to relations: collects FK values from parents, queries target collection
-// WHERE _id IN (...), and assigns results to the parent's pointer field.
-//
-// entities must be a pointer to a slice (e.g. *[]City).
+//   - has-many: query children where fk $in (parent IDs), group by FK, assign to
+//     the parent's slice field.
+//   - belongs-to: query targets where _id $in (parent FKs), assign to the
+//     parent's pointer field.
 func RunPreloads(
 	ctx context.Context,
 	db *mongo.Database,
@@ -75,7 +72,6 @@ func preloadHasMany(
 		return nil
 	}
 
-	// Collect unique parent ID values
 	idSet := make(map[any]bool, n)
 	var idValues []any
 	for i := range n {
@@ -91,7 +87,6 @@ func preloadHasMany(
 		return nil
 	}
 
-	// Query child collection: {fk: {$in: [...]}}
 	targetMeta := &rel.TargetMeta
 	coll := db.Collection(targetMeta.CollectionName)
 
@@ -103,7 +98,6 @@ func preloadHasMany(
 	}
 	defer cursor.Close(ctx)
 
-	// Find the FK field index in the target meta
 	fkFieldIdx := -1
 	for i, f := range targetMeta.Fields {
 		if f == rel.FKField {
@@ -115,7 +109,7 @@ func preloadHasMany(
 		return fmt.Errorf("FK field %q not found in target collection %s", rel.FKField, targetMeta.CollectionName)
 	}
 
-	// Scan results and group by FK value
+	// Group scanned children by FK value.
 	grouped := make(map[any][]reflect.Value)
 	for cursor.Next(ctx) {
 		childPtr := reflect.New(rel.TargetType)
@@ -130,7 +124,6 @@ func preloadHasMany(
 		return err
 	}
 
-	// Assign grouped children back to parent entities
 	for i := range n {
 		entity := sliceVal.Index(i)
 		idVal := entity.Field(parentMeta.FieldIndices[parentMeta.IDFieldIdx]).Interface()
@@ -162,7 +155,7 @@ func preloadBelongsTo(
 		return nil
 	}
 
-	// Find the FK field index in the parent (the entity that has the FK field)
+	// The FK lives on the parent (the belongs-to side).
 	fkFieldIdx := -1
 	for i, f := range parentMeta.Fields {
 		if f == rel.FKField {
@@ -174,7 +167,6 @@ func preloadBelongsTo(
 		return fmt.Errorf("FK field %q not found in parent collection %s", rel.FKField, parentMeta.CollectionName)
 	}
 
-	// Collect unique FK values
 	fkSet := make(map[any]bool, n)
 	var fkValues []any
 	for i := range n {
@@ -190,7 +182,6 @@ func preloadBelongsTo(
 		return nil
 	}
 
-	// Query target collection: {_id: {$in: [...]}}
 	targetMeta := &rel.TargetMeta
 	coll := db.Collection(targetMeta.CollectionName)
 
@@ -202,7 +193,7 @@ func preloadBelongsTo(
 	}
 	defer cursor.Close(ctx)
 
-	// Scan results and index by ID
+	// Index scanned targets by ID.
 	indexed := make(map[any]reflect.Value)
 	for cursor.Next(ctx) {
 		targetPtr := reflect.New(rel.TargetType)
@@ -217,7 +208,6 @@ func preloadBelongsTo(
 		return err
 	}
 
-	// Assign targets back to parent entities
 	for i := range n {
 		entity := sliceVal.Index(i)
 		fkVal := entity.Field(parentMeta.FieldIndices[fkFieldIdx]).Interface()

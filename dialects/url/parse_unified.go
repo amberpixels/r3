@@ -9,8 +9,8 @@ import (
 	r3json "github.com/amberpixels/r3/dialects/json"
 )
 
-// unifiedQuery is the JSON structure expected in the unified "query" parameter.
-// It mirrors the r3json types so that ?query={...} uses the same schema as the JSON dialect.
+// unifiedQuery is the JSON shape of the unified "query" parameter. It mirrors the r3json
+// types so ?query={...} shares the JSON dialect's schema.
 type unifiedQuery struct {
 	Fields     r3json.JSONFields      `json:"fields,omitempty"`
 	Filters    r3json.JSONFilters     `json:"filters,omitempty"`

@@ -7,17 +7,14 @@ import (
 	r3tag "github.com/amberpixels/r3/internal/tag"
 )
 
-// mergePatch returns a copy of existing with the patched fields overlaid from
-// patch. It lets validators see the full post-patch entity instead of a sparse
-// input whose non-patched fields are zeroed (which naive "required"-style rules
-// would wrongly reject).
+// mergePatch overlays the patched fields onto a copy of existing, so validators
+// see the full post-patch entity rather than a sparse input whose non-patched
+// fields are zeroed (which naive "required" rules would wrongly reject).
 //
-// Patched field names are resolved to struct fields via the same column-tag
-// conventions the engines use (r3 -> db -> snake_case). Field names that don't
-// resolve to a struct field are ignored — the backend rejects unknown columns.
-//
-// If T is not a struct value (e.g. a pointer or map entity), merging is not
-// possible and the patch is returned unchanged.
+// Field names resolve to struct fields via the engines' column-tag conventions
+// (r3 -> db -> snake_case); unresolved names are ignored (the backend rejects
+// unknown columns). A non-struct T (pointer, map) can't be merged, so patch is
+// returned unchanged.
 func mergePatch[T any](existing, patch T, fields r3.Fields) T {
 	et := reflect.TypeOf(existing)
 	if et == nil || et.Kind() != reflect.Struct {

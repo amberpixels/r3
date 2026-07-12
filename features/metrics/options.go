@@ -1,44 +1,35 @@
 package metrics
 
-// IDFunc extracts the primary key from an entity and returns it as a comparable value.
-// Used by the decorator to populate RecordID on metric records and to fetch old
-// entity state before updates/deletes.
+// IDFunc extracts an entity's primary key. The decorator uses it to populate
+// RecordID and to fetch old entity state before updates/deletes.
 type IDFunc[T any, ID comparable] func(entity T) ID
 
-// Options configures the behavior of a metrics CRUD decorator.
+// Options configures a metrics CRUD decorator.
 type Options[T any, ID comparable] struct {
-	// RecordType is the name used to identify this entity type in metric records.
-	// If empty, it is derived automatically from the struct type T
-	// (e.g. Order -> "orders", CampaignAdset -> "campaign_adsets").
+	// RecordType names this entity type in metric records. If empty, derived from
+	// T as snake_case plural (e.g. Order -> "orders").
 	RecordType string
 
-	// IDFunc extracts the primary key from an entity.
-	// Required for entity-level metrics (popularity, per-entity counters).
+	// IDFunc extracts the primary key; required for entity-level metrics.
 	IDFunc IDFunc[T, ID]
 
-	// Collectors defines what metrics to emit for CRUD operations.
-	// Multiple collectors are composed — all are called on every operation.
+	// Collectors are the metrics emitted per operation; all run on every op.
 	Collectors []Collector[T, ID]
 
-	// Labelers extract dimension labels from entities.
-	// Applied to every metric record where an entity is available.
+	// Labelers extract labels from entities, applied wherever an entity is available.
 	Labelers []Labeler[T]
 
-	// ContextLabelers extract dimension labels from request context.
-	// Applied to every metric record.
+	// ContextLabelers extract labels from request context, applied to every record.
 	ContextLabelers []ContextLabeler
 
-	// BucketSize controls the time granularity for metric bucketing.
-	// Default: BucketDaily.
+	// BucketSize is the time bucketing granularity. Default: BucketDaily.
 	BucketSize BucketSize
 
-	// Async when true records metrics in a background goroutine.
-	// The CRUD operation returns immediately; metric recording errors are logged
-	// but do not affect the CRUD result. Default: false (synchronous).
+	// Async records metrics in a background goroutine: the CRUD op returns
+	// immediately and recording errors are logged, not surfaced. Default: false.
 	Async bool
 
-	// ErrorHandler is called when metric persistence fails.
-	// If nil, errors are logged via slog.
+	// ErrorHandler is called on persistence failure; if nil, errors go to slog.
 	ErrorHandler func(error)
 }
 

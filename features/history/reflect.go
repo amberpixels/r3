@@ -15,8 +15,8 @@ func typeName[T any]() string {
 	return t.Name()
 }
 
-// extractFieldByName reads a struct field by its Go name and returns its value as a string.
-// Returns "" if the field does not exist or is zero-valued.
+// extractFieldByName returns the named Go struct field as a string, or "" when
+// absent or zero-valued.
 func extractFieldByName(entity any, fieldName string) string {
 	v := reflect.ValueOf(entity)
 	if v.Kind() == reflect.Pointer {

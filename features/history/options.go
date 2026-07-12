@@ -8,11 +8,8 @@ import (
 )
 
 // MetadataFunc extracts surrounding-context Metadata (Source, Extra) from a
-// context.Context. The actor is NOT set here — it is a first-class ChangeRecord
-// field resolved from r3.GetActor(ctx). Use this for where-it-came-from and
-// request-correlation data.
-//
-// Example:
+// context. The actor is NOT set here - it is a first-class field resolved from
+// r3.GetActor(ctx).
 //
 //	func metadataFromCtx(ctx context.Context) Metadata {
 //	    return r3history.Metadata{
@@ -22,90 +19,71 @@ import (
 //	}
 type MetadataFunc func(ctx context.Context) Metadata
 
-// DiffFunc computes field-level changes between two entities.
-// Use this to provide a custom diff implementation instead of the default
-// reflection-based differ.
+// DiffFunc computes field-level changes between two entities, replacing the
+// default reflection-based differ.
 type DiffFunc[T any] func(old, cur T) []FieldChange
 
-// IDFunc extracts the primary key from an entity and returns it as a string.
-// Used by the decorator to obtain the record ID for change records.
+// IDFunc extracts an entity's primary key.
 type IDFunc[T any, ID comparable] func(entity T) ID
 
-// ParentRef links a child entity to its parent for tree/nested history queries.
-// When configured, every change record for this entity will include the parent's
-// type and ID, enabling ForTree() queries.
+// ParentRef links a child entity to its parent so every change record carries the
+// parent's type and ID, enabling ForTree() queries.
 type ParentRef struct {
-	// ParentType is the RecordType of the parent entity (e.g. "campaigns").
+	// ParentType is the parent entity's RecordType (e.g. "campaigns").
 	ParentType string
 
-	// FKField is the Go struct field name on the child that holds the parent's ID
-	// (e.g. "CampaignID"). The decorator reads this field via reflection to populate
-	// ParentID on each change record.
+	// FKField is the child's Go struct field holding the parent ID (e.g.
+	// "CampaignID"), read via reflection to populate ParentID.
 	FKField string
 }
 
-// Options configures the behavior of a CRUD decorator.
+// Options configures a CRUD decorator.
 type Options[T any, ID comparable] struct {
-	// RecordType is the name used to identify this entity type in change records.
-	// If empty, it is derived automatically from the struct type T
-	// (e.g. Order -> "orders", CampaignAdset -> "campaign_adsets").
+	// RecordType identifies this entity type in change records. If empty, derived
+	// from T (e.g. Order -> "orders", CampaignAdset -> "campaign_adsets").
 	RecordType string
 
-	// MetadataFunc extracts surrounding-context metadata (Source, Extra) from the
-	// request context. The actor is always recorded independently as the
-	// first-class ChangeRecord.ActorID/ActorType fields, resolved from
-	// r3.GetActor(ctx) — MetadataFunc does not affect it.
+	// MetadataFunc extracts surrounding-context metadata; it does not affect the
+	// actor, which is a first-class field resolved from r3.GetActor(ctx).
 	MetadataFunc MetadataFunc
 
-	// FixedActor, when set, attributes every change recorded by this decorator to
-	// the given actor, ignoring r3.GetActor(ctx). Use it for a repository whose
-	// writes are always one identity — e.g. a system/worker repo where mutations
-	// run on background contexts that carry no principal. When nil (default), the
-	// actor is resolved from the context per-call.
+	// FixedActor, when set, attributes every change to this actor instead of
+	// r3.GetActor(ctx). Use for a system/worker repo whose background contexts
+	// carry no principal. Nil resolves the actor per-call from context.
 	FixedActor *r3.Actor
 
-	// DiffFunc provides a custom diff implementation.
-	// If nil, the default reflection-based Diff[T] is used.
+	// DiffFunc overrides the default reflection-based Diff[T].
 	DiffFunc DiffFunc[T]
 
-	// IDFunc extracts the primary key from an entity.
-	// This is required — the decorator needs to know how to get the ID
-	// from an entity for fetching the old state before updates.
+	// IDFunc extracts the primary key. Required - needed to fetch old state before
+	// updates.
 	IDFunc IDFunc[T, ID]
 
-	// ParentRef links this entity to a parent for tree queries.
-	// If nil, change records will not include parent information.
+	// ParentRef links this entity to a parent for tree queries; nil omits parent
+	// info.
 	ParentRef *ParentRef
 
-	// SnapshotRules defines conditions under which full entity snapshots
-	// are taken and stored in a separate SnapshotStore. Snapshots are
-	// completely decoupled from change records — they have their own
-	// storage (separate table/collection) and custom trigger conditions.
-	//
-	// Example: snapshot a BenefitSheet when status changes from "draft" to "published".
+	// SnapshotRules gate opt-in full-entity snapshots, stored separately from
+	// change records with their own trigger conditions. See [SnapshotRule].
 	SnapshotRules []SnapshotRule[T]
 
-	// Async when true records history in a background goroutine.
-	// The CRUD operation returns immediately; history recording errors are
-	// reported via ErrorHandler but never affect the CRUD result (FailOnError is
-	// ignored in async mode). Default: false (synchronous).
+	// Async records history in a background goroutine; the CRUD op returns
+	// immediately and recording errors go to ErrorHandler only (FailOnError is
+	// ignored). Default false.
 	Async bool
 
-	// ErrorHandler is invoked when writing a change record fails. It makes the
-	// handling of a failed audit write explicit and overridable. If nil, the
-	// failure is logged via slog. It does not control whether the operation
-	// fails — see FailOnError.
+	// ErrorHandler is invoked on a failed change-record write, overriding the
+	// default slog logging. It does not control whether the op fails - see
+	// FailOnError.
 	ErrorHandler func(error)
 
-	// FailOnError, in synchronous mode, makes a failed change-record write return
-	// its error from the CRUD operation instead of only being reported. This
-	// surfaces audit gaps to the caller.
+	// FailOnError (sync mode) returns a failed change-record write's error from the
+	// CRUD op, surfacing audit gaps.
 	//
-	// NOTE: history is recorded after the underlying mutation succeeds, so when
-	// this fires the entity change has ALREADY been applied; the returned error
-	// signals that the change could not be audited, not that the mutation was
-	// rolled back. For atomic audit, run the operation inside a transaction.
-	// Ignored in async mode. Default: false.
+	// NOTE: history is recorded AFTER the mutation succeeds, so when this fires the
+	// change has already been applied; the error signals it could not be audited,
+	// not that the mutation rolled back. For atomic audit, use a transaction.
+	// Ignored in async mode. Default false.
 	FailOnError bool
 }
 
@@ -126,9 +104,8 @@ func WithMetadataFunc[T any, ID comparable](fn MetadataFunc) Option[T, ID] {
 	}
 }
 
-// WithFixedActor attributes every change recorded by this decorator to actor,
-// ignoring the context actor. Use for a system/worker repo whose writes are
-// always one identity. See Options.FixedActor.
+// WithFixedActor attributes every change to actor, ignoring the context actor.
+// See [Options.FixedActor].
 func WithFixedActor[T any, ID comparable](actor r3.Actor) Option[T, ID] {
 	return func(o *Options[T, ID]) {
 		o.FixedActor = &actor
@@ -159,8 +136,8 @@ func WithParentRef[T any, ID comparable](parentType string, fkField string) Opti
 	}
 }
 
-// WithSnapshotRules configures snapshot rules for opt-in snapshotting.
-// Snapshots are stored separately from change records via a SnapshotStore.
+// WithSnapshotRules configures opt-in snapshot rules (stored separately from
+// change records).
 func WithSnapshotRules[T any, ID comparable](rules ...SnapshotRule[T]) Option[T, ID] {
 	return func(o *Options[T, ID]) {
 		o.SnapshotRules = append(o.SnapshotRules, rules...)
@@ -174,19 +151,18 @@ func WithAsync[T any, ID comparable]() Option[T, ID] {
 	}
 }
 
-// WithErrorHandler sets a handler invoked when writing a change record fails.
-// It overrides the default slog logging. It does not change whether the
-// operation fails — use WithFailOnError for that.
+// WithErrorHandler sets a handler for a failed change-record write, overriding
+// default slog logging. It does not change whether the op fails - use
+// WithFailOnError.
 func WithErrorHandler[T any, ID comparable](fn func(error)) Option[T, ID] {
 	return func(o *Options[T, ID]) {
 		o.ErrorHandler = fn
 	}
 }
 
-// WithFailOnError makes a failed change-record write return its error from the
-// CRUD operation in synchronous mode. See Options.FailOnError for the important
-// caveat that the underlying mutation has already been applied. Ignored in
-// async mode.
+// WithFailOnError returns a failed change-record write's error from the CRUD op
+// (sync mode). See [Options.FailOnError] for the caveat that the mutation has
+// already been applied. Ignored in async mode.
 func WithFailOnError[T any, ID comparable]() Option[T, ID] {
 	return func(o *Options[T, ID]) {
 		o.FailOnError = true
@@ -203,8 +179,7 @@ func applyDefaults[T any, ID comparable](opts *Options[T, ID]) {
 	}
 }
 
-// deriveRecordType derives the record type name from the struct type T.
-// It converts the struct name to snake_case plural (e.g. Order -> "orders").
+// deriveRecordType is the struct name of T as snake_case plural (Order -> "orders").
 func deriveRecordType[T any]() string {
 	return r3utils.ToSnakeCasePlural(typeName[T]())
 }

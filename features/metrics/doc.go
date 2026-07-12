@@ -1,52 +1,33 @@
-// Package metrics provides domain-level analytics for r3 CRUD repositories.
+// Package metrics decorates any r3.CRUD[T, ID] with domain-level analytics,
+// recording configurable metrics for every CRUD operation. Metric records are
+// themselves r3 entities, persisted via any r3.CRUD[MetricRecord, string] - the
+// same or a different backend than the wrapped entity uses.
 //
-// It works as a decorator around any r3.CRUD[T, ID] implementation, recording
-// configurable metrics for every CRUD operation. The decorator is transparent:
-// the wrapped repository still satisfies r3.CRUD[T, ID].
-//
-// "Everything is a R3po" -- metric records are themselves r3 entities,
-// stored via any r3.CRUD[MetricRecord, string]. The metrics feature has zero
-// knowledge of storage backends. You can use the same driver (SQL, GORM, MongoDB, etc.)
-// that you use for your entities, or a completely different one.
-//
-// Key features:
-//   - 10 built-in collectors covering common CRUD analytics (action counts, latency,
-//     popularity, error rates, filter analysis, field changes, lifecycle, patch size)
-//   - Extensible Collector[T, ID] interface for custom metrics
-//   - Three-layer label system: core (auto), context, and entity labels
-//   - Time bucketing for efficient aggregation (minutely to monthly)
-//   - Aggregator with Count, Sum, Avg, TopN, TimeSeries, GroupBy
-//   - AggregationPusher interface for server-side aggregation in capable backends
-//   - Retention policies (age-based TTL, record count limits)
-//   - Rollup/compaction of old fine-grained records into coarser summaries
-//   - Async mode for zero-latency impact on the hot path
-//   - r3.Actor context for automatic actor attribution
+// Ten built-in collectors cover common CRUD analytics (action counts, latency,
+// popularity, error rates, filter analysis, field changes, lifecycle, patch
+// size); the Collector[T, ID] interface adds custom ones. Labels come in three
+// layers - core (auto), context, entity - and records are time-bucketed
+// (minutely to monthly) for cheap aggregation. Async mode keeps the hot path
+// latency-free; r3.Actor is picked up from context for attribution.
 //
 // # Aggregation
 //
-// The Aggregator performs in-memory aggregation by default. If the underlying
-// store also implements AggregationPusher, the Aggregator automatically delegates
-// to server-side aggregation for better performance at scale.
+// The Aggregator aggregates in-memory, or delegates to server-side aggregation
+// when the store also implements AggregationPusher.
 //
 // # Retention and Rollup
 //
-// RetentionEnforcer deletes old metric records based on age (MaxAge) or count
-// (MaxRecords). RollupExecutor compacts old fine-grained records into coarser
-// time-bucket summaries, preserving label dimensions and annotating summaries
-// with _rollup metadata labels.
+// RetentionEnforcer deletes old records by age (MaxAge) or count (MaxRecords).
+// RollupExecutor compacts old fine-grained records into coarser time-bucket
+// summaries, preserving label dimensions and tagging summaries with _rollup
+// metadata labels.
 //
-// Both retention and rollup delete records one-by-one via the r3.CRUD Delete
-// method. For large datasets this may be slow; a future BatchDelete interface
-// could optimize bulk deletions for capable backends.
-//
-// The RollupExecutor compacts all old records for a given type regardless of
-// their original bucket granularity. RollupPolicy.SourceBucket is recorded as
-// provenance metadata only. To selectively compact only records of a specific
-// granularity, filter them at the query level before rollup.
-//
-// RetentionEnforcer.Start and RollupExecutor run on-demand or via a ticker-based
-// background loop. The background loop fires after the first interval elapses,
-// not immediately on start.
+// Both delete one record at a time via r3.CRUD Delete (slow at scale; a future
+// BatchDelete could optimize this). RollupExecutor compacts all old records for
+// a type regardless of source granularity; RollupPolicy.SourceBucket is
+// provenance metadata only - filter at the query level to target one
+// granularity. The ticker in RetentionEnforcer.Start (and any rollup loop)
+// first fires after one interval elapses, not immediately.
 //
 // # Usage
 //

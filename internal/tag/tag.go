@@ -53,11 +53,10 @@ type ColumnTag struct {
 	Codec     string   // r3:"...,codec:name" — value codec name (resolved in schema derivation)
 }
 
-// ParseColumnTag reads column metadata from struct tags.
-// Priority: `r3` tag first, `db` tag as fallback, then the `gorm` tag's
-// column/primaryKey info so gorm-tagged models derive the same physical
-// columns the GORM driver binds.
-// If no tag provides a column name, snake_case of the field name is used.
+// ParseColumnTag reads column metadata from struct tags, in priority order: `r3`,
+// then `db`, then the `gorm` tag's column/primaryKey info (so gorm-tagged models
+// resolve to the same physical columns the GORM driver binds). With no column name
+// from any tag, the field name's snake_case is used.
 func ParseColumnTag(field reflect.StructField) ColumnTag {
 	r3Raw := field.Tag.Get("r3")
 	dbRaw := field.Tag.Get("db")
@@ -77,8 +76,7 @@ func ParseColumnTag(field reflect.StructField) ColumnTag {
 		tag = parseRawColumnTag(raw)
 	}
 
-	// If r3 tag was used but produced no column name (e.g. r3:"soft_delete"),
-	// try to get column name from the db tag.
+	// r3 tag named no column (e.g. r3:"soft_delete"): borrow it from the db tag.
 	if tag.Column == "" && dbRaw != "" && dbRaw != "-" {
 		dbTag := parseRawColumnTag(dbRaw)
 		if dbTag.Column != "" {
@@ -142,9 +140,8 @@ func parseRawColumnTag(raw string) ColumnTag {
 
 	first := strings.TrimSpace(parts[0])
 
-	// Check if the first part is a known keyword rather than a column name.
+	// A leading known keyword (e.g. r3:"soft_delete") is a flag, not a column name.
 	if isKnownKeyword(first) {
-		// It's a flag, not a column name — process it as a flag.
 		applyFlag(&tag, first)
 	} else {
 		tag.Column = first
@@ -157,8 +154,7 @@ func parseRawColumnTag(raw string) ColumnTag {
 	return tag
 }
 
-// isKnownKeyword returns true if the given string is a recognized r3 tag keyword
-// that should not be treated as a column name.
+// isKnownKeyword reports whether s is an r3 tag keyword rather than a column name.
 func isKnownKeyword(s string) bool {
 	switch s {
 	case "pk", "soft_delete", "owned",

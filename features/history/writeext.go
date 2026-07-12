@@ -13,15 +13,13 @@ var (
 	_ r3.BulkPatcher[any, any] = &CRUD[any, any]{}
 )
 
-// Upsert inserts-or-updates via the inner CRUD and records the change. To decide
-// between a create and an update entry — and to diff the update — it fetches the
-// pre-state by primary key (via IDFunc) before the write: a hit records an
+// Upsert inserts-or-updates via the inner CRUD and records the change. It
+// fetches the pre-state by PK (via IDFunc) before the write: a hit records an
 // ActionUpdate with a field-level diff, a miss records an ActionCreate.
 //
-// The pre-state lookup is by PK. When the upsert's conflict target is NOT the PK
-// (a custom OnConflict on a unique column), a colliding row may be missed and
-// the change recorded as a create — an accepted approximation, since the audited
-// KV/settings use case conflicts on its primary key.
+// Because the lookup is by PK, a custom OnConflict target on a unique column can
+// miss a colliding row and record it as a create - an accepted approximation,
+// since the audited KV/settings use case conflicts on its primary key.
 func (h *CRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.UpsertOption) (T, error) {
 	up, ok := h.inner.(r3.Upserter[T, ID])
 	if !ok {
@@ -62,15 +60,15 @@ func (h *CRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.UpsertOpt
 	return result, nil
 }
 
-// PatchWhere runs a bulk conditional update via the inner CRUD and records one
-// ActionPatch change per affected row. It snapshots the matching rows before the
-// write (a List over the same filters) and re-reads each by PK afterward to diff
-// old vs new — so a bulk sweep still leaves a per-row audit trail. This is
-// bounded work intended for the small recovery sweeps this capability targets.
+// PatchWhere runs a bulk conditional update and records one ActionPatch per
+// affected row: it snapshots matching rows before the write (List over the same
+// filters) and re-reads each by PK afterward to diff old vs new, so a bulk sweep
+// still leaves a per-row trail. Bounded work, for the small recovery sweeps this
+// targets.
 //
-// Recording per-row history requires IDFunc; without it the change cannot be
-// attributed to specific rows, so PatchWhere reports the gap via the error
-// handler (loud, never silent) and still performs the update.
+// Per-row history requires IDFunc; without it the change cannot be attributed to
+// specific rows, so PatchWhere reports the gap via the error handler (loud, never
+// silent) and still performs the update.
 func (h *CRUD[T, ID]) PatchWhere(
 	ctx context.Context, filters r3.Filters, entity T, fields r3.Fields,
 ) (int64, error) {

@@ -1,20 +1,11 @@
-// Package r3mongo provides an r3.CRUD[T, ID] driver backed by the official MongoDB Go driver v2.
+// Package r3mongo is an r3.CRUD[T, ID] driver backed by the official MongoDB Go
+// driver v2 (go.mongodb.org/mongo-driver/v2). Filters/sorts/pagination go through
+// the r3 BSON dialect; it supports field projection, soft-delete (via
+// r3:"soft_delete", plus Restore/HardDelete), and has-many/belongs-to preloads run
+// as separate queries.
 //
-// Driver: go.mongodb.org/mongo-driver/v2
-// Source: https://github.com/mongodb/mongo-go-driver
-//
-// Supported r3 features:
-//   - Full CRUD (Create, Get, List, Update, Patch, Delete)
-//   - Filters, Sorts, Pagination via the r3 BSON dialect
-//   - Field selection (projection)
-//   - Thread-safe default queries (SetDefaultListQuery, SetDefaultGetQuery)
-//   - Soft-delete support (via r3:"soft_delete" struct tag)
-//   - Restore and HardDelete via the features/softdelete SoftDeleter interface
-//   - Relation preloading (has-many, belongs-to) via separate queries
-//   - Raw escape hatch (BaseRaw) for arbitrary MongoDB operations
-//
-// Model structs should use `bson` struct tags for field mapping, or `r3` tags.
-// The primary key field defaults to `_id`. Use `r3:"pk"` or `bson:"_id"` to customize.
+// Map fields with `bson` (or `r3`) tags; the PK defaults to `_id`, overridable with
+// `r3:"pk"` or `bson:"_id"`.
 //
 // Example:
 //

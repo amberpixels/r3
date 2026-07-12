@@ -13,12 +13,10 @@ import (
 // sqlTimeType is time.Time, used to recognize managed-timestamp fields.
 var sqlTimeType = reflect.TypeFor[time.Time]()
 
-// WriteColumns returns the subset of cols that the given write op may write
-// under the schema. The capability check is skipped — all cols are returned —
-// when the write guard is bypassed (audited system/worker write) or no schema
-// is present (back-compat for schema-less callers). The structural floor is
-// enforced separately by the caller (the PK is never in cols; computed
-// attributes have no column at all), so it can never be widened here.
+// WriteColumns returns the subset of cols the op may write under the schema. The
+// capability check is skipped (all cols returned) under the write-guard bypass or
+// a zero schema. The structural floor (PK never in cols; computed attributes have
+// no column) is the caller's, so it can't be widened here.
 func WriteColumns(ctx context.Context, schema r3.Schema, cols []string, op r3.WriteOp) []string {
 	if schema.IsZero() || r3.WriteGuardBypassed(ctx) {
 		return cols
@@ -33,10 +31,9 @@ func WriteColumns(ctx context.Context, schema r3.Schema, cols []string, op r3.Wr
 }
 
 // RequireMutableColumns enforces the schema's Mutable capability for an explicit
-// Patch column set, returning a typed ErrInvalidPatchField for the first column
-// that may not be mutated. It is the capability layer on top of the structural
-// floor already checked by StructMeta.ValidatePatchColumns (unknown column, PK,
-// soft-delete). The check is skipped under the write-guard bypass or a zero
+// Patch column set, returning a typed ErrInvalidPatchField for the first
+// non-mutable column - the capability layer over the structural floor from
+// StructMeta.ValidatePatchColumns. Skipped under the write-guard bypass or a zero
 // schema.
 func RequireMutableColumns(ctx context.Context, schema r3.Schema, cols []string) error {
 	if schema.IsZero() || r3.WriteGuardBypassed(ctx) {
@@ -50,12 +47,11 @@ func RequireMutableColumns(ctx context.Context, schema r3.Schema, cols []string)
 	return nil
 }
 
-// ManagedTimestampColumns returns the system-managed timestamp columns present on
-// the model that the engine writes for the given op: created_at AND updated_at on
-// Create, updated_at on Update/Patch. These are written by the system with server
-// time even though they are read-only to API callers — the Creatable/Mutable caps
-// mean "no caller may set this", not "never written". The soft-delete column is
-// excluded here: it is managed by Delete/Restore, not by Create/Update.
+// ManagedTimestampColumns returns the model's system-managed timestamp columns
+// the engine writes for op: created_at AND updated_at on Create, updated_at on
+// Update/Patch. The system stamps these with server time even though they are
+// read-only to callers - Creatable/Mutable mean "no caller may set this", not
+// "never written". Soft-delete is excluded (managed by Delete/Restore).
 func ManagedTimestampColumns(meta StructMeta, naming r3.NamingConfig, op r3.WriteOp) []string {
 	naming = resolveNaming(naming)
 	var out []string
@@ -69,7 +65,7 @@ func ManagedTimestampColumns(meta StructMeta, naming r3.NamingConfig, op r3.Writ
 }
 
 // SetTimeColumns sets the named columns on the entity to t. Only time.Time and
-// *time.Time fields are written; any other shape is left to the database default.
+// *time.Time fields are written; any other shape is left to the DB default.
 func SetTimeColumns(meta StructMeta, entityPtr any, cols []string, t time.Time) {
 	if len(cols) == 0 {
 		return
@@ -99,8 +95,8 @@ func SetTimeColumns(meta StructMeta, entityPtr any, cols []string, t time.Time) 
 	}
 }
 
-// resolveNaming backfills any empty well-known field names with the standard
-// defaults so timestamp detection is never blank.
+// resolveNaming backfills empty well-known field names with the defaults so
+// timestamp detection is never blank.
 func resolveNaming(n r3.NamingConfig) r3.NamingConfig {
 	def := r3.DefaultConfig().Naming
 	if n.CreatedAtField == "" {

@@ -6,62 +6,38 @@ import (
 	"slices"
 )
 
-// Transactor is an optional interface that CRUD implementations may satisfy
-// to indicate transaction support. Not every backend supports transactions
-// (e.g. in-memory stores, YAML files, some NoSQL), so this is opt-in.
-//
-// Use a type assertion to check whether a repository supports transactions:
-//
-//	txr, ok := repo.(r3.Transactor[MyEntity, int64])
-//	if !ok {
-//	    // transactions not supported
-//	}
-//
-// Or use the [InTx] helper for ergonomic usage with automatic commit/rollback.
+// Transactor is the opt-in transaction capability a CRUD may satisfy; many
+// backends (in-memory, YAML files, some NoSQL) do not. Type-assert to detect
+// support, or use [InTx] for automatic commit/rollback.
 type Transactor[T any, ID comparable] interface {
-	// BeginTx starts a transaction and returns a [TxCRUD] scoped to that transaction.
-	// All operations on the returned TxCRUD execute within the transaction.
-	// The caller MUST call either Commit or Rollback on the returned TxCRUD.
+	// BeginTx starts a transaction and returns a [TxCRUD] scoped to it. The
+	// caller MUST call either Commit or Rollback on it.
 	BeginTx(ctx context.Context) (TxCRUD[T, ID], error)
 }
 
-// TxCRUD is a transactional CRUD that operates within a single transaction.
-// It embeds [CRUD] for all standard operations and adds Commit/Rollback
-// to control the transaction lifecycle.
-//
-// After Commit or Rollback is called, the TxCRUD should not be used for
-// further operations.
+// TxCRUD is a [CRUD] bound to a single transaction, plus Commit/Rollback. It
+// must not be used after either is called.
 type TxCRUD[T any, ID comparable] interface {
 	CRUD[T, ID]
 
-	// Commit commits the transaction.
-	// After Commit, the TxCRUD must not be used.
+	// Commit commits the transaction; the TxCRUD must not be used afterward.
 	Commit() error
 
-	// Rollback aborts the transaction.
-	// Rollback is a no-op if Commit was already called.
-	// After Rollback, the TxCRUD must not be used.
+	// Rollback aborts the transaction (a no-op if Commit already ran); the
+	// TxCRUD must not be used afterward.
 	Rollback() error
 }
 
-// ErrTransactionsNotSupported is returned by [InTx] when the repository
-// does not implement the [Transactor] interface.
+// ErrTransactionsNotSupported is returned when no layer in a repo's chain
+// implements [Transactor].
 var ErrTransactionsNotSupported = errors.New("r3: transactions not supported by this repository")
 
-// InTx runs fn inside a transaction if the repository supports it.
-// It begins a transaction, calls fn with a transactional CRUD, and:
-//   - commits if fn returns nil
-//   - rolls back if fn returns an error or panics
-//
-// The repository may be wrapped in decorators (validation, history,
-// permissions, ...). InTx walks the decorator chain to the backend
-// [Transactor], begins the transaction there, and re-applies the same decorator
-// stack on top of the transaction-bound CRUD. This means the CRUD passed to fn
-// is fully decorated, so decorated behaviour still runs for writes inside the
-// transaction rather than being bypassed.
-//
-// Returns [ErrTransactionsNotSupported] if no layer in the chain implements
-// [Transactor].
+// InTx runs fn inside a transaction, committing if it returns nil and rolling
+// back on error or panic. It walks repo's decorator chain to the backend
+// [Transactor], begins there, and re-applies the same decorator stack on top of
+// the tx-bound CRUD - so the CRUD passed to fn stays fully decorated and writes
+// inside the transaction still run every decorator. Returns
+// [ErrTransactionsNotSupported] if no layer in the chain implements [Transactor].
 //
 // Example:
 //
@@ -103,14 +79,11 @@ func InTx[T any, ID comparable](
 	return baseTx.Commit()
 }
 
-// BeginTxChain begins a transaction on the backend [Transactor] reached by
-// walking repo's decorator chain, and returns a [TxCRUD] whose CRUD methods are
-// the same decorator stack re-applied on top of the transaction. Commit and
-// Rollback drive the underlying backend transaction.
-//
-// It is the chain-aware counterpart to calling BeginTx directly on a backend,
-// and is what decorators delegate to so transactions compose with decoration.
-// Returns [ErrTransactionsNotSupported] if no layer implements [Transactor].
+// BeginTxChain is the chain-aware counterpart to [Transactor.BeginTx]: it walks
+// repo's decorator chain to the backend, begins there, and returns a [TxCRUD]
+// with the same decorator stack re-applied on top. Decorators delegate to it so
+// transactions compose with decoration. Returns [ErrTransactionsNotSupported]
+// if no layer implements [Transactor].
 func BeginTxChain[T any, ID comparable](ctx context.Context, repo CRUD[T, ID]) (TxCRUD[T, ID], error) {
 	txr, rebuild, ok := resolveTransactor(repo)
 	if !ok {
@@ -123,20 +96,18 @@ func BeginTxChain[T any, ID comparable](ctx context.Context, repo CRUD[T, ID]) (
 	return &decoratedTx[T, ID]{CRUD: rebuild(baseTx), base: baseTx}, nil
 }
 
-// SupportsTx reports whether repo's decorator chain reaches a backend that
-// implements [Transactor]. Unlike a direct type assertion it sees through
-// decorators, and unlike [As] it does not treat an intermediate decorator that
-// merely exposes BeginTx as proof of support — only the backend counts.
+// SupportsTx reports whether repo's chain reaches a backend implementing
+// [Transactor]. It sees through decorators, and unlike [As] only the backend
+// counts - an intermediate decorator merely exposing BeginTx is not proof.
 func SupportsTx[T any, ID comparable](repo CRUD[T, ID]) bool {
 	_, _, ok := resolveTransactor(repo)
 	return ok
 }
 
-// resolveTransactor walks repo's decorator chain via [Unwrapper] until it
-// reaches the backend (the first layer that is not an Unwrapper). That backend
-// must implement [Transactor]. It returns the backend transactor and a rebuild
-// function that re-applies every [Rewrapper] decorator seen on the way down, in
-// the original outer-to-inner order, on top of a given inner CRUD.
+// resolveTransactor walks repo's chain via [Unwrapper] to the backend (first
+// non-Unwrapper), which must be a [Transactor]. It returns that transactor and
+// a rebuild func that re-applies every [Rewrapper] seen, preserving the original
+// outer-to-inner nesting, on top of a given inner CRUD.
 func resolveTransactor[T any, ID comparable](
 	repo CRUD[T, ID],
 ) (Transactor[T, ID], func(CRUD[T, ID]) CRUD[T, ID], bool) {
@@ -151,8 +122,7 @@ func resolveTransactor[T any, ID comparable](
 				return nil, nil, false
 			}
 			rebuild := func(inner CRUD[T, ID]) CRUD[T, ID] {
-				// Re-apply decorators inner-most first so the rebuilt chain has
-				// the same nesting order as the original.
+				// Re-apply inner-most first to preserve the original nesting.
 				for _, rw := range slices.Backward(rewrappers) {
 					inner = rw.Rewrap(inner)
 				}

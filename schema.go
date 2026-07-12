@@ -1,19 +1,17 @@
 package r3
 
 // Schema is the logical, engine-agnostic descriptor of an entity: an ordered set
-// of capability-bearing Attributes plus lookup helpers. It lives in the core r3
-// package next to Query/Filters and contains no storage details (no SQL column
-// names, no BSON paths) — each engine owns the physical binding, keyed by
+// of capability-bearing [Attribute]s. It carries no storage details (no column
+// names, no BSON paths) - each engine owns the physical binding, keyed by
 // attribute name.
 //
-// A Schema is immutable: derive one with SchemaOf and layer overrides with With,
-// both of which return a fresh Schema. The zero Schema has no attributes;
-// ValidateQuery treats it as "no schema" and validates nothing, which keeps the
-// engine seam back-compatible for callers that pass no schema.
+// A Schema is immutable: derive with [SchemaOf], layer overrides with
+// [Schema.With], both returning a fresh value. The zero Schema has no attributes
+// and validates nothing (back-compat for schema-less callers); see [Schema.IsZero].
 //
-// Vocabulary note: an Attribute is a declared member of an entity, whereas a
-// Field/FieldSpec is a reference to one inside a Query. The Schema is the set of
-// valid Fields, plus what each is allowed to do.
+// Vocabulary: an Attribute is a declared member of an entity; a [FieldSpec] is a
+// reference to one inside a [Query]. The Schema is the set of valid fields plus
+// what each may do.
 type Schema struct {
 	attrs []Attribute
 	index map[string]int // attribute name -> position in attrs
@@ -21,21 +19,19 @@ type Schema struct {
 
 // Attribute is one declared, capability-bearing member of an entity.
 type Attribute struct {
-	// Name is the public/wire name, e.g. "created_at" (snake_case). Filters,
-	// sorts, and selected fields reference attributes by this name; the engine
-	// translates it to a physical column/path.
+	// Name is the public/wire name (snake_case). Queries reference attributes by
+	// this name; the engine translates it to a physical column/path.
 	Name string
 
 	// Type is the logical data type, used to pick default operators and drive
 	// frontend filter widgets.
 	Type DataType
 
-	// Caps is the bitset of capabilities (Filterable, Sortable, ...).
+	// Caps is the bitset of capabilities.
 	Caps Capability
 
-	// Ops are the filter operators allowed for this attribute. Derivation fills
-	// it from the Type's defaults when the attribute is filterable; nil means
-	// "the defaults for Type" (or none, when not filterable).
+	// Ops are the allowed filter operators. nil means "the defaults for Type"
+	// (or none, when not filterable).
 	Ops []FilterOperatorSpec
 
 	// Enum holds the allowed values when Type == TypeEnum.
@@ -45,16 +41,15 @@ type Attribute struct {
 	Relation *RelationRef
 
 	// Codec, when non-nil, transforms this attribute's value to and from its
-	// stored representation (see [Codec]). Type stays the domain type (e.g.
-	// TypeTime) so callers filter with domain values and validation accepts them;
-	// the codec bridges to storage (Codec.Stored(), e.g. TypeInt) at the engine
-	// boundary. A nil Codec is the identity — the value is stored as-is.
+	// stored form (see [Codec]). Type stays the domain type (e.g. TypeTime) so
+	// callers filter with domain values; the codec bridges to storage
+	// ([Codec.Stored], e.g. TypeInt) at the engine boundary. nil is the identity.
 	Codec Codec
 
 	// Computed marks an attribute with no backing column (reserved; computed
-	// execution is out of scope — see the schema design doc, §8). A computed
+	// execution is out of scope - see the schema design doc, §8). A computed
 	// attribute can never be written: the structural floor has nowhere to put a
-	// value, so no escape hatch can corrupt it.
+	// value.
 	Computed bool
 }
 
@@ -64,8 +59,8 @@ type RelationRef struct {
 	Target string
 	// Kind is the relationship kind ("has-many", "belongs-to", "many-to-many").
 	Kind string
-	// Label is the attribute on the target used as a human-facing label
-	// (optional; populated via With for introspection).
+	// Label is the target attribute used as a human-facing label (optional;
+	// populated via With for introspection).
 	Label string
 }
 
@@ -73,8 +68,7 @@ type RelationRef struct {
 func (a Attribute) Has(c Capability) bool { return a.Caps&c == c }
 
 // newSchema builds a Schema from an ordered attribute slice, indexing by name.
-// On a duplicate name the last attribute wins (matches With's override
-// semantics); the slice order is preserved for stable introspection.
+// On a duplicate name the last wins (matches With); slice order is preserved.
 func newSchema(attrs []Attribute) Schema {
 	index := make(map[string]int, len(attrs))
 	for i, a := range attrs {
@@ -87,8 +81,7 @@ func newSchema(attrs []Attribute) Schema {
 // disables validation at the engine seam (back-compat for schema-less callers).
 func (s Schema) IsZero() bool { return len(s.attrs) == 0 }
 
-// Attributes returns the schema's attributes in declaration order. The returned
-// slice is a copy; mutating it does not affect the Schema.
+// Attributes returns the attributes in declaration order (a copy).
 func (s Schema) Attributes() []Attribute {
 	return append([]Attribute(nil), s.attrs...)
 }
@@ -101,12 +94,10 @@ func (s Schema) Lookup(name string) (Attribute, bool) {
 	return Attribute{}, false
 }
 
-// With returns a new Schema with the given attributes layered on top: an
-// override whose Name matches an existing attribute replaces it in place;
-// a new Name is appended. The receiver is left unchanged.
-//
-// Use it for what tags cannot express — computed attributes, relation labels,
-// tightened operator sets — keeping the Schema immutable.
+// With returns a new Schema with the overrides layered on: a matching Name
+// replaces in place, a new Name is appended; the receiver is unchanged. Use it
+// for what tags cannot express - computed attributes, relation labels,
+// tightened operator sets.
 func (s Schema) With(overrides ...Attribute) Schema {
 	merged := append([]Attribute(nil), s.attrs...)
 	for _, a := range overrides {

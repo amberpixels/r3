@@ -35,14 +35,14 @@ func OperatorToBSON(op r3.FilterOperatorSpec) (BSONOperator, error) {
 		return BSONOperatorExists, nil
 
 	case r3.OperatorNotLike:
-		// Handled specially via $not + $regex
+		// $not + $regex, applied by the caller.
 		return BSONOperatorNot, nil
 
 	case r3.OperatorBetween,
 		r3.OperatorBetweenEx,
 		r3.OperatorBetweenExInc,
 		r3.OperatorBetweenIncEx:
-		// Between operators are handled directly in FilterToBSON as compound conditions.
+		// Between is a compound condition, lowered directly in FilterToBSON.
 		return "", errors.New("between operators must be handled via FilterToBSON, not OperatorToBSON")
 
 	case r3.OperatorUnspecified:
@@ -54,7 +54,7 @@ func OperatorToBSON(op r3.FilterOperatorSpec) (BSONOperator, error) {
 
 // FilterToBSON converts a FilterSpec to a bson.D filter document.
 func FilterToBSON(f *r3.FilterSpec) (bson.D, error) {
-	// Case 1: Simple filter (Field is set).
+	// Simple filter (Field set).
 	if f.Field != nil {
 		fieldName := f.Field.String()
 
@@ -62,7 +62,7 @@ func FilterToBSON(f *r3.FilterSpec) (bson.D, error) {
 			return nil, fmt.Errorf("unsafe filter field: %w", err)
 		}
 
-		// Nil value: $eq null / $ne null
+		// Nil value: $eq null / $ne null.
 		if f.Value == nil {
 			//nolint:exhaustive // handled by default case
 			switch f.Operator {
@@ -75,7 +75,7 @@ func FilterToBSON(f *r3.FilterSpec) (bson.D, error) {
 			}
 		}
 
-		// LIKE: convert SQL-style wildcards to regex
+		// LIKE: SQL wildcards to regex.
 		if f.Operator == r3.OperatorLike {
 			pattern := likeToRegex(fmt.Sprintf("%v", f.Value))
 			return bson.D{{Key: fieldName, Value: bson.D{
@@ -83,7 +83,7 @@ func FilterToBSON(f *r3.FilterSpec) (bson.D, error) {
 			}}}, nil
 		}
 
-		// ILIKE: same as LIKE but case-insensitive
+		// ILIKE: LIKE plus the case-insensitive option.
 		if f.Operator == r3.OperatorILike {
 			pattern := likeToRegex(fmt.Sprintf("%v", f.Value))
 			return bson.D{{Key: fieldName, Value: bson.D{
@@ -92,7 +92,7 @@ func FilterToBSON(f *r3.FilterSpec) (bson.D, error) {
 			}}}, nil
 		}
 
-		// NOT LIKE: $not with $regex
+		// NOT LIKE: $not with $regex.
 		if f.Operator == r3.OperatorNotLike {
 			pattern := likeToRegex(fmt.Sprintf("%v", f.Value))
 			return bson.D{{Key: fieldName, Value: bson.D{
@@ -102,13 +102,10 @@ func FilterToBSON(f *r3.FilterSpec) (bson.D, error) {
 			}}}, nil
 		}
 
-		// Between operators: value must be a 2-element slice [low, high].
-		// Translated as compound $gte/$gt + $lte/$lt conditions.
 		if isBetweenOperator(f.Operator) {
 			return betweenToBSON(fieldName, f.Operator, f.Value)
 		}
 
-		// Standard operators
 		bsonOp, err := OperatorToBSON(f.Operator)
 		if err != nil {
 			return nil, err
@@ -117,7 +114,7 @@ func FilterToBSON(f *r3.FilterSpec) (bson.D, error) {
 		return bson.D{{Key: fieldName, Value: bson.D{{Key: string(bsonOp), Value: f.Value}}}}, nil
 	}
 
-	// Case 2: Compound filter (AND/OR group).
+	// Compound filter (AND/OR group).
 	if len(f.Or) > 0 {
 		children := make(bson.A, 0, len(f.Or))
 		for _, child := range f.Or {
@@ -145,8 +142,8 @@ func FilterToBSON(f *r3.FilterSpec) (bson.D, error) {
 	return bson.D{}, nil
 }
 
-// FiltersToBSON converts a list of r3.Filters into a combined bson.D filter.
-// Multiple filters are combined with $and.
+// FiltersToBSON converts r3.Filters into a combined bson.D, joining multiple
+// filters with $and.
 func FiltersToBSON(filters r3.Filters) (bson.D, error) {
 	if len(filters) == 0 {
 		return bson.D{}, nil
@@ -160,7 +157,6 @@ func FiltersToBSON(filters r3.Filters) (bson.D, error) {
 		return doc, nil
 	}
 
-	// Multiple filters: wrap in $and
 	children := make(bson.A, 0, len(filters))
 	for _, f := range filters {
 		doc, err := FilterToBSON(f)
@@ -188,9 +184,8 @@ func SortToBSON(s *r3.SortSpec) (bson.E, error) {
 		direction = 1
 	}
 
-	// Note: MongoDB does not natively support NULLS FIRST/LAST.
-	// This would require aggregation pipeline with $ifNull.
-	// For now, we skip NullsPosition (same limitation as some SQL drivers).
+	// MongoDB has no native NULLS FIRST/LAST (would need an $ifNull pipeline), so
+	// NullsPosition is dropped - the same degradation as some SQL drivers.
 
 	return bson.E{Key: fieldName, Value: direction}, nil
 }
@@ -217,8 +212,8 @@ func FieldToBSON(f *r3.FieldSpec) string {
 	return f.String()
 }
 
-// FieldsToBSON converts r3.Fields to a bson.D projection document.
-// Each field is set to 1 (include). The _id field is always included.
+// FieldsToBSON converts r3.Fields to a bson.D inclusion projection (each field
+// set to 1). _id is always included, even when not listed.
 func FieldsToBSON(fields r3.Fields) bson.D {
 	if len(fields) == 0 {
 		return nil
@@ -237,13 +232,12 @@ func FieldsToBSON(fields r3.Fields) bson.D {
 		projection = append(projection, bson.E{Key: name, Value: 1})
 	}
 	if !hasID {
-		// Always include _id for identity
 		projection = append(bson.D{{Key: "_id", Value: 1}}, projection...)
 	}
 	return projection
 }
 
-// isBetweenOperator returns true if the operator is any of the between variants.
+// isBetweenOperator reports whether op is any between variant.
 func isBetweenOperator(op r3.FilterOperatorSpec) bool {
 	//nolint:exhaustive // only checking between variants
 	switch op {
@@ -257,13 +251,9 @@ func isBetweenOperator(op r3.FilterOperatorSpec) bool {
 	}
 }
 
-// betweenToBSON converts a between filter to a BSON compound condition.
-// Value must be a 2-element slice: [low, high].
-// Between variants:
-//   - Between (inclusive both):   {$gte: low, $lte: high}
-//   - BetweenEx (exclusive both): {$gt: low, $lt: high}
-//   - BetweenExInc (excl low, incl high): {$gt: low, $lte: high}
-//   - BetweenIncEx (incl low, excl high): {$gte: low, $lt: high}
+// betweenToBSON lowers a between filter (value is a 2-element [low, high] slice)
+// to a compound condition, picking $gt/$gte and $lt/$lte per variant's
+// inclusivity.
 func betweenToBSON(fieldName string, op r3.FilterOperatorSpec, value any) (bson.D, error) {
 	low, high, err := r3.ExtractBetweenBounds(value)
 	if err != nil {

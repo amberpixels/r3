@@ -2,31 +2,13 @@ package metrics
 
 import "context"
 
-// AggregationPusher is an optional interface that metric stores can implement
-// to provide server-side aggregation instead of in-memory computation.
-//
-// Backends like Elasticsearch, ClickHouse, or TimescaleDB have native aggregation
-// capabilities that are far more efficient than fetching all records and
-// computing in Go. If a store implements AggregationPusher, the Aggregator
-// will delegate to these methods instead of performing in-memory aggregation.
-//
-// This is a pure opt-in: existing r3.CRUD[MetricRecord, string] stores continue
-// to work with the in-memory Aggregator. Only stores that additionally implement
-// this interface get the server-side performance benefit.
-//
-// Usage:
-//
-//	// A custom store implementing both r3.CRUD and AggregationPusher:
-//	type ClickHouseMetricStore struct { ... }
-//	func (s *ClickHouseMetricStore) PushCount(...) (int64, error) { ... }
-//	func (s *ClickHouseMetricStore) PushSum(...)   (float64, error) { ... }
-//	// etc.
-//
-//	agg := metrics.NewAggregator(clickhouseStore)
-//	// Aggregator automatically detects the AggregationPusher and delegates.
+// AggregationPusher is an optional interface a metric store implements to push
+// aggregation server-side instead of fetching all records and computing in Go.
+// If a store implements it, [Aggregator] delegates to these methods; otherwise
+// it falls back to in-memory aggregation, so this is pure opt-in.
 type AggregationPusher interface {
-	// PushCount returns the count of metric records matching the given criteria.
-	// The labels parameter is optional — if non-nil, only records with those labels are counted.
+	// PushCount returns the count of matching records. A non-nil labels filters
+	// to records carrying those labels.
 	PushCount(ctx context.Context, recordType, metricName string, tr TimeRange, labels Labels) (int64, error)
 
 	// PushSum returns the sum of metric values matching the given criteria.

@@ -12,35 +12,33 @@ import (
 
 var _ r3.Aggregator = (*BaseCRUD[any, any])(nil)
 
-// PreparedAggregateQuery holds pre-computed SQL components for an Aggregate
-// call, the aggregate sibling of PreparedListQuery. Any driver (database/sql,
-// GORM, Bun, go-pg) consumes the same pieces: WHERE comes from the embedded
-// PreparedListQuery, the aggregate-specific parts are the select list,
-// GROUP BY columns, HAVING clause, and alias-aware ORDER BY.
+// PreparedAggregateQuery is the aggregate sibling of PreparedListQuery, consumed
+// by any driver (database/sql, GORM, Bun, go-pg). WHERE comes from the embedded
+// PreparedListQuery; the aggregate-specific parts are the select list, GROUP BY,
+// HAVING, and alias-aware ORDER BY.
 type PreparedAggregateQuery struct {
-	// PreparedListQuery carries the WHERE clauses/joins, pagination, and the
-	// merged Query. Its Sorts are already restricted to group fields and
-	// aggregate aliases (see r3.Query.AggregateSorts); cursor pagination does
-	// not apply to grouped rows.
+	// PreparedListQuery carries WHERE/joins, pagination, and the merged Query. Its
+	// Sorts are already restricted to group fields and aggregate aliases (see
+	// r3.Query.AggregateSorts); cursor pagination doesn't apply to grouped rows.
 	PreparedListQuery
 
-	// SelectList is the full select list in declaration order: quoted group
-	// columns first (each aliased to its raw field name, so result keys are
-	// stable across backends), then aggregate expressions with their aliases.
+	// SelectList is the full select list in declaration order: quoted group columns
+	// first (each aliased to its raw field name, so result keys are stable across
+	// backends), then aggregate expressions with their aliases.
 	SelectList []string
 
 	// GroupBy is the quoted group-by column list (empty = whole-set row).
 	GroupBy []string
 
-	// Having is the HAVING clause with args (zero when no Having filters).
-	// Aliases are already lowered to their aggregate expressions (portable —
-	// PostgreSQL does not allow select-list aliases in HAVING).
+	// Having is the HAVING clause with args (zero when no Having filters). Aliases
+	// are already lowered to their aggregate expressions - Postgres disallows
+	// select-list aliases in HAVING.
 	Having r3sql.SQLClause
 }
 
-// PrepareAggregateQuery merges defaults with user query args, validates the
-// merged query against the schema (pass a zero r3.Schema for structural-only
-// validation), and converts it into SQL-ready aggregate components.
+// PrepareAggregateQuery merges defaults with args, validates against the schema
+// (a zero r3.Schema does structural-only validation), and converts to SQL-ready
+// aggregate components.
 func PrepareAggregateQuery(
 	dm *DefaultsManager, schema r3.Schema, qarg ...r3.Query,
 ) (PreparedAggregateQuery, error) {
@@ -48,9 +46,8 @@ func PrepareAggregateQuery(
 }
 
 // PrepareMergedAggregateQuery builds the SQL aggregate components for an
-// already-merged query. Like PrepareMergedListQuery, it is exposed separately
-// so a driver can transform the merged query (e.g. lower relationship filters)
-// before the clauses are built.
+// already-merged query, exposed separately (like PrepareMergedListQuery) so a
+// driver can transform it first (e.g. lower relationship filters).
 func PrepareMergedAggregateQuery(schema r3.Schema, q r3.Query) (PreparedAggregateQuery, error) {
 	var p PreparedAggregateQuery
 
@@ -58,9 +55,8 @@ func PrepareMergedAggregateQuery(schema r3.Schema, q r3.Query) (PreparedAggregat
 		return p, err
 	}
 
-	// Grouped rows are ordered by group fields / aliases only; sorts inherited
-	// from repo defaults reference entity columns and are dropped. Cursor
-	// pagination has no keyset over grouped rows.
+	// Grouped rows order by group fields/aliases only; default sorts reference
+	// entity columns and are dropped. No cursor keyset over grouped rows.
 	q = q.Clone()
 	q.Sorts = q.AggregateSorts()
 	q.Cursor = nil
@@ -77,8 +73,8 @@ func PrepareMergedAggregateQuery(schema r3.Schema, q r3.Query) (PreparedAggregat
 	}
 	p.GroupBy = groupCols
 
-	// Select list: group columns (aliased to their raw field names) first,
-	// then the aggregates. exprByName doubles as the HAVING lowering table.
+	// Group columns (aliased to raw field names) first, then aggregates.
+	// exprByName doubles as the HAVING lowering table.
 	exprByName := make(map[string]string, len(q.GroupBy)+len(q.Aggregates))
 	p.SelectList = make([]string, 0, len(q.GroupBy)+len(q.Aggregates))
 	for i, g := range q.GroupBy {
@@ -108,12 +104,11 @@ func PrepareMergedAggregateQuery(schema r3.Schema, q r3.Query) (PreparedAggregat
 	return p, nil
 }
 
-// ScanAggregateRows scans a dynamic-column result set (as produced by an
-// aggregate SELECT) into r3.AggregateRow maps keyed by the result column
-// names. []byte values are normalized to string (MySQL returns text and
-// decimals as []byte); everything else stays backend-native — the
-// AggregateRow accessors coerce on read. Shared by the raw-SQL engine and the
-// ORM drivers. The caller owns rows (including Close).
+// ScanAggregateRows scans a dynamic-column aggregate result set into
+// r3.AggregateRow maps keyed by result column name. []byte values normalize to
+// string (MySQL returns text and decimals as []byte); everything else stays
+// backend-native, coerced on read by the AggregateRow accessors. Shared by the
+// raw-SQL engine and the ORM drivers. The caller owns rows (including Close).
 func ScanAggregateRows(rows *sql.Rows) ([]r3.AggregateRow, error) {
 	cols, err := rows.Columns()
 	if err != nil {
@@ -143,8 +138,8 @@ func ScanAggregateRows(rows *sql.Rows) ([]r3.AggregateRow, error) {
 	return out, rows.Err()
 }
 
-// Aggregate computes grouped aggregates over the records matching the query.
-// See r3.Aggregator for the query semantics.
+// Aggregate computes grouped aggregates over the matching records. See
+// r3.Aggregator for the semantics.
 func (r *BaseCRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.AggregateRow, error) {
 	prep, err := PrepareAggregateQuery(&r.DefaultsManager, r.Schema, qarg...)
 	if err != nil {

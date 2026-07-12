@@ -9,9 +9,9 @@ import (
 type WriteOp uint8
 
 const (
-	// WriteOpCreate is a Create — gated by the Creatable capability.
+	// WriteOpCreate is a Create, gated by Creatable.
 	WriteOpCreate WriteOp = iota
-	// WriteOpMutate is an Update or Patch — gated by the Mutable capability.
+	// WriteOpMutate is an Update or Patch, gated by Mutable.
 	WriteOpMutate
 )
 
@@ -46,15 +46,14 @@ func (s Schema) hasCap(name string, c Capability) bool {
 	return ok && a.Has(c)
 }
 
-// ValidateQuery is the source of typed, 400-class errors. It checks every field
-// referenced in Filters, Sorts, and Fields against the schema's capabilities and
-// returns a typed error (wrapping the offending field name) on the first
-// violation. A zero Schema validates nothing (back-compat for schema-less
-// callers); see Schema.IsZero.
+// ValidateQuery is the source of typed, 400-class errors: it checks every field
+// in Filters, Sorts, and Fields against the schema's capabilities and returns a
+// typed error (wrapping the field name) on the first violation. A zero Schema
+// validates nothing; see [Schema.IsZero].
 //
-// Dotted ("relation.path") field names are skipped here: they reference another
-// entity and are validated by the engine against the target schema (TODO), not
-// the root schema. Relationship ("has") filters are likewise skipped.
+// Dotted ("relation.path") names are skipped: they reference another entity,
+// validated by the engine against the target schema (TODO), not the root.
+// Relationship ("has") filters are likewise skipped.
 func (s Schema) ValidateQuery(q Query) error {
 	if s.IsZero() {
 		return nil
@@ -81,16 +80,16 @@ func (s Schema) ValidateQuery(q Query) error {
 	return nil
 }
 
-// ValidateAggregateQuery is the aggregate counterpart of ValidateQuery, called
-// by engines before building an Aggregate. The structural checks (aggregates
-// declared, aliases valid and unique, Having references declared names) run
-// even for a zero Schema; capability checks (group and aggregated fields must
-// be Filterable, SUM/AVG need a numeric attribute) apply only when a schema is
+// ValidateAggregateQuery is the aggregate counterpart of [Schema.ValidateQuery],
+// called by engines before building an aggregate. Structural checks (aggregates
+// declared, aliases valid and unique, Having references declared names) run even
+// for a zero Schema; capability checks (group/aggregated fields must be
+// Filterable, SUM/AVG need a numeric attribute) apply only when a schema is
 // present, keeping the permissive-defaults philosophy.
 //
-// It does not check Sorts: sorts that reference neither a group field nor an
-// alias are dropped by Query.AggregateSorts, not rejected — they are usually
-// inherited repo defaults, invisible to the caller.
+// It does not check Sorts: a sort referencing neither a group field nor an alias
+// is dropped by [Query.AggregateSorts], not rejected - it is usually an
+// inherited repo default, invisible to the caller.
 func (s Schema) ValidateAggregateQuery(q Query) error {
 	if err := validateAggregateShape(q); err != nil {
 		return err
@@ -118,7 +117,7 @@ func (s Schema) ValidateAggregateQuery(q Query) error {
 			return err
 		}
 		if a.Func == AggregateSum || a.Func == AggregateAvg {
-			// Only reject when the schema KNOWS the type is non-numeric; an
+			// Reject only when the schema KNOWS the type is non-numeric; an
 			// untyped attribute (hand-built schema) stays permissive.
 			if attr, ok := s.Lookup(name); ok && attr.Type != "" && attr.Type != TypeInt && attr.Type != TypeFloat {
 				return fmt.Errorf("%w: %s over non-numeric field %q", ErrInvalidAggregate, a.Func, name)
@@ -128,10 +127,9 @@ func (s Schema) ValidateAggregateQuery(q Query) error {
 	return nil
 }
 
-// validateAggregateShape enforces the schema-independent structure of an
-// aggregate query: at least one aggregate, valid unique aliases that don't
-// shadow group fields, fields where the function requires one, and Having
-// limited to declared aliases and group fields.
+// validateAggregateShape enforces the schema-independent structure: at least one
+// aggregate, valid unique aliases that don't shadow group fields, a field where
+// the function requires one, and Having limited to declared aliases/group fields.
 func validateAggregateShape(q Query) error {
 	if len(q.Aggregates) == 0 {
 		return fmt.Errorf("%w: at least one aggregate is required", ErrInvalidAggregate)
@@ -185,9 +183,9 @@ func validateAggregateShape(q Query) error {
 	return nil
 }
 
-// validateHavingFilter recurses AND/OR groups and requires every leaf to
-// reference a declared aggregate alias or group field. Relationship filters
-// have no meaning over grouped rows.
+// validateHavingFilter recurses AND/OR groups, requiring every leaf to reference
+// a declared alias or group field. Relationship filters have no meaning over
+// grouped rows.
 func validateHavingFilter(f *FilterSpec, names map[string]struct{}) error {
 	if f == nil {
 		return nil
@@ -214,7 +212,7 @@ func validateHavingFilter(f *FilterSpec, names map[string]struct{}) error {
 	return nil
 }
 
-// validateFilter recurses through AND/OR groups and validates each leaf field as
+// validateFilter recurses AND/OR groups, validating each leaf field as
 // filterable. Relationship ("has") filters are skipped (resolved by the driver
 // against the target entity).
 func (s Schema) validateFilter(f *FilterSpec) error {
@@ -243,9 +241,9 @@ func (s Schema) validateFilter(f *FilterSpec) error {
 	return s.validateField(f.Field.String(), Filterable, ErrFieldNotFilterable)
 }
 
-// validateField checks a single referenced field name: unknown fields yield
-// ErrUnknownField; a known field lacking the required capability yields capErr.
-// Empty and dotted (relation-path) names are skipped — see ValidateQuery.
+// validateField checks one field name: unknown yields [ErrUnknownField], a known
+// field lacking the required capability yields capErr. Empty and dotted
+// (relation-path) names are skipped - see [Schema.ValidateQuery].
 func (s Schema) validateField(name string, required Capability, capErr error) error {
 	if name == "" || strings.Contains(name, ".") {
 		return nil

@@ -11,18 +11,13 @@ import (
 	r3tag "github.com/amberpixels/r3/internal/tag"
 )
 
-// entityMatchesFilters reports whether entity satisfies ALL of the given filters
-// (implicit AND between top-level filters).
-//
-// It is used to enforce Scoper-provided row-level filters on single-entity reads
-// (Get), where the backend looks up by primary key and does not apply query
-// filters. Filter field names are matched to struct fields using the same column
-// derivation as the engines (r3/db tags, snake_case fallback), so a scope that
-// filters List behaves consistently on Get.
-//
-// It returns an error if a filter cannot be evaluated (unknown field or
-// unsupported operator). Callers enforcing access control should treat any
-// error as "not in scope" (fail closed).
+// entityMatchesFilters reports whether entity satisfies ALL of the filters
+// (top-level AND). It enforces Scoper row-level filters on single-entity Get,
+// where the backend looks up by PK and applies no query filters; field names
+// resolve via the same column derivation as the engines (r3/db tags, snake_case
+// fallback), so a scope behaves the same on List and Get. An unevaluable filter
+// (unknown field or unsupported operator) returns an error; access-control
+// callers must treat any error as "not in scope" (fail closed).
 func entityMatchesFilters(entity any, filters r3.Filters) (bool, error) {
 	cols := columnValues(entity)
 	for _, f := range filters {
@@ -37,8 +32,8 @@ func entityMatchesFilters(entity any, filters r3.Filters) (bool, error) {
 	return true, nil
 }
 
-// columnValues builds a map of column name -> field value for the exported
-// fields of entity, using the same tag conventions as the engines.
+// columnValues maps column name -> field value for entity's exported fields,
+// using the same tag conventions as the engines.
 func columnValues(entity any) map[string]any {
 	rv := reflectish.IndirectDeep(reflect.ValueOf(entity))
 	out := map[string]any{}
@@ -97,9 +92,9 @@ func matchFilter(cols map[string]any, f *r3.FilterSpec) (bool, error) {
 		return false, nil
 	}
 
-	// A relationship ("has") filter can't be evaluated against in-memory column
-	// values — it needs the database. Fail closed so it can never silently
-	// match-all (the decorator routes relationship-scoped Get through a query).
+	// A relationship ("has") filter needs the database, not in-memory columns.
+	// Fail closed so it can never silently match-all (the decorator routes
+	// relationship-scoped Get through a query).
 	if f.Relation != "" {
 		return false, fmt.Errorf(
 			"permissions: relationship scope filter %q must be evaluated by the database, not in memory",

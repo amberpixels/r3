@@ -9,8 +9,7 @@ type JSONCursorPagination struct {
 	Limit  int    `json:"limit,omitempty"`
 }
 
-// ToCursorSpec converts JSONCursorPagination to an r3.CursorSpec.
-// Returns nil if no cursor parameters are set.
+// ToCursorSpec converts JSONCursorPagination to an r3.CursorSpec, nil if unset.
 func (jc *JSONCursorPagination) ToCursorSpec() *r3.CursorSpec {
 	if jc.After == "" && jc.Before == "" && jc.Limit <= 0 {
 		return nil
@@ -22,8 +21,7 @@ func (jc *JSONCursorPagination) ToCursorSpec() *r3.CursorSpec {
 	}
 }
 
-// CursorToJSON converts an r3.CursorSpec to JSONCursorPagination.
-// Returns nil if the cursor is nil.
+// CursorToJSON converts an r3.CursorSpec to JSONCursorPagination, nil if nil.
 func CursorToJSON(c *r3.CursorSpec) *JSONCursorPagination {
 	if c == nil {
 		return nil

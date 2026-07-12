@@ -4,14 +4,12 @@ import (
 	"context"
 )
 
-// MetricCRUDLatency is the metric name for operation duration tracking.
-// Value is the duration in milliseconds.
+// MetricCRUDLatency is the metric name for operation duration; value is
+// milliseconds.
 const MetricCRUDLatency = "crud.action.latency"
 
-// LatencyCollector records the wall-clock duration of each CRUD operation.
-// Emits one "crud.action.latency" entry with value = duration in milliseconds.
-//
-// Fires on both success and failure — latency is always interesting.
+// LatencyCollector emits one "crud.action.latency" entry per operation, valued
+// as wall-clock milliseconds. Fires on both success and failure.
 func LatencyCollector[T any, ID comparable]() Collector[T, ID] {
 	return CollectorFunc[T, ID](func(_ context.Context, opCtx OperationContext[T, ID]) []MetricEntry {
 		return []MetricEntry{{

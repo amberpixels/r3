@@ -8,10 +8,8 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// ParsePagination extracts pagination parameters from url.Values.
-// It reads the page number and page size parameters using the configured param names.
-//
-// If neither parameter is present, it returns nil (no pagination specified).
+// ParsePagination reads the page-number and page-size params into a [r3.PaginationSpec],
+// or nil when neither is present.
 func ParsePagination(values url.Values, paramNames ParamNames) (*r3.PaginationSpec, error) {
 	rawPageNum := values.Get(paramNames.PageNum)
 	rawPageSize := values.Get(paramNames.PageSize)
@@ -43,7 +41,7 @@ func ParsePagination(values url.Values, paramNames ParamNames) (*r3.PaginationSp
 		}
 	}
 
-	// Both zero means no pagination requested
+	// Both zero: no pagination requested.
 	if pageNum <= 0 && pageSize <= 0 {
 		return r3.NoPagination(), nil
 	}
@@ -58,8 +56,7 @@ func ParsePagination(values url.Values, paramNames ParamNames) (*r3.PaginationSp
 	}
 }
 
-// FormatPagination writes pagination parameters into url.Values.
-// If pagination is nil, no parameters are added.
+// FormatPagination writes pagination params into url.Values; nil pagination adds none.
 func FormatPagination(p *r3.PaginationSpec, paramNames ParamNames) url.Values {
 	values := make(url.Values)
 	if p == nil {

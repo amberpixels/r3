@@ -1,15 +1,10 @@
-// Package transactor provides a decorator for r3.CRUD[T, ID] that surfaces
-// transaction capabilities from the underlying driver.
+// Package transactor decorates any r3.CRUD[T, ID] to surface the driver's
+// transaction support, transparently satisfying the same interface and passing
+// standard methods through to the inner repo.
 //
-// It follows the same decorator pattern as features/softdelete and
-// features/history: the decorator wraps any r3.CRUD[T, ID] and transparently
-// satisfies the same interface, passing all six CRUD methods through to the
-// inner implementation.
-//
-// Transaction support in r3 is opt-in. Drivers that support transactions
-// implement the [r3.Transactor] interface (BeginTx). The decorator delegates
-// to the inner CRUD if it satisfies Transactor; otherwise
-// [r3.ErrTransactionsNotSupported] is returned.
+// Transactions in r3 are opt-in: drivers that support them implement
+// [r3.Transactor] (BeginTx). The decorator delegates when the inner CRUD
+// satisfies it, else returns [r3.ErrTransactionsNotSupported].
 //
 // # Supported drivers
 //
@@ -29,7 +24,7 @@
 //	inner := r3pgx.NewPgxCRUD[User, int64](db)
 //	repo := transactor.WithTransactor[User, int64](inner)
 //
-//	// repo satisfies r3.CRUD[User, int64] — all methods pass through.
+//	// repo satisfies r3.CRUD[User, int64] - all methods pass through.
 //	// Additionally:
 //	repo.SupportsTransactions() // true for SQL drivers
 //

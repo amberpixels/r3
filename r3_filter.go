@@ -9,7 +9,7 @@ import (
 // Filters represents a list of *FilterSpec.
 type Filters []*FilterSpec
 
-// MergeWith merges (combines) filters with other filters.
+// MergeWith combines these filters with other.
 func (fs Filters) MergeWith(other Filters) Filters { return mergeWith(fs, other) }
 
 // Clone returns a safe full-clone of the filters list.
@@ -27,38 +27,29 @@ type FilterSpec struct {
 	Operator FilterOperatorSpec
 	Value    any
 
-	// Children groups:
-	// Note: When using AND/OR the Field,Operator,Value fields of the parent filter are ignored.
+	// And and Or hold child groups. When either is set, the parent's
+	// Field/Operator/Value are ignored.
 
-	// AND Children should be declared inside AND
 	And Filters
-	// OR Children should be declared inside OR
-	Or Filters
+	Or  Filters
 
-	// Relation, when non-empty, makes this a relationship ("has") filter: it
-	// matches rows whose declared relation `Relation` (by the same struct field
-	// name used for preloads) has at least one related row satisfying all of
-	// RelationFilter. Field/Operator/Value/And/Or are ignored when Relation is
-	// set.
-	//
-	// Relationship filters are resolved by the driver into a key-set In filter
-	// before SQL translation (see the GORM driver's relation lowering), so they
-	// work on any backend regardless of native subquery support. A dialect may
-	// later compile them natively (EXISTS) as an optimization.
-	// omitempty so a non-relationship filter serializes exactly as before (the
-	// relationship fields are absent unless used).
+	// Relation, when non-empty, makes this a relationship ("has") filter matching
+	// rows whose declared relation (by preload struct-field name) has at least one
+	// related row satisfying RelationFilter. Field/Operator/Value/And/Or are then
+	// ignored. The driver lowers it to a key-set In filter before SQL translation,
+	// so it works on any backend regardless of native subquery support.
+	// omitempty keeps a non-relationship filter serializing exactly as before.
 	Relation       string  `json:",omitempty"`
 	RelationFilter Filters `json:",omitempty"`
 
-	// RelationNegate inverts a relationship filter: when true (see [HasNo]), the
-	// filter matches rows whose relation has NO related row satisfying
-	// RelationFilter (an anti-join / NOT EXISTS), rather than at least one. Only
-	// meaningful when Relation is set; the driver lowers it to a NOT-IN key set.
+	// RelationNegate inverts a relationship filter (see [HasNo]): match rows whose
+	// relation has NO related row satisfying RelationFilter - an anti-join /
+	// NOT EXISTS. Only meaningful with Relation set; the driver lowers it to a
+	// NOT-IN key set.
 	RelationNegate bool `json:",omitempty"`
 }
 
-// String returns just a string representation of the filter (as JSON).
-// As all fields are exported, we're OK with this.
+// String renders the filter as JSON.
 func (f *FilterSpec) String() string {
 	jj, err := json.Marshal(f)
 	if err != nil {
@@ -78,24 +69,24 @@ func (f *FilterSpec) Clone() *FilterSpec {
 	return &clone
 }
 
-//
-// Auxiliary helpers for quick filter scaffolding:
-//
+// Auxiliary helpers for quick filter scaffolding.
 
 // NewFilterSpec constructs a FilterSpec (not an AND/OR group).
 func NewFilterSpec(field *FieldSpec, operator FilterOperatorSpec, value any) *FilterSpec {
 	return &FilterSpec{Field: field, Operator: operator, Value: value}
 }
 
+// NewFilterSpecAndGroup wraps filters in an AND group.
 func NewFilterSpecAndGroup(filters ...*FilterSpec) *FilterSpec {
 	return &FilterSpec{And: filters}
 }
+
+// NewFilterSpecOrGroup wraps filters in an OR group.
 func NewFilterSpecOrGroup(filters ...*FilterSpec) *FilterSpec {
 	return &FilterSpec{Or: filters}
 }
 
-// Fop is a shorthand for NewFilterSpec()
-// Fop is "F" for filter and "op" for operator.
+// Fop is shorthand for [NewFilterSpec] ("F" for filter, "op" for operator).
 func Fop(field *FieldSpec, operator FilterOperatorSpec, value any) *FilterSpec {
 	return NewFilterSpec(field, operator, value)
 }
@@ -105,13 +96,10 @@ func F(field *FieldSpec, value any) *FilterSpec      { return Fop(field, Operato
 func FLike(field *FieldSpec, value any) *FilterSpec  { return Fop(field, OperatorLike, value) }
 func FILike(field *FieldSpec, value any) *FilterSpec { return Fop(field, OperatorILike, value) }
 
-//
-// Ergonomic short-form helpers.
-//
-// These take a plain field name (string) instead of a *FieldSpec and cover the
-// common case without ceremony: r3.Eq("name", "Berlin"), r3.Gt("age", 18).
-// They are sugar over Fop + NewFieldSpec; reach for F/Fop with a hand-built
-// FieldSpec when you need table hints or nested paths.
+// Short-form helpers take a plain field name instead of a *FieldSpec for the
+// common case: r3.Eq("name", "Berlin"), r3.Gt("age", 18). They are sugar over
+// Fop + NewFieldSpec; use F/Fop with a hand-built FieldSpec for table hints or
+// nested paths.
 
 // Eq builds a `field = value` filter.
 func Eq(field string, value any) *FilterSpec { return Fop(NewFieldSpec(field), OperatorEq, value) }
@@ -164,33 +152,28 @@ func Between(field string, lo, hi any) *FilterSpec {
 }
 
 // Has builds a relationship ("has") filter: it matches rows whose declared
-// relation `relation` (by struct field name — the same name used for preloads)
-// has at least one related row satisfying all of `inner`. Example:
+// relation (by preload struct-field name) has at least one related row
+// satisfying all of inner, evaluated against the related entity. Example:
 //
 //	r3.Has("Squads", r3.In("id", []int64{1, 3}))  // rows linked to squad 1 or 3
 //
-// The inner filters are evaluated against the related entity. Drivers resolve
-// the relation to a key set and rewrite this to an In filter, so it works on
-// every backend regardless of native subquery support.
-//
-// Resolution happens in the driver, so a Has filter does not round-trip through
-// the serialization dialects (json/url/yaml/toml) — build it in Go. When used
-// as a permission scope, enforcing it on Get requires permissions.WithIDFunc.
+// The driver resolves the relation to a key set and rewrites this to an In
+// filter, so it works on every backend regardless of native subquery support.
+// It does not round-trip through the serialization dialects - build it in Go.
+// As a permission scope, enforcing it on Get requires permissions.WithIDFunc.
 func Has(relation string, inner ...*FilterSpec) *FilterSpec {
 	return &FilterSpec{Relation: relation, RelationFilter: inner}
 }
 
-// HasNo builds a negated relationship filter (anti-join): it matches rows whose
-// declared relation `relation` has NO related row satisfying all of `inner` —
-// the "NOT EXISTS" counterpart of [Has]. With no inner filters it matches rows
-// that have no related row at all. Example:
+// HasNo is the negated (anti-join) counterpart of [Has]: it matches rows whose
+// declared relation has NO related row satisfying inner - a NOT EXISTS. With no
+// inner filters it matches rows with no related row at all. Example:
 //
 //	r3.HasNo("Translations")                 // rows with no translation yet
 //	r3.HasNo("Squads", r3.Eq("archived", true)) // rows in no archived squad
 //
-// Like [Has], the driver resolves it to a key set (a NOT-IN filter), so it works
-// on every backend regardless of native subquery support and does not round-trip
-// through the serialization dialects — build it in Go.
+// Like [Has], the driver resolves it to a key set (a NOT-IN filter); it works on
+// every backend and does not round-trip through the serialization dialects.
 func HasNo(relation string, inner ...*FilterSpec) *FilterSpec {
 	return &FilterSpec{Relation: relation, RelationFilter: inner, RelationNegate: true}
 }
@@ -201,8 +184,8 @@ func And(filters ...*FilterSpec) *FilterSpec { return NewFilterSpecAndGroup(filt
 // Or is a shortcut for NewFilterSpecOrGroup.
 func Or(filters ...*FilterSpec) *FilterSpec { return NewFilterSpecOrGroup(filters...) }
 
-// ExtractBetweenBounds extracts low and high values from a between filter value.
-// The value must be a slice or array with exactly 2 elements.
+// ExtractBetweenBounds returns the low and high bounds from a between value,
+// which must be a slice or array of exactly 2 elements.
 func ExtractBetweenBounds(value any) (any, any, error) {
 	rv := reflect.ValueOf(value)
 	if rv.Kind() != reflect.Slice && rv.Kind() != reflect.Array {

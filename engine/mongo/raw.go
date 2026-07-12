@@ -8,14 +8,14 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
-// BaseRaw is a MongoDB wrapper that allows executing arbitrary queries
-// against the underlying collection.
+// BaseRaw is the escape hatch for arbitrary operations against the underlying
+// collection.
 type BaseRaw[T any, ID any] struct {
 	Collection *mongo.Collection
 	Meta       StructMeta
 }
 
-// NewBaseRaw creates a new BaseRaw instance.
+// NewBaseRaw builds a BaseRaw over coll.
 func NewBaseRaw[T any, ID comparable](coll *mongo.Collection, meta StructMeta) *BaseRaw[T, ID] {
 	return &BaseRaw[T, ID]{
 		Collection: coll,

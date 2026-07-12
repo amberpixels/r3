@@ -4,20 +4,16 @@ package r3
 type RelationKind uint8
 
 const (
-	// RelationHasMany is a one-to-many relation: the related (child) rows carry
-	// a foreign key back to the owner (e.g. City has many Translations).
+	// RelationHasMany is one-to-many: the child rows carry an FK to the owner.
 	RelationHasMany RelationKind = iota + 1
-	// RelationBelongsTo is a many-to-one relation: the owner row carries a
-	// foreign key to the related row (e.g. Location belongs to City).
+	// RelationBelongsTo is many-to-one: the owner row carries an FK to the related row.
 	RelationBelongsTo
-	// RelationManyToMany is a many-to-many relation resolved through a join
-	// table (e.g. Event has many Artists via artist_to_events).
+	// RelationManyToMany is resolved through a join table.
 	RelationManyToMany
 )
 
-// String returns the canonical lowercase name of the relation kind
-// ("has-many" | "belongs-to" | "many-to-many"), matching the `r3:"rel:..."`
-// tag vocabulary.
+// String returns the canonical lowercase name matching the `r3:"rel:..."` tag
+// vocabulary ("has-many" | "belongs-to" | "many-to-many").
 func (k RelationKind) String() string {
 	switch k {
 	case RelationHasMany:
@@ -31,31 +27,23 @@ func (k RelationKind) String() string {
 	}
 }
 
-// RelationSpec physically describes a relation so a driver can resolve it
-// WITHOUT importing the related Go type. It is the explicit counterpart to a
-// tag-declared relation (`r3:"rel:..."`): where a tagged relation reflects the
-// target table and primary key from the related struct, a RelationSpec states
-// them directly as table and column names.
+// RelationSpec physically describes a relation by table and column names, so a
+// driver can resolve it WITHOUT importing the related Go type - the explicit
+// counterpart to a tag-declared relation (`r3:"rel:..."`). This lets an entity
+// relate to a table it cannot import (e.g. when the packages already reference
+// each other, so importing would create a domain cycle); being a value rather
+// than a struct field, it needs no Go field on the entity.
 //
-// This lets an entity declare a relation to a table it cannot (or should not)
-// import as a Go type — for example when importing the related package would
-// create a domain import cycle (the queried entity and the relation target
-// already reference each other). Because a RelationSpec is not a struct field,
-// it needs no Go field on the entity at all.
-//
-// Register specs on a repository with [WithRelations]. They then resolve by
-// name through [Has]/[HasNo] filters and [AggregateThroughRelation], exactly
-// like tag-declared relations. A declared relation is filterable and
-// aggregatable but not preloadable (there is no struct field to load into).
-//
-// Build one with [HasManyRelation], [BelongsToRelation], or
-// [ManyToManyRelation] rather than assembling the struct by hand.
+// Register specs with [WithRelations]; they then resolve by name through
+// [Has]/[HasNo] and [AggregateThroughRelation] like tag-declared relations, but
+// are not preloadable (no struct field to load into). Build one with
+// [HasManyRelation], [BelongsToRelation], or [ManyToManyRelation].
 type RelationSpec struct {
-	// Name is the logical relation name used by Has("name")/HasNo("name") and
-	// AggregateThroughRelation. It need not correspond to any struct field.
+	// Name is the logical name used by Has/HasNo and AggregateThroughRelation;
+	// it need not correspond to any struct field.
 	Name string
 
-	// Kind is the relation shape (has-many, belongs-to, many-to-many).
+	// Kind is the relation shape.
 	Kind RelationKind
 
 	// TargetTable is the related rows' table (e.g. "locations").
@@ -70,15 +58,14 @@ type RelationSpec struct {
 	//   - many-to-many: the owner-side FK column in the join table
 	FKColumn string
 
-	// RefColumn is the related-side FK column in the join table.
-	// Many-to-many only.
+	// RefColumn is the related-side FK column in the join table (many-to-many only).
 	RefColumn string
 
-	// JoinTable is the join table name. Many-to-many only.
+	// JoinTable is the join table name (many-to-many only).
 	JoinTable string
 
 	// TargetSoftDeleteColumn, when set, is the related table's soft-delete
-	// column. [AggregateThroughRelation] excludes related rows whose value is
+	// column: [AggregateThroughRelation] excludes related rows whose value is
 	// non-NULL, so soft-deleted related rows are not counted.
 	TargetSoftDeleteColumn string
 }
@@ -86,8 +73,7 @@ type RelationSpec struct {
 // RelationOption customizes an optional field of a [RelationSpec].
 type RelationOption func(*RelationSpec)
 
-// RelationTargetPK overrides the related table's primary-key column
-// (default "id").
+// RelationTargetPK overrides the related table's primary-key column (default "id").
 func RelationTargetPK(column string) RelationOption {
 	return func(s *RelationSpec) { s.TargetPK = column }
 }
@@ -98,22 +84,20 @@ func RelationTargetSoftDelete(column string) RelationOption {
 	return func(s *RelationSpec) { s.TargetSoftDeleteColumn = column }
 }
 
-// HasManyRelation declares a one-to-many relation named `name` whose related
-// rows live in `targetTable` and carry `fkColumn` pointing back at the owner's
-// primary key.
+// HasManyRelation declares a one-to-many relation: `fkColumn` on `targetTable`
+// points back at the owner's primary key.
 func HasManyRelation(name, targetTable, fkColumn string, opts ...RelationOption) RelationSpec {
 	return newRelationSpec(RelationHasMany, name, targetTable, fkColumn, "", "", opts)
 }
 
-// BelongsToRelation declares a many-to-one relation named `name`: the owner row
-// carries `fkColumn` pointing at `targetTable`'s primary key.
+// BelongsToRelation declares a many-to-one relation: the owner's `fkColumn`
+// points at `targetTable`'s primary key.
 func BelongsToRelation(name, targetTable, fkColumn string, opts ...RelationOption) RelationSpec {
 	return newRelationSpec(RelationBelongsTo, name, targetTable, fkColumn, "", "", opts)
 }
 
-// ManyToManyRelation declares a many-to-many relation named `name` resolved
-// through `joinTable`: `fkColumn` is the owner-side FK and `refColumn` the
-// related-side FK in the join table, with related rows in `targetTable`.
+// ManyToManyRelation declares a many-to-many relation through `joinTable`:
+// `fkColumn` is the owner-side FK and `refColumn` the related-side FK.
 func ManyToManyRelation(
 	name, joinTable, fkColumn, refColumn, targetTable string, opts ...RelationOption,
 ) RelationSpec {

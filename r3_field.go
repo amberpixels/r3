@@ -17,10 +17,10 @@ var ErrNoPatchFields = errors.New("patch requires at least one field")
 // attribute that is not mutable (e.g. PK, created_at, soft-delete, immutable).
 var ErrInvalidPatchField = errors.New("invalid patch field")
 
-// ValidateIdentifier checks that s is a safe SQL identifier or dotted identifier path.
-// Each dot-separated segment must match [a-zA-Z_][a-zA-Z0-9_]*.
-// Examples of valid identifiers: "id", "user_name", "user.profile", "orders.items.product_name".
-// Examples of invalid identifiers: "", "1col", "a b", "x;y", "col--", "table.*".
+// ValidateIdentifier checks that s is a safe SQL identifier or dotted path; each
+// dot-separated segment must match [a-zA-Z_][a-zA-Z0-9_]*. Valid: "id",
+// "user.profile", "orders.items.product_name". Invalid: "1col", "a b", "x;y",
+// "table.*".
 func ValidateIdentifier(s string) error {
 	if s == "" {
 		return ErrInvalidIdentifier
@@ -34,8 +34,8 @@ func ValidateIdentifier(s string) error {
 	return nil
 }
 
-// isValidIdentifierSegment checks that a single identifier segment (no dots)
-// matches [a-zA-Z_][a-zA-Z0-9_]*.
+// isValidIdentifierSegment checks that a single dot-free segment matches
+// [a-zA-Z_][a-zA-Z0-9_]*.
 func isValidIdentifierSegment(s string) bool {
 	if len(s) == 0 {
 		return false
@@ -85,10 +85,11 @@ func (fs Fields) Clone() Fields {
 	return cloned
 }
 
-// FieldSpec is the simplest possible implementation of a field.
-// FieldSpec is just a string - it can be the name of the field in database, etc.
+// FieldSpec names a field: a plain string (a column/attribute name, possibly a
+// dotted path).
 type FieldSpec string
 
+// NewFieldSpec returns a *FieldSpec for s.
 func NewFieldSpec(s string) *FieldSpec {
 	var cf = new(FieldSpec)
 	*cf = FieldSpec(s)
@@ -109,8 +110,7 @@ func (f *FieldSpec) Clone() *FieldSpec {
 	return &clone
 }
 
-// FieldsToStrings converts Fields to a []string of field names.
-// This is a backend-agnostic helper reused by sqlbase, mongobase, etc.
+// FieldsToStrings converts Fields to a []string of field names (nils skipped).
 func FieldsToStrings(fields Fields) []string {
 	if len(fields) == 0 {
 		return nil

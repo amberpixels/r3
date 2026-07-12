@@ -16,8 +16,7 @@ func typeName[T any]() string {
 	return t.Name()
 }
 
-// deriveRecordType derives the record type name from the struct type T.
-// It converts the struct name to snake_case plural (e.g. Order -> "orders").
+// deriveRecordType is T's struct name as snake_case plural (e.g. Order -> "orders").
 func deriveRecordType[T any]() string {
 	return r3utils.ToSnakeCasePlural(typeName[T]())
 }

@@ -8,12 +8,10 @@ import (
 	r3json "github.com/amberpixels/r3/dialects/json"
 )
 
-// ParseFilters parses a JSON-encoded filter string into r3.Filters.
-// The string should be a JSON array of filter objects using the r3json schema.
+// ParseFilters parses a JSON array of filter objects (r3json schema) into r3.Filters;
+// empty string returns nil.
 //
-// Example: [{"f":"status","op":"eq","v":"active"},{"f":"age","op":"gte","v":18}]
-//
-// Empty string returns nil (no filters specified).
+//	[{"f":"status","op":"eq","v":"active"},{"f":"age","op":"gte","v":18}]
 func ParseFilters(raw string) (r3.Filters, error) {
 	if raw == "" {
 		return nil, nil

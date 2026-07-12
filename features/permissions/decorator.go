@@ -6,41 +6,20 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// CRUD is a decorator that wraps any r3.CRUD[T, ID] and gates every operation
-// through a user-defined Checker interface. The decorator is stateless -- it
-// doesn't store roles or permissions. It asks the Checker "is this allowed?"
-// before delegating to the inner CRUD.
-//
-// It transparently satisfies the r3.CRUD[T, ID] interface, so it can be used
-// as a drop-in replacement for any CRUD repository.
-//
-// Usage:
-//
-//	repo := permissions.WithPermissions[Post, int64](
-//	    innerRepo,
-//	    myChecker,
-//	    permissions.WithIDFunc[Post, int64](func(p Post) int64 { return p.ID }),
-//	)
+// CRUD gates every operation through the Checker before delegating to the inner
+// repo. It is stateless - it stores no roles or permissions, only asks "is this
+// allowed?". See the package doc for usage.
 type CRUD[T any, ID comparable] struct {
 	inner   r3.CRUD[T, ID]
 	checker Checker[T, ID]
 	opts    Options[T, ID]
 }
 
-// Compile-time check that CRUD satisfies r3.CRUD.
 var _ r3.CRUD[any, any] = &CRUD[any, any]{}
 var _ r3.Aggregator = &CRUD[any, any]{}
 var _ r3.RelationAggregator = &CRUD[any, any]{}
 
-// WithPermissions wraps an existing r3.CRUD with permission checking.
-// The checker parameter is the authorization policy that gates every operation.
-//
-// Example:
-//
-//	repo := permissions.WithPermissions[Post, int64](
-//	    innerRepo,
-//	    permissions.AllowAll[Post, int64](),
-//	)
+// WithPermissions wraps inner so every operation is gated by checker.
 func WithPermissions[T any, ID comparable](
 	inner r3.CRUD[T, ID],
 	checker Checker[T, ID],
@@ -59,20 +38,19 @@ func WithPermissions[T any, ID comparable](
 	}
 }
 
-// Inner returns the underlying CRUD repository (unwrapped).
-// Useful when you need to bypass permission checking for a specific operation.
+// Inner returns the underlying CRUD, unwrapped - bypasses permission checking.
 func (p *CRUD[T, ID]) Inner() r3.CRUD[T, ID] {
 	return p.inner
 }
 
-// Unwrap returns the wrapped CRUD so capability detection and transaction
-// propagation can walk the decorator chain.
+// Unwrap returns the wrapped CRUD so decorator-chain walks (capability
+// detection, transaction propagation) can reach the backend.
 func (p *CRUD[T, ID]) Unwrap() r3.CRUD[T, ID] {
 	return p.inner
 }
 
-// Rewrap rebuilds this decorator around a different inner CRUD (used to
-// re-apply the permission layer on top of a transaction-bound CRUD).
+// Rewrap rebuilds this decorator around inner, re-applying the permission layer
+// on top of a transaction-bound CRUD.
 func (p *CRUD[T, ID]) Rewrap(inner r3.CRUD[T, ID]) r3.CRUD[T, ID] {
 	return &CRUD[T, ID]{inner: inner, checker: p.checker, opts: p.opts}
 }
@@ -92,15 +70,13 @@ func (p *CRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 	return p.inner.Create(ctx, entity)
 }
 
-// Get delegates to inner.Get first (need entity for row-level check),
-// then checks OpRead permission. If denied, the entity is not leaked.
+// Get fetches first (the entity is needed for the row-level check), then checks
+// OpRead - a denied entity is never leaked.
 //
-// If the checker also implements Scoper, the fetched entity is verified against
-// the scope filters — consistent with List/Count, which apply the same filters
-// at the database level. An entity outside the actor's scope is reported as
-// [r3.ErrNotFound] (invisible), exactly as List would omit it. The scope filters
-// are evaluated in-memory against the fetched entity; an unevaluable filter
-// fails closed (treated as out of scope).
+// If the checker is a Scoper, the fetched entity is verified against the scope
+// filters, consistent with List/Count. An out-of-scope entity is reported as
+// [r3.ErrNotFound] (invisible), exactly as List would omit it. Scope filters are
+// evaluated in memory; an unevaluable filter fails closed (out of scope).
 func (p *CRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, error) {
 	result, err := p.inner.Get(ctx, id, qarg...)
 	if err != nil {
@@ -137,12 +113,11 @@ func (p *CRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, erro
 	return result, nil
 }
 
-// entityInScope reports whether the already-fetched entity (id/result) satisfies
-// the actor's scope filters. Plain column filters are matched in memory (fast,
-// no extra query). A relationship ("has") filter can't be evaluated in memory,
-// so scope is verified with a query that applies the same filters List/Count use
-// — consistent semantics at the cost of one extra query (bounded by the in-scope
-// row count; a future native-EXISTS path can pin by PK instead).
+// entityInScope reports whether the already-fetched entity satisfies the actor's
+// scope filters. Plain column filters match in memory (no extra query). A
+// relationship ("has") filter can't be evaluated in memory, so scope is verified
+// with a query applying the same filters List/Count use - one extra query
+// (bounded by the in-scope row count; a future native-EXISTS path can pin by PK).
 func (p *CRUD[T, ID]) entityInScope(ctx context.Context, id ID, result *T, filters r3.Filters) (bool, error) {
 	if !containsRelationFilter(filters) {
 		return entityMatchesFilters(result, filters)
@@ -180,12 +155,12 @@ func containsRelationFilter(filters r3.Filters) bool {
 	return false
 }
 
-// List checks OpRead permission (resource-level), optionally injects scope
-// filters if the checker implements Scoper, then delegates to inner.List.
+// List checks resource-level OpRead, injects the Scoper's filters if any, then
+// delegates to inner.List.
 func (p *CRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, error) {
 	actor := r3.GetActor(ctx)
 
-	// Resource-level check: can this actor list this resource type at all?
+	// Resource-level: may this actor list this type at all?
 	if err := p.checker.Check(ctx, AccessRequest[T, ID]{
 		Operation: OpRead,
 		Actor:     actor,
@@ -193,7 +168,6 @@ func (p *CRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, e
 		return nil, 0, err
 	}
 
-	// If the checker also implements Scoper, inject scope filters.
 	if scoper, ok := p.checker.(Scoper[T, ID]); ok {
 		filters, err := scoper.Scope(ctx, actor)
 		if err != nil {
@@ -212,12 +186,12 @@ func (p *CRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, e
 	return p.inner.List(ctx, qarg...)
 }
 
-// Count checks OpRead permission (resource-level), optionally injects scope
-// filters if the checker implements Scoper, then delegates to inner.Count.
+// Count checks resource-level OpRead, injects the Scoper's filters if any, then
+// delegates to inner.Count.
 func (p *CRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, error) {
 	actor := r3.GetActor(ctx)
 
-	// Resource-level check: can this actor read this resource type at all?
+	// Resource-level: may this actor read this type at all?
 	if err := p.checker.Check(ctx, AccessRequest[T, ID]{
 		Operation: OpRead,
 		Actor:     actor,
@@ -225,7 +199,6 @@ func (p *CRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, error
 		return 0, err
 	}
 
-	// If the checker also implements Scoper, inject scope filters.
 	if scoper, ok := p.checker.(Scoper[T, ID]); ok {
 		filters, err := scoper.Scope(ctx, actor)
 		if err != nil {
@@ -244,11 +217,9 @@ func (p *CRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, error
 	return p.inner.Count(ctx, qarg...)
 }
 
-// Aggregate checks OpRead permission (resource-level), optionally injects
-// scope filters if the checker implements Scoper — so grouped results only
-// cover rows the actor is allowed to see — then delegates to the inner repo's
-// Aggregate. An inner repo without aggregation support yields
-// r3.ErrAggregateNotSupported.
+// Aggregate checks resource-level OpRead and injects the Scoper's filters if any
+// - so grouped results cover only rows the actor may see - then delegates to the
+// inner repo. Yields r3.ErrAggregateNotSupported when it has no aggregation.
 func (p *CRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.AggregateRow, error) {
 	agg, ok := p.inner.(r3.Aggregator)
 	if !ok {
@@ -257,7 +228,7 @@ func (p *CRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.Agg
 
 	actor := r3.GetActor(ctx)
 
-	// Resource-level check: can this actor read this resource type at all?
+	// Resource-level: may this actor read this type at all?
 	if err := p.checker.Check(ctx, AccessRequest[T, ID]{
 		Operation: OpRead,
 		Actor:     actor,
@@ -265,7 +236,6 @@ func (p *CRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.Agg
 		return nil, err
 	}
 
-	// If the checker also implements Scoper, inject scope filters.
 	if scoper, ok := p.checker.(Scoper[T, ID]); ok {
 		filters, err := scoper.Scope(ctx, actor)
 		if err != nil {
@@ -284,11 +254,10 @@ func (p *CRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.Agg
 	return agg.Aggregate(ctx, qarg...)
 }
 
-// AggregateThroughRelation checks OpRead permission (resource-level) and, if the
-// checker is a Scoper, injects the actor's owner-scope filters — so relation
-// aggregates only fold related rows of owners the actor may see — then delegates
-// to the inner repo. An inner repo without relation-aggregation support yields
-// r3.ErrRelationAggregateNotSupported.
+// AggregateThroughRelation checks resource-level OpRead and, if the checker is a
+// Scoper, injects the owner-scope filters - so relation aggregates fold only
+// related rows of owners the actor may see - then delegates to the inner repo.
+// Yields r3.ErrRelationAggregateNotSupported when it has no relation aggregation.
 func (p *CRUD[T, ID]) AggregateThroughRelation(
 	ctx context.Context, relation string, qarg ...r3.Query,
 ) ([]r3.AggregateRow, error) {
@@ -306,9 +275,9 @@ func (p *CRUD[T, ID]) AggregateThroughRelation(
 		return nil, err
 	}
 
-	// Scoper filters are owner-entity filters, and relation aggregation
-	// interprets Query.Filters as filters on the owner — so scope restricts which
-	// owners' related rows are counted.
+	// Scoper filters are owner-entity filters, and relation aggregation reads
+	// Query.Filters as owner filters - so scope restricts which owners' related
+	// rows are counted.
 	if scoper, ok := p.checker.(Scoper[T, ID]); ok {
 		filters, err := scoper.Scope(ctx, actor)
 		if err != nil {
@@ -327,8 +296,8 @@ func (p *CRUD[T, ID]) AggregateThroughRelation(
 	return agg.AggregateThroughRelation(ctx, relation, qarg...)
 }
 
-// Update fetches the existing entity (if IDFunc is set) for entity-aware
-// checks, then checks OpUpdate permission, then delegates to inner.Update.
+// Update fetches the existing entity (if IDFunc is set) for entity-aware checks,
+// checks OpUpdate, then delegates to inner.Update.
 func (p *CRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	actor := r3.GetActor(ctx)
 	req := AccessRequest[T, ID]{
@@ -355,8 +324,8 @@ func (p *CRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	return p.inner.Update(ctx, entity)
 }
 
-// Patch fetches the existing entity (if IDFunc is set) for entity-aware
-// checks, then checks OpUpdate permission, then delegates to inner.Patch.
+// Patch fetches the existing entity (if IDFunc is set) for entity-aware checks,
+// checks OpUpdate, then delegates to inner.Patch.
 func (p *CRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields) (T, error) {
 	actor := r3.GetActor(ctx)
 	req := AccessRequest[T, ID]{
@@ -383,8 +352,8 @@ func (p *CRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields) (T,
 	return p.inner.Patch(ctx, entity, fields)
 }
 
-// Delete fetches the existing entity (if IDFunc is set) for entity-aware
-// checks, then checks OpDelete permission, then delegates to inner.Delete.
+// Delete fetches the existing entity (if IDFunc is set) for entity-aware checks,
+// checks OpDelete, then delegates to inner.Delete.
 func (p *CRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 	actor := r3.GetActor(ctx)
 	req := AccessRequest[T, ID]{

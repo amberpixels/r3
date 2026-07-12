@@ -37,16 +37,14 @@ func FilterToJSON(f *r3.FilterSpec) (*JSONFilter, error) {
 		return nil, newError(errors.New("nil filter spec"))
 	}
 
-	// Relationship ("has") filters are resolved by the driver against the
-	// database; they have no serialized form. Fail loudly rather than silently
-	// drop the relation and emit a match-all filter.
+	// Relationship ("has") filters are resolved by the driver, not serialized;
+	// fail loudly rather than silently emit a match-all filter.
 	if f.Relation != "" {
 		return nil, newError(fmt.Errorf("relationship filter on %q cannot be serialized to JSON", f.Relation))
 	}
 
 	jsonFilter := &JSONFilter{}
 
-	// Handle simple field-operator-value filters
 	if f.Field != nil {
 		jsonFilter.Field = JSONField(f.Field.String())
 		jsonFilter.Value = f.Value
@@ -58,7 +56,6 @@ func FilterToJSON(f *r3.FilterSpec) (*JSONFilter, error) {
 		jsonFilter.Op = jsonOp
 	}
 
-	// Handle AND/OR groups recursively
 	if len(f.And) > 0 {
 		jsonFilter.And = make(JSONFilters, len(f.And))
 		for i, child := range f.And {

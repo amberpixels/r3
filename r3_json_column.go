@@ -6,14 +6,10 @@ import (
 	"fmt"
 )
 
-// JSONColumn is a generic wrapper that stores a value of type T as a JSON string
-// in SQL databases. It implements sql.Scanner, driver.Valuer, json.Marshaler,
-// and json.Unmarshaler so it works transparently with both SQL drivers and JSON APIs.
-//
-// Use it for struct fields that should be persisted as a JSON blob in a single column
-// (e.g. []FieldChange, Metadata maps, nested config objects).
-//
-// Zero dependencies beyond database/sql/driver and encoding/json (both stdlib).
+// JSONColumn wraps a value of type T so it persists as a JSON string in a single
+// SQL column while staying transparent to JSON APIs: it implements sql.Scanner,
+// driver.Valuer, json.Marshaler, and json.Unmarshaler. Use it for fields stored as
+// a JSON blob (e.g. []FieldChange, metadata maps, nested config).
 type JSONColumn[T any] struct {
 	Val T
 }

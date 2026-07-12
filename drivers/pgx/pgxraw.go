@@ -7,10 +7,9 @@ import (
 	enginesql "github.com/amberpixels/r3/engine/sql"
 )
 
-// PgxRaw is a thin wrapper around enginesql.BaseRaw for backward compatibility.
-// It provides the same Query/QueryRow/Exec methods.
+// PgxRaw wraps enginesql.BaseRaw.
 //
-// Deprecated: Use enginesql.BaseRaw directly via PgxCRUD.Raw().
+// Deprecated: use enginesql.BaseRaw directly via PgxCRUD.Raw().
 type PgxRaw[T any, ID any] struct {
 	*enginesql.BaseRaw[T, ID]
 }

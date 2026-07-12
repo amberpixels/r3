@@ -10,20 +10,13 @@ import (
 	"github.com/amberpixels/r3/dialects/canonical"
 )
 
-// ParseDjangoFilters parses Django-style query parameters into r3.Filters.
-//
-// Django-style parameters use the pattern "field__operator=value":
+// ParseDjangoFilters parses "field__operator=value" params into r3.Filters. A param
+// with no separator is an "eq" filter; reserved param names are skipped. The
+// cfg.DjangoFields whitelist gates fields (empty = all, validated for identifier safety).
 //
 //	?status=active          -> {f: "status", op: "eq", v: "active"}
 //	?age__gte=18            -> {f: "age", op: "gte", v: "18"}
-//	?name__like=John%       -> {f: "name", op: "like", v: "John%"}
 //	?tags__in=a,b,c         -> {f: "tags", op: "in", v: ["a","b","c"]}
-//
-// Parameters without the separator are treated as "eq" filters.
-// Reserved parameter names (fields, filters, sort, page, page_size, query) are skipped.
-//
-// The cfg.DjangoFields whitelist controls which fields are allowed.
-// If it is empty, all fields are allowed (validated for identifier safety).
 func ParseDjangoFilters(values url.Values, cfg Config) (r3.Filters, error) {
 	if !cfg.Filter.AllowDjangoStyle {
 		return nil, nil
@@ -37,9 +30,8 @@ func ParseDjangoFilters(values url.Values, cfg Config) (r3.Filters, error) {
 	reserved := cfg.reservedParamNames()
 	allowed := buildAllowedFieldsMap(cfg.Filter.DjangoFields)
 
-	// Iterate keys in sorted order: ranging a map is randomized, which would make
-	// the resulting filter order non-deterministic and break any downstream
-	// filter-hashing/caching. The dialect must be pure and deterministic.
+	// Sort keys: map ranging is randomized, and a non-deterministic filter order
+	// would break downstream filter-hashing/caching.
 	keys := make([]string, 0, len(values))
 	for key := range values {
 		keys = append(keys, key)
@@ -53,7 +45,6 @@ func ParseDjangoFilters(values url.Values, cfg Config) (r3.Filters, error) {
 			continue
 		}
 
-		// Skip reserved parameter names
 		if _, ok := reserved[key]; ok {
 			continue
 		}
@@ -63,31 +54,27 @@ func ParseDjangoFilters(values url.Values, cfg Config) (r3.Filters, error) {
 			continue
 		}
 
-		// Check if field is allowed
 		if allowed != nil {
 			if _, ok := allowed[field]; !ok {
 				continue
 			}
 		}
 
-		// Validate field name for safety
 		if err := r3.ValidateIdentifier(field); err != nil {
 			return nil, newError(fmt.Errorf("invalid Django-style field %q: %w", field, err))
 		}
 
-		// Parse operator
 		op := r3.OperatorEq
 		if opStr != "" {
 			parsed, err := canonical.ParseFilterOperator(opStr)
 			if err != nil {
-				// Unknown operator — skip this param (it's probably not a filter)
+				// Unknown operator: probably not a filter, skip.
 				continue
 			}
 			op = parsed
 		}
 
-		// Parse value
-		rawValue := vals[0] // Use first value
+		rawValue := vals[0]
 		value := parseDjangoValue(rawValue, op)
 
 		filters = append(filters, &r3.FilterSpec{
@@ -100,9 +87,8 @@ func ParseDjangoFilters(values url.Values, cfg Config) (r3.Filters, error) {
 	return filters, nil
 }
 
-// FormatDjangoFilters formats r3.Filters as Django-style URL parameters.
-// Only simple filters (non-AND/OR) can be represented in Django-style.
-// Filters with AND/OR groups are silently skipped.
+// FormatDjangoFilters formats r3.Filters as Django-style URL parameters. AND/OR group
+// filters aren't representable in this style and are silently skipped.
 func FormatDjangoFilters(filters r3.Filters, cfg Config) url.Values {
 	values := make(url.Values)
 	if !cfg.Filter.AllowDjangoStyle {
@@ -118,7 +104,6 @@ func FormatDjangoFilters(filters r3.Filters, cfg Config) url.Values {
 		if f == nil || f.Field == nil {
 			continue
 		}
-		// Skip AND/OR group filters — not representable in Django style
 		if len(f.And) > 0 || len(f.Or) > 0 {
 			continue
 		}
@@ -128,7 +113,7 @@ func FormatDjangoFilters(filters r3.Filters, cfg Config) url.Values {
 
 		var key string
 		if f.Operator == r3.OperatorEq {
-			// eq is the default, use bare field name
+			// eq is the default: bare field name.
 			key = field
 		} else {
 			key = field + sep + opStr
@@ -139,8 +124,9 @@ func FormatDjangoFilters(filters r3.Filters, cfg Config) url.Values {
 	return values
 }
 
-// splitDjangoParam splits a parameter key into field name and operator string.
-// If there's no separator, the whole key is the field and operator is "".
+// splitDjangoParam splits a key into field and operator. With no separator, or when the
+// suffix isn't a valid operator (the separator may be part of the field name), the whole
+// key is the field and the operator is "".
 func splitDjangoParam(key, sep string) (string, string) {
 	idx := strings.LastIndex(key, sep)
 	if idx < 0 {
@@ -150,22 +136,18 @@ func splitDjangoParam(key, sep string) (string, string) {
 	field := key[:idx]
 	op := key[idx+len(sep):]
 
-	// If the operator part is empty or not a recognized operator, treat the whole key as field
 	if op == "" {
 		return key, ""
 	}
 
-	// Check if it's actually a valid operator
 	if _, err := canonical.ParseFilterOperator(op); err != nil {
-		// Not a valid operator — the separator might be part of the field name
 		return key, ""
 	}
 
 	return field, op
 }
 
-// parseDjangoValue parses a string value based on the operator.
-// For "in" and "not_in" operators, it splits by comma to create a slice.
+// parseDjangoValue parses a value by operator: in/not_in split on commas into a slice.
 func parseDjangoValue(raw string, op r3.FilterOperatorSpec) any {
 	//nolint:exhaustive // only checking list-type operators
 	switch op {
@@ -201,8 +183,7 @@ func formatDjangoValue(v any) string {
 	}
 }
 
-// buildAllowedFieldsMap converts a slice of allowed fields to a map for O(1) lookups.
-// Returns nil if the input is empty (meaning all fields allowed).
+// buildAllowedFieldsMap indexes allowed fields for O(1) lookup; nil when empty (all allowed).
 func buildAllowedFieldsMap(fields []string) map[string]struct{} {
 	if len(fields) == 0 {
 		return nil

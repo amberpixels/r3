@@ -4,7 +4,7 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// Query builder field names -- matching the db/bson tags on MetricRecord.
+// Query builder field names, matching the db/bson tags on MetricRecord.
 var (
 	fieldRecordType = r3.NewFieldSpec("record_type")
 	fieldRecordID   = r3.NewFieldSpec("record_id")
@@ -13,8 +13,8 @@ var (
 	fieldCreatedAt  = r3.NewFieldSpec("created_at")
 )
 
-// QueryByType builds a Query that retrieves all metrics for a given entity type
-// within a time range, sorted by created_at descending.
+// QueryByType retrieves all metrics for an entity type in a time range, newest
+// first.
 func QueryByType(recordType string, tr TimeRange) r3.Query {
 	return r3.Query{
 		Filters: r3.Filters{
@@ -29,7 +29,7 @@ func QueryByType(recordType string, tr TimeRange) r3.Query {
 	}
 }
 
-// QueryByEntity builds a Query that retrieves all metrics for a specific entity instance.
+// QueryByEntity retrieves all metrics for a specific entity instance.
 func QueryByEntity(recordType, recordID string, tr TimeRange) r3.Query {
 	return r3.Query{
 		Filters: r3.Filters{
@@ -45,7 +45,7 @@ func QueryByEntity(recordType, recordID string, tr TimeRange) r3.Query {
 	}
 }
 
-// QueryByMetric builds a Query that retrieves a specific metric for a given entity type.
+// QueryByMetric retrieves a specific metric across an entity type.
 func QueryByMetric(recordType, metricName string, tr TimeRange) r3.Query {
 	return r3.Query{
 		Filters: r3.Filters{
@@ -78,7 +78,7 @@ func QueryByEntityMetric(recordType, recordID, metricName string, tr TimeRange) 
 	}
 }
 
-// QueryByBucket builds a Query that retrieves metrics for a specific time bucket.
+// QueryByBucket retrieves metrics for a specific time bucket.
 func QueryByBucket(recordType, metricName, bucket string) r3.Query {
 	return r3.Query{
 		Filters: r3.Filters{

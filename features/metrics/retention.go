@@ -9,20 +9,19 @@ import (
 	"github.com/amberpixels/years"
 )
 
-// RetentionPolicy defines rules for automatic cleanup of old metric records.
-// Multiple policies can be combined — the most aggressive one wins.
+// RetentionPolicy defines cleanup rules for old metric records; both fields
+// apply together, whichever deletes more.
 type RetentionPolicy struct {
-	// MaxAge is the maximum age of metric records. Records older than this
-	// are deleted during enforcement. Zero means no age-based retention.
+	// MaxAge deletes records older than this. Zero disables age-based retention.
 	MaxAge time.Duration
 
-	// MaxRecords is the maximum number of metric records to keep per entity type.
-	// When exceeded, the oldest records are deleted first. Zero means no count-based limit.
+	// MaxRecords caps records kept per entity type, deleting the oldest first.
+	// Zero disables the count-based limit.
 	MaxRecords int64
 }
 
-// RetentionEnforcer runs cleanup of old metric records according to configured policies.
-// It operates on any r3.CRUD[MetricRecord, string] store.
+// RetentionEnforcer cleans up old metric records in any r3.CRUD[MetricRecord, string]
+// per its policy.
 //
 // Usage:
 //
@@ -42,24 +41,20 @@ type RetentionEnforcer struct {
 	policy RetentionPolicy
 }
 
-// NewRetentionEnforcer creates a new enforcer with the given policy.
+// NewRetentionEnforcer creates an enforcer for store with the given policy.
 func NewRetentionEnforcer(store r3.CRUD[MetricRecord, string], policy RetentionPolicy) *RetentionEnforcer {
 	return &RetentionEnforcer{store: store, policy: policy}
 }
 
-// Enforce runs a single retention pass for the given record type.
-// It deletes records that violate the policy and returns the number
-// of records deleted. Errors during individual deletions are logged
-// but do not stop the process.
+// Enforce runs a single retention pass and returns the number of records
+// deleted. Individual deletion errors are logged but do not halt the pass.
 func (e *RetentionEnforcer) Enforce(ctx context.Context, recordType string) int64 {
 	var deleted int64
 
-	// Age-based retention: delete records older than MaxAge.
 	if e.policy.MaxAge > 0 {
 		deleted += e.enforceMaxAge(ctx, recordType)
 	}
 
-	// Count-based retention: delete excess records.
 	if e.policy.MaxRecords > 0 {
 		deleted += e.enforceMaxRecords(ctx, recordType)
 	}
@@ -67,8 +62,8 @@ func (e *RetentionEnforcer) Enforce(ctx context.Context, recordType string) int6
 	return deleted
 }
 
-// Start runs periodic retention enforcement in a background goroutine.
-// Returns a stop function that cancels the background loop.
+// Start enforces retention periodically in a goroutine, returning a stop
+// function that cancels the loop.
 func (e *RetentionEnforcer) Start(ctx context.Context, recordType string, interval time.Duration) func() {
 	ctx, cancel := context.WithCancel(ctx)
 
@@ -99,7 +94,6 @@ func (e *RetentionEnforcer) Start(ctx context.Context, recordType string, interv
 func (e *RetentionEnforcer) enforceMaxAge(ctx context.Context, recordType string) int64 {
 	cutoff := years.Now().UTC().Add(-e.policy.MaxAge)
 
-	// Query for records older than the cutoff.
 	q := r3.Query{
 		Filters: r3.Filters{
 			r3.And(
@@ -125,7 +119,7 @@ func (e *RetentionEnforcer) enforceMaxAge(ctx context.Context, recordType string
 
 // enforceMaxRecords deletes the oldest records that exceed MaxRecords.
 func (e *RetentionEnforcer) enforceMaxRecords(ctx context.Context, recordType string) int64 {
-	// Fetch all records for this type (sorted by created_at desc via QueryByType).
+	// QueryByType returns all records for this type sorted by created_at desc.
 	q := QueryByType(recordType, TimeRange{
 		From: time.Date(1970, 1, 1, 0, 0, 0, 0, time.UTC),
 		To:   years.Now().UTC().Add(time.Hour), // generous future bound
@@ -143,7 +137,7 @@ func (e *RetentionEnforcer) enforceMaxRecords(ctx context.Context, recordType st
 		return 0
 	}
 
-	// Records are sorted by created_at desc, so the oldest are at the end.
+	// Sorted desc, so the oldest excess records are at the tail.
 	oldestRecords := records[e.policy.MaxRecords:]
 
 	return e.deleteRecords(ctx, oldestRecords)

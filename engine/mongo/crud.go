@@ -18,11 +18,8 @@ const setOp = "$set"
 // inOp is the MongoDB query operator matching any value in a set.
 const inOp = "$in"
 
-// BaseCRUD is a generic CRUD repository backed by MongoDB.
-// It implements the full r3.CRUD[T, ID] interface using the MongoDB Go driver v2.
-//
-// The struct type T must use `bson` struct tags for field mapping (or `r3` tags).
-// The ID type should match the MongoDB _id field type (e.g. primitive.ObjectID or string).
+// BaseCRUD is a full r3.CRUD[T, ID] backed by a *mongo.Collection. ID must match
+// the _id field type (e.g. primitive.ObjectID or string).
 type BaseCRUD[T any, ID comparable] struct {
 	Collection *mongo.Collection
 
@@ -35,16 +32,12 @@ type BaseCRUD[T any, ID comparable] struct {
 
 var _ r3.CRUD[any, any] = &BaseCRUD[any, any]{}
 
-// NewBaseCRUD creates a new BaseCRUD with the given MongoDB collection.
-// If collection is nil, it derives the collection name from the struct type T
-// and uses the provided database.
-//
-// Accepts optional [r3.Option] values for framework-level configuration.
+// NewBaseCRUD builds a BaseCRUD over the given collection. Accepts optional
+// [r3.Option] values.
 func NewBaseCRUD[T any, ID comparable](coll *mongo.Collection, opts ...r3.Option) *BaseCRUD[T, ID] {
 	resolved := r3.ResolveOptions(opts...)
 	meta := GetStructMeta[T]()
-	// The mongo engine does not apply value codecs yet; reject a declared codec
-	// loudly rather than writing the un-encoded value to BSON.
+	// This engine has no codec support yet: fail loudly rather than store un-encoded values.
 	r3.RequireCodecSupport(r3.SchemaOf[T](r3.WithSchemaNaming(resolved.Config.Naming)), "r3/mongo")
 	return &BaseCRUD[T, ID]{
 		Collection:      coll,
@@ -55,15 +48,12 @@ func NewBaseCRUD[T any, ID comparable](coll *mongo.Collection, opts ...r3.Option
 	}
 }
 
-// NewBaseCRUDFromDB creates a new BaseCRUD using a database, deriving the collection
-// name automatically from the struct type T.
-//
-// Accepts optional [r3.Option] values for framework-level configuration.
+// NewBaseCRUDFromDB builds a BaseCRUD, deriving the collection name from T.
+// Accepts optional [r3.Option] values.
 func NewBaseCRUDFromDB[T any, ID comparable](db *mongo.Database, opts ...r3.Option) *BaseCRUD[T, ID] {
 	resolved := r3.ResolveOptions(opts...)
 	meta := GetStructMeta[T]()
-	// The mongo engine does not apply value codecs yet; reject a declared codec
-	// loudly rather than writing the un-encoded value to BSON.
+	// This engine has no codec support yet: fail loudly rather than store un-encoded values.
 	r3.RequireCodecSupport(r3.SchemaOf[T](r3.WithSchemaNaming(resolved.Config.Naming)), "r3/mongo")
 	coll := db.Collection(meta.CollectionName)
 	return &BaseCRUD[T, ID]{
@@ -75,7 +65,7 @@ func NewBaseCRUDFromDB[T any, ID comparable](db *mongo.Database, opts ...r3.Opti
 	}
 }
 
-// Create inserts a new document into MongoDB and returns it with the generated _id.
+// Create inserts a document and returns it with the driver-generated _id.
 func (r *BaseCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 	doc := r.Meta.ToBSONDoc(entity, false) // exclude _id, let MongoDB generate it
 
@@ -84,28 +74,25 @@ func (r *BaseCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 		return entity, fmt.Errorf("mongo insert: %w", err)
 	}
 
-	// Set the _id on the entity
 	r.Meta.SetIDValue(&entity, result.InsertedID)
 
 	return entity, nil
 }
 
-// Get retrieves a document by its _id.
+// Get retrieves a document by its _id, normalizing not-found to [r3.ErrNotFound].
 func (r *BaseCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, error) {
 	var entity T
 
 	q := r.MergeGetQuery(qarg...)
 
-	// Build filter: {_id: id} [AND soft-delete check]
+	// {_id: id} [AND soft-delete check]
 	filter := bson.D{{Key: r.Meta.IDField, Value: id}}
 	if r.Meta.SoftDeleteField != "" && !q.IncludeTrashed.Some(true) {
 		filter = append(filter, bson.E{Key: r.Meta.SoftDeleteField, Value: r.Meta.liveRecordCondition()})
 	}
 
-	// Build find options
 	opts := options.FindOne()
 
-	// Field projection
 	if len(q.Fields) > 0 {
 		projection := r3FieldsToBSONProjection(q.Fields)
 		opts.SetProjection(projection)
@@ -119,7 +106,6 @@ func (r *BaseCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 		return entity, err
 	}
 
-	// Run preloads
 	if len(q.Preloads) > 0 && len(r.Meta.Relations) > 0 {
 		entities := []T{entity}
 		if err := RunPreloads(ctx, r.Collection.Database(), &r.Meta, &entities, q.Preloads); err != nil {
@@ -131,12 +117,11 @@ func (r *BaseCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 	return entity, nil
 }
 
-// liveRecordCondition returns the BSON predicate that matches records which are
-// NOT soft-deleted. A pointer soft-delete field stores null for live records, so
-// {$eq: nil} suffices. A non-pointer field (e.g. a plain time.Time) persists its
-// zero value — the zero BSON Date, not null — for never-deleted records, so the
-// predicate must match both null and that zero value; otherwise every live record
-// is filtered out of Get/List/Count.
+// liveRecordCondition is the BSON predicate matching records that are NOT
+// soft-deleted. A pointer field stores null for live records, so {$eq: nil}
+// suffices. A non-pointer field (e.g. time.Time) persists its zero value - the
+// zero BSON Date, not null - so the predicate must match both, else every live
+// record is filtered out of Get/List/Count.
 func (m *StructMeta) liveRecordCondition() bson.D {
 	if m.SoftDeleteZero == nil {
 		return bson.D{{Key: "$eq", Value: nil}}
@@ -144,9 +129,8 @@ func (m *StructMeta) liveRecordCondition() bson.D {
 	return bson.D{{Key: inOp, Value: bson.A{nil, m.SoftDeleteZero}}}
 }
 
-// buildFilter assembles the BSON filter from the prepared query's user filters
-// plus the soft-delete condition. It is shared by List and Count; cursor keyset
-// filtering is layered on top by List only.
+// buildFilter combines the prepared user filters with the soft-delete condition.
+// Shared by List and Count; List layers cursor keyset filtering on top.
 func (r *BaseCRUD[T, ID]) buildFilter(prep PreparedListQuery) bson.D {
 	filter := prep.Filter
 	if filter == nil {
@@ -179,17 +163,16 @@ func (r *BaseCRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, e
 	return total, nil
 }
 
-// List retrieves documents based on the provided query parameters.
+// List retrieves documents matching the query.
 func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, error) {
 	prep, err := PrepareListQuery(&r.DefaultsManager, qarg...)
 	if err != nil {
 		return nil, 0, err
 	}
 
-	// Build the filter (user filters + soft-delete)
 	filter := r.buildFilter(prep)
 
-	// Cursor pagination: merge keyset filter with existing filters
+	// Cursor pagination: AND the keyset filter onto the existing filter.
 	if prep.IsCursorPaginated && len(prep.CursorFilter) > 0 {
 		if len(filter) == 0 {
 			filter = prep.CursorFilter
@@ -198,7 +181,7 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		}
 	}
 
-	// Count first if offset-paginated (skip for cursor pagination)
+	// Count first for offset pagination only; cursor pages return no total.
 	var totalCount int64
 	if prep.IsPaginated {
 		totalCount, err = r.Collection.CountDocuments(ctx, filter)
@@ -210,7 +193,6 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		}
 	}
 
-	// Build find options
 	opts := options.Find()
 
 	if len(prep.Sort) > 0 {
@@ -228,7 +210,6 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		opts.SetSkip(prep.Offset)
 	}
 
-	// Execute the query
 	cursor, err := r.Collection.Find(ctx, filter, opts)
 	if err != nil {
 		return nil, 0, fmt.Errorf("mongo find: %w", err)
@@ -246,7 +227,6 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		entities, totalCount = r3.FinalizeCount(entities, totalCount, prep.IsPaginated)
 	}
 
-	// Run preloads
 	if len(prep.Query.Preloads) > 0 && len(r.Meta.Relations) > 0 {
 		if err := RunPreloads(ctx, r.Collection.Database(), &r.Meta, &entities, prep.Query.Preloads); err != nil {
 			return nil, 0, fmt.Errorf("preload failed: %w", err)
@@ -275,8 +255,8 @@ func (r *BaseCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	return entity, nil
 }
 
-// Patch performs a partial update, modifying only the fields specified by fields.
-// The entity must have its _id set. Returns the entity after the update.
+// Patch updates only the given fields on the document identified by entity's _id,
+// then re-fetches and returns it.
 func (r *BaseCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields) (T, error) {
 	fieldNames := r3.FieldsToStrings(fields)
 
@@ -288,7 +268,6 @@ func (r *BaseCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields)
 	idVal := r.Meta.IDValue(entity)
 	filter := bson.D{{Key: r.Meta.IDField, Value: idVal}}
 
-	// Build $set document with only the specified fields
 	setDoc := bson.D{}
 	vals := r.Meta.FieldValuesForFields(entity, fieldNames)
 	for i, name := range fieldNames {
@@ -305,7 +284,6 @@ func (r *BaseCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields)
 		return entity, r3.ErrNotFound
 	}
 
-	// Re-fetch the updated entity
 	var updated T
 	err = r.Collection.FindOne(ctx, filter).Decode(&updated)
 	if err != nil {
@@ -315,14 +293,12 @@ func (r *BaseCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields)
 	return updated, nil
 }
 
-// Delete removes a document by its _id.
-// If the model has a soft-delete field, it sets the field to the current time
-// instead of actually deleting the document.
+// Delete removes a document by its _id, or soft-deletes it (setting the
+// soft-delete field to now) when the model has one.
 func (r *BaseCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 	filter := bson.D{{Key: r.Meta.IDField, Value: id}}
 
 	if r.Meta.SoftDeleteField != "" {
-		// Soft-delete: set deleted_at to now
 		update := bson.D{{Key: setOp, Value: bson.D{
 			{Key: r.Meta.SoftDeleteField, Value: time.Now()},
 		}}}
@@ -336,7 +312,6 @@ func (r *BaseCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 		return nil
 	}
 
-	// Hard delete
 	res, err := r.Collection.DeleteOne(ctx, filter)
 	if err != nil {
 		return fmt.Errorf("mongo delete: %w", err)
@@ -347,8 +322,8 @@ func (r *BaseCRUD[T, ID]) Delete(ctx context.Context, id ID) error {
 	return nil
 }
 
-// Restore un-deletes a soft-deleted document by unsetting its soft-delete field.
-// Returns an error if the model has no soft-delete field.
+// Restore un-deletes a soft-deleted document by unsetting its soft-delete field;
+// errors if the model has none.
 func (r *BaseCRUD[T, ID]) Restore(ctx context.Context, id ID) error {
 	if r.Meta.SoftDeleteField == "" {
 		return errors.New("r3/engine/mongo: model has no soft-delete field")
@@ -380,7 +355,8 @@ func (r *BaseCRUD[T, ID]) HardDelete(ctx context.Context, id ID) error {
 	return nil
 }
 
-// r3FieldsToBSONProjection converts r3.Fields to a BSON projection document.
+// r3FieldsToBSONProjection converts r3.Fields to a BSON projection, always
+// including _id.
 func r3FieldsToBSONProjection(fields r3.Fields) bson.D {
 	if len(fields) == 0 {
 		return nil

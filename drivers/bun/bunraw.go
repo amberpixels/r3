@@ -6,8 +6,7 @@ import (
 	"github.com/uptrace/bun"
 )
 
-// BunRaw is a Bun wrapper that allows calling any Bun query.
-// Is considered to be embedded in BunCRUD.
+// BunRaw is the Bun escape hatch, exposing any Bun query via Find/Scan callbacks.
 type BunRaw[T any, ID any] struct {
 	db bun.IDB
 }

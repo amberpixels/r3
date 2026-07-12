@@ -1,8 +1,7 @@
 package r3
 
-// FilterOperatorSpec represents an operator to be used in a filter.
-// For now, not all r3 operators are supported by every possible dialect.
-// But the idea is to provide here in r3 the most possibly full list of operators that we need.
+// FilterOperatorSpec is a filter operator. This is the full set r3 aims to
+// support; not every dialect supports every one.
 // TODO: might be refactored into a more complex struct
 type FilterOperatorSpec int8
 
@@ -26,7 +25,7 @@ const (
 	OperatorILike                           // ilike (like + case insensitive)
 )
 
-// String is implemented for debugging purposes, so the FilterOperatorSpec is a fmt.Stringer.
+// String returns a debug label for the operator.
 // Note: Protect with the `exhausted` linter.
 func (op *FilterOperatorSpec) String() string {
 	if op == nil {

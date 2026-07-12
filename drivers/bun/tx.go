@@ -14,7 +14,6 @@ type bunTxCRUD[T any, ID comparable] struct {
 	tx bun.Tx
 }
 
-// Compile-time checks.
 var _ r3.Transactor[any, any] = &BunCRUD[any, any]{}
 var _ r3.TxCRUD[any, any] = &bunTxCRUD[any, any]{}
 

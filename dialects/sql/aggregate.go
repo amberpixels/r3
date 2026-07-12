@@ -8,13 +8,10 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// AggregateExpr returns the bare SQL expression for an aggregate spec (no
-// alias): COUNT(*), COUNT("col"), COUNT(DISTINCT "col"), SUM("col"), ...
-// Field names are validated and quoted via SafeColumnExpr.
-//
-// The expression form (rather than the alias) is what HAVING must use:
-// PostgreSQL does not allow select-list aliases in HAVING, expressions are
-// portable everywhere.
+// AggregateExpr returns the bare, un-aliased SQL expression for an aggregate
+// spec: COUNT(*), COUNT(DISTINCT "col"), SUM("col"), ... (field validated and
+// quoted via SafeColumnExpr). HAVING must use this form, not the alias:
+// PostgreSQL rejects select-list aliases in HAVING; expressions are portable.
 func AggregateExpr(a *r3.AggregateSpec) (string, error) {
 	if a == nil {
 		return "", errors.New("nil aggregate spec")
@@ -47,8 +44,8 @@ func AggregateExpr(a *r3.AggregateSpec) (string, error) {
 	}
 }
 
-// AggregateToSQL returns the select-list item for an aggregate spec:
-// `COUNT(*) AS "alias"`. The alias is validated and quoted like any identifier.
+// AggregateToSQL returns the select-list item, `COUNT(*) AS "alias"`, with the
+// alias validated and quoted.
 func AggregateToSQL(a *r3.AggregateSpec) (string, error) {
 	expr, err := AggregateExpr(a)
 	if err != nil {
@@ -78,11 +75,10 @@ func GroupByToSQL(fields r3.Fields) ([]string, error) {
 }
 
 // HavingToSQL converts Having filters (implicitly ANDed) into one SQLClause.
-// Each leaf's field name is resolved through exprByName — aggregate aliases
-// map to their full expressions (SUM("col")), group fields to their quoted
-// columns — because HAVING cannot reference select-list aliases portably.
-// A name absent from the map is an error (the caller validates first via
-// r3.Schema.ValidateAggregateQuery, so this is a belt-and-braces check).
+// Each leaf's name resolves through exprByName - aggregate aliases to their full
+// expressions (SUM("col")), group fields to quoted columns - because HAVING
+// cannot reference select-list aliases portably. An absent name is an error
+// (the caller validates first via r3.Schema.ValidateAggregateQuery).
 func HavingToSQL(having r3.Filters, exprByName map[string]string) (SQLClause, error) {
 	if len(having) == 0 {
 		return SQLClause{}, nil
@@ -101,8 +97,8 @@ func HavingToSQL(having r3.Filters, exprByName map[string]string) (SQLClause, er
 	return SQLClause{Clause: strings.Join(conditions, " "+sqlAnd+" "), Args: args}, nil
 }
 
-// havingFilterToSQL mirrors FilterToSQL's leaf/group handling, but resolves
-// the column expression through exprByName instead of quoting the field name.
+// havingFilterToSQL mirrors FilterToSQL but resolves the column expression
+// through exprByName instead of quoting the field name.
 func havingFilterToSQL(f *r3.FilterSpec, exprByName map[string]string) (SQLClause, error) {
 	if f == nil {
 		return SQLClause{}, errors.New("nil having filter")
@@ -111,7 +107,6 @@ func havingFilterToSQL(f *r3.FilterSpec, exprByName map[string]string) (SQLClaus
 		return SQLClause{}, fmt.Errorf("relationship filter %q has no meaning in HAVING", f.Relation)
 	}
 
-	// Compound group.
 	if len(f.And) > 0 || len(f.Or) > 0 {
 		children, logicalOp := f.And, sqlAnd
 		if len(f.Or) > 0 {

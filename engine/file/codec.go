@@ -17,14 +17,14 @@ type Decoder interface {
 	Decode(v any) error
 }
 
-// Codec handles serialization of entity slices to/from files.
-// Implementations work with io.Reader/io.Writer for streaming I/O.
+// Codec serializes entity slices to and from files over streaming
+// io.Reader/io.Writer.
 type Codec interface {
-	// NewEncoder creates a new encoder writing to w.
+	// NewEncoder returns an encoder writing to w.
 	NewEncoder(w io.Writer) Encoder
-	// NewDecoder creates a new decoder reading from r.
+	// NewDecoder returns a decoder reading from r.
 	NewDecoder(r io.Reader) Decoder
-	// FileExtension returns the file extension including the dot (e.g. ".json", ".yaml").
+	// FileExtension returns the extension including the dot (e.g. ".json").
 	FileExtension() string
 }
 
@@ -90,9 +90,9 @@ func (c *customCodec) NewEncoder(w io.Writer) Encoder { return c.newEncoder(w) }
 func (c *customCodec) NewDecoder(r io.Reader) Decoder { return c.newDecoder(r) }
 func (c *customCodec) FileExtension() string          { return c.ext }
 
-// NewCodec creates a custom Codec from user-provided encoder/decoder factories.
-// This allows plugging in alternative JSON libraries (e.g. goccy/go-json,
-// json-iterator, d3rty/json) or any other serialization format.
+// NewCodec builds a custom Codec from encoder/decoder factories, for plugging in
+// an alternative JSON library (goccy/go-json, json-iterator, ...) or any other
+// format.
 //
 // Example with goccy/go-json:
 //

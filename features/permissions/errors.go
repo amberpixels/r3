@@ -7,12 +7,11 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// ErrAccessDenied is the sentinel error for permission checks.
-// Use errors.Is(err, permissions.ErrAccessDenied) to detect authorization failures.
+// ErrAccessDenied is the sentinel every denial matches via errors.Is.
 var ErrAccessDenied = errors.New("r3/permissions: access denied")
 
-// AccessDeniedError provides structured details about a denied operation.
-// It satisfies errors.Is(err, ErrAccessDenied) via its Is method.
+// AccessDeniedError carries structured details about a denied operation and
+// matches errors.Is(err, ErrAccessDenied) via its Is method.
 type AccessDeniedError struct {
 	Operation  Operation
 	Actor      r3.Actor
@@ -21,10 +20,9 @@ type AccessDeniedError struct {
 	Reason     string // optional human-readable reason
 }
 
-// NewAccessDeniedError builds the structured denial for op by actor, with an
-// optional human-readable reason — the canonical way to construct the error
-// (mirroring validation's NewError/NewFieldError). Set RecordType/RecordID on
-// the returned value when the denial concerns a specific record.
+// NewAccessDeniedError is the canonical constructor for a denial by actor on op,
+// with an optional reason. Set RecordType/RecordID afterward when the denial
+// concerns a specific record.
 func NewAccessDeniedError(op Operation, actor r3.Actor, reason string) *AccessDeniedError {
 	return &AccessDeniedError{Operation: op, Actor: actor, Reason: reason}
 }

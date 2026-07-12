@@ -1,23 +1,11 @@
-// Package r3bun provides an r3.CRUD[T, ID] driver backed by Bun,
-// a SQL-first Go ORM for PostgreSQL, MySQL, MSSQL, and SQLite.
+// Package r3bun is an r3.CRUD[T, ID] driver backed by Bun (github.com/uptrace/bun),
+// a SQL-first ORM for PostgreSQL, MySQL, MSSQL, and SQLite. It maps preloads onto
+// Bun's Relation(), IncludeTrashed onto WhereAllWithDeleted() (needs soft-delete
+// model setup), and exposes Restore/HardDelete.
 //
-// Driver: github.com/uptrace/bun
-// Source: https://github.com/uptrace/bun
-//
-// Supported r3 features:
-//   - Full CRUD (Create, Get, List, Update, Delete)
-//   - Filters, Sorts, Pagination via the r3 SQL dialect
-//   - Preloads via Bun's Relation() (belongs-to, has-one, has-many, many-to-many)
-//   - IncludeTrashed via Bun's WhereAllWithDeleted() (requires soft-delete model setup)
-//   - Restore and HardDelete via the features/softdelete SoftDeleter interface
-//   - Thread-safe default queries (SetDefaultListQuery, SetDefaultGetQuery)
-//   - Raw escape hatch (BunRaw) for custom bun.SelectQuery usage
-//
-// Limitations / notes:
-//   - Bun wraps database/sql natively; use db.DB (the underlying *sql.DB) for goose
-//     migrations or any raw database/sql usage.
-//   - Model structs must embed bun.BaseModel with a table tag and use `bun` struct tags.
-//   - Aggregate / custom-shape queries should use Raw().Scan() into a dedicated struct,
-//     since Raw().Find() scans into []T and Bun rejects unknown columns.
-//   - Bun is the recommended successor to go-pg by the same authors.
+// Notes:
+//   - Models must embed bun.BaseModel (with a table tag) and use `bun` tags.
+//   - Bun wraps database/sql natively; use db.DB for goose migrations or raw usage.
+//   - For aggregate / custom-shape rows use Raw().Scan() into a dedicated struct;
+//     Raw().Find() scans into []T and Bun rejects unknown columns.
 package r3bun

@@ -6,10 +6,8 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// ParseFields parses a comma-separated string of field names into r3.Fields.
-// Example: "id,name,status" -> Fields{FieldSpec("id"), FieldSpec("name"), FieldSpec("status")}
-//
-// Empty string returns nil (no fields specified).
+// ParseFields parses a comma-separated field list ("id,name,status") into r3.Fields;
+// empty string returns nil.
 func ParseFields(raw string) (r3.Fields, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
@@ -32,8 +30,7 @@ func ParseFields(raw string) (r3.Fields, error) {
 	return fields, nil
 }
 
-// FormatFields formats r3.Fields into a comma-separated string.
-// Example: Fields{FieldSpec("id"), FieldSpec("name")} -> "id,name".
+// FormatFields joins r3.Fields into a comma-separated string ("id,name").
 func FormatFields(fields r3.Fields) string {
 	if len(fields) == 0 {
 		return ""

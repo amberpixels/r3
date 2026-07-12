@@ -7,77 +7,66 @@ import (
 	r3sql "github.com/amberpixels/r3/dialects/sql"
 )
 
-// PreparedListQuery holds pre-computed SQL components derived from an r3.Query.
-// It is the result of converting r3 filters, sorts, and pagination into SQL-ready pieces
-// that any driver (GORM, Bun, go-pg, database/sql) can consume.
-//
-// This eliminates the duplicated r3-to-SQL conversion logic across drivers.
+// PreparedListQuery holds the SQL components derived from an r3.Query - filters,
+// sorts, and pagination converted into SQL-ready pieces that any driver (GORM,
+// Bun, go-pg, database/sql) can consume, so the r3-to-SQL translation lives once.
 type PreparedListQuery struct {
-	// Clauses is the list of SQL WHERE clauses with their args and joins.
+	// Clauses is the SQL WHERE clauses with their args and joins.
 	Clauses r3sql.SQLClauses
 
-	// Sorts is the list of SQL ORDER BY expressions.
+	// Sorts is the SQL ORDER BY expressions.
 	Sorts []r3sql.SQLSort
 
-	// IsPaginated indicates whether offset-based pagination is active.
+	// IsPaginated reports offset-based pagination; Limit/Offset are then set.
 	IsPaginated bool
+	Limit       int
+	Offset      int
 
-	// Limit and Offset are set when IsPaginated is true.
-	Limit  int
-	Offset int
-
-	// IsCursorPaginated indicates whether cursor/keyset pagination is active.
-	// When true, CursorClause contains the keyset WHERE condition and CursorLimit
-	// contains the LIMIT. No OFFSET or COUNT query should be used.
+	// IsCursorPaginated reports cursor/keyset pagination. When true, use
+	// CursorClause/CursorLimit and no OFFSET or COUNT query.
 	IsCursorPaginated bool
 
-	// CursorClause is the keyset WHERE clause (may be empty for the first page).
+	// CursorClause is the keyset WHERE clause (empty for the first page).
 	CursorClause r3sql.SQLClause
 
-	// CursorLimit is the maximum number of results for cursor pagination.
+	// CursorLimit is the row limit for cursor pagination.
 	CursorLimit int
 
-	// CursorBackward indicates a "before" cursor. Backward keyset pagination
-	// must scan in the reversed sort order (so LIMIT takes the rows immediately
-	// preceding the cursor) and then reverse the result slice back to the
-	// requested order. See OrderBySorts.
+	// CursorBackward marks a "before" cursor. Backward keyset pagination scans in
+	// reversed sort order (so LIMIT takes the rows immediately preceding the
+	// cursor), then the caller reverses the slice back. See OrderBySorts.
 	CursorBackward bool
 
-	// Query is the merged r3.Query (defaults + user args) for access to
-	// Preloads, IncludeTrashed, and other fields that are driver-specific.
+	// Query is the merged r3.Query (defaults + args), for Preloads, IncludeTrashed,
+	// and other driver-specific fields.
 	Query r3.Query
 }
 
-// PrepareListQuery merges defaults with user query args, then converts filters,
-// sorts, and pagination into SQL-ready components.
-//
-// Drivers call this once at the start of List() and then consume the result
-// using their ORM-specific APIs.
+// PrepareListQuery merges defaults with args, then converts filters, sorts, and
+// pagination into SQL components. Drivers call it once at the start of List().
 func PrepareListQuery(dm *DefaultsManager, qarg ...r3.Query) (PreparedListQuery, error) {
 	return PrepareMergedListQuery(dm.MergeListQuery(qarg...))
 }
 
-// PrepareMergedListQuery builds the SQL components for an already-merged query
-// (defaults + user args). It is the half of PrepareListQuery after the merge,
-// exposed so a driver can transform the merged query — e.g. lower relationship
-// ("has") filters into key-set In filters — before the clauses are built.
+// PrepareMergedListQuery builds the SQL components for an already-merged query -
+// the half of PrepareListQuery after the merge, exposed so a driver can transform
+// the query first (e.g. lower relationship "has" filters into key-set In filters).
 //
-// It applies no value codecs (the zero schema has none); a driver whose schema
-// declares codecs must call [PrepareMergedListQuerySchema] so filter and cursor
-// arguments on codec'd fields are encoded to stored form.
+// It applies no value codecs; a driver whose schema declares codecs must call
+// [PrepareMergedListQuerySchema] to encode codec'd filter/cursor args to stored
+// form.
 func PrepareMergedListQuery(q r3.Query) (PreparedListQuery, error) {
 	return PrepareMergedListQuerySchema(r3.Schema{}, q)
 }
 
 // PrepareMergedListQuerySchema is [PrepareMergedListQuery] with schema-driven
-// value codecs applied: filter arguments and decoded cursor keys that target a
-// codec'd attribute are converted to their stored form before the SQL clauses are
-// built, so predicates compare against the stored column values. With a zero
-// schema (no codecs) it behaves exactly like PrepareMergedListQuery.
+// value codecs applied: filter args and decoded cursor keys on codec'd attributes
+// are encoded to stored form so predicates compare against stored column values.
+// A zero schema (no codecs) behaves exactly like PrepareMergedListQuery.
 func PrepareMergedListQuerySchema(schema r3.Schema, q r3.Query) (PreparedListQuery, error) {
 	var p PreparedListQuery
 
-	// Encode filter arguments on codec'd fields to stored form before conversion.
+	// Encode codec'd filter args to stored form before conversion.
 	filters, err := r3.EncodeFilterCodecs(schema, q.Filters)
 	if err != nil {
 		return p, fmt.Errorf("failed to encode filter codecs: %w", err)
@@ -85,14 +74,12 @@ func PrepareMergedListQuerySchema(schema r3.Schema, q r3.Query) (PreparedListQue
 	q.Filters = filters
 	p.Query = q
 
-	// Convert filters to SQL clauses
 	clauses, err := r3sql.FiltersToSQL(q.Filters)
 	if err != nil {
 		return p, fmt.Errorf("failed to convert filters to SQL: %w", err)
 	}
 	p.Clauses = clauses
 
-	// Convert sorts to SQL
 	if len(q.Sorts) > 0 {
 		sorts, err := r3sql.SortsToSQL(q.Sorts)
 		if err != nil {
@@ -101,7 +88,7 @@ func PrepareMergedListQuerySchema(schema r3.Schema, q r3.Query) (PreparedListQue
 		p.Sorts = sorts
 	}
 
-	// Compute pagination: cursor takes precedence over offset-based
+	// Cursor pagination takes precedence over offset.
 	if q.Cursor != nil {
 		if len(q.Sorts) == 0 {
 			return p, r3.ErrCursorRequiresSort
@@ -117,8 +104,7 @@ func PrepareMergedListQuerySchema(schema r3.Schema, q r3.Query) (PreparedListQue
 			if err != nil {
 				return p, fmt.Errorf("failed to decode cursor: %w", err)
 			}
-			// Encode cursor keys on codec'd fields to stored form so the keyset
-			// predicate compares against stored column values.
+			// Encode codec'd cursor keys to stored form for the keyset predicate.
 			values, err = r3.EncodeCursorCodecs(schema, values)
 			if err != nil {
 				return p, fmt.Errorf("failed to encode cursor codecs: %w", err)
@@ -137,12 +123,10 @@ func PrepareMergedListQuerySchema(schema r3.Schema, q r3.Query) (PreparedListQue
 	return p, nil
 }
 
-// OrderBySorts returns the ORDER BY expressions to apply to the main SELECT.
-//
-// For forward queries it is just Sorts. For a backward ("before") cursor it
-// returns the sorts with reversed direction: the rows immediately preceding the
-// cursor must be scanned in the opposite order under LIMIT, then reversed back
-// to the requested order by the caller (see CursorBackward).
+// OrderBySorts returns the main SELECT's ORDER BY. Forward queries use Sorts; a
+// backward ("before") cursor reverses each direction, so the rows preceding the
+// cursor are scanned under LIMIT and reversed back by the caller (see
+// CursorBackward).
 func (p *PreparedListQuery) OrderBySorts() ([]r3sql.SQLSort, error) {
 	if !p.CursorBackward {
 		return p.Sorts, nil
@@ -150,9 +134,9 @@ func (p *PreparedListQuery) OrderBySorts() ([]r3sql.SQLSort, error) {
 	return r3sql.SortsToSQL(reverseSortDirections(p.Query.Sorts))
 }
 
-// reverseSortDirections returns a copy of sorts with each direction (and NULLS
-// position) flipped. Unspecified direction defaults to DESC (matching
-// SortToSQL), so its reverse is ASC.
+// reverseSortDirections copies sorts with each direction and NULLS position
+// flipped. Unspecified direction defaults to DESC (matching SortToSQL), so its
+// reverse is ASC.
 func reverseSortDirections(sorts r3.Sorts) r3.Sorts {
 	reversed := make(r3.Sorts, len(sorts))
 	for i, s := range sorts {
@@ -169,7 +153,6 @@ func reverseSortDirections(sorts r3.Sorts) r3.Sorts {
 		case r3.NullsPositionLast:
 			c.NullsPosition = r3.NullsPositionFirst
 		case r3.NullsPositionNotSpecified:
-			// leave unspecified
 		}
 		reversed[i] = c
 	}
@@ -184,8 +167,8 @@ func (p *PreparedListQuery) Joins() []r3sql.SQLColumn {
 	return p.Clauses.Joins()
 }
 
-// FinalizeCount returns (entities, totalCount) with the correct total.
-// If pagination was not active, totalCount is simply len(entities).
+// FinalizeCount returns (entities, totalCount), using len(entities) when
+// pagination was inactive.
 //
 // Deprecated: Use r3.FinalizeCount directly.
 func FinalizeCount[T any](entities []T, paginatedCount int64, isPaginated bool) ([]T, int64) {

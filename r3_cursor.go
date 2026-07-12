@@ -12,7 +12,8 @@ var (
 	// ErrInvalidCursor is returned when a cursor token cannot be decoded.
 	ErrInvalidCursor = errors.New("invalid cursor token")
 
-	// ErrCursorRequiresSort is returned when cursor pagination is used without any sort columns.
+	// ErrCursorRequiresSort is returned for cursor pagination without any sort
+	// columns: keyset paging needs a stable order to page against.
 	ErrCursorRequiresSort = errors.New("cursor pagination requires at least one sort column")
 )
 
@@ -20,9 +21,9 @@ var (
 type CursorDirection int8
 
 const (
-	// CursorForward pages forward from the "after" cursor position.
+	// CursorForward pages forward from the "after" position.
 	CursorForward CursorDirection = iota
-	// CursorBackward pages backward from the "before" cursor position.
+	// CursorBackward pages backward from the "before" position.
 	CursorBackward
 )
 
@@ -34,8 +35,8 @@ func (d CursorDirection) String() string {
 	return "forward"
 }
 
-// CursorValues holds the sort-column values that define the cursor position.
-// Keys are column names; values are the column values at that position.
+// CursorValues holds the sort-column values (column name -> value) that define a
+// cursor position.
 type CursorValues map[string]any
 
 // EncodeCursor serializes cursor values into an opaque base64 token.
@@ -67,29 +68,28 @@ func DecodeCursor(token string) (CursorValues, error) {
 	return cv, nil
 }
 
-// CursorSpec specifies cursor/keyset-based pagination.
-// At most one of After or Before should be set. If both are set, After takes precedence.
-// Limit controls the maximum number of items returned per page.
+// CursorSpec specifies cursor/keyset pagination. Set at most one of After or
+// Before; if both are set, After wins.
 type CursorSpec struct {
 	// After is the opaque cursor token for forward pagination.
 	After string
 	// Before is the opaque cursor token for backward pagination.
 	Before string
-	// Limit is the maximum number of results to return. 0 means use default.
+	// Limit is the max results to return; 0 means the default.
 	Limit int
 }
 
-// NewCursorAfter creates a CursorSpec for forward pagination after the given token.
+// NewCursorAfter creates a CursorSpec for forward pagination after the token.
 func NewCursorAfter(after string, limit int) *CursorSpec {
 	return &CursorSpec{After: after, Limit: limit}
 }
 
-// NewCursorBefore creates a CursorSpec for backward pagination before the given token.
+// NewCursorBefore creates a CursorSpec for backward pagination before the token.
 func NewCursorBefore(before string, limit int) *CursorSpec {
 	return &CursorSpec{Before: before, Limit: limit}
 }
 
-// NewCursorFirst creates a CursorSpec for the first page (no cursor, just limit).
+// NewCursorFirst creates a CursorSpec for the first page (limit only, no cursor).
 func NewCursorFirst(limit int) *CursorSpec {
 	return &CursorSpec{Limit: limit}
 }
@@ -110,7 +110,7 @@ func (c *CursorSpec) Token() string {
 	return c.Before
 }
 
-// GetLimit returns the limit, defaulting to PageSizeDefault if not set.
+// GetLimit returns the limit, defaulting to [PageSizeDefault] if unset.
 func (c *CursorSpec) GetLimit() int {
 	if c.Limit > 0 {
 		return c.Limit
@@ -118,7 +118,7 @@ func (c *CursorSpec) GetLimit() int {
 	return PageSizeDefault
 }
 
-// String returns a debug-friendly string representation.
+// String returns a debug-friendly representation.
 func (c *CursorSpec) String() string {
 	if c == nil {
 		return "no_cursor"
@@ -132,7 +132,7 @@ func (c *CursorSpec) String() string {
 	return fmt.Sprintf("first,limit=%d", c.GetLimit())
 }
 
-// Clone creates a deep copy of the CursorSpec.
+// Clone returns a deep copy of the CursorSpec.
 func (c *CursorSpec) Clone() *CursorSpec {
 	if c == nil {
 		return nil
@@ -162,8 +162,7 @@ func (c *CursorSpec) MergeWith(other *CursorSpec) *CursorSpec {
 	return result
 }
 
-// FinalizeCountCursor returns (entities, -1) for cursor-paginated results,
-// since total count is not available with keyset pagination.
+// FinalizeCountCursor returns (entities, -1): keyset pagination has no total count.
 func FinalizeCountCursor[T any](entities []T) ([]T, int64) {
 	return entities, -1
 }

@@ -15,8 +15,7 @@ func formatDecomposed(q r3.Query, cfg Config) (url.Values, error) {
 		values.Set(cfg.ParamNames.Fields, FormatFields(q.Fields))
 	}
 
-	// Filters
-	// Separate simple filters (for Django-style) from complex ones (for JSON)
+	// Filters: split simple ones (Django-style params) from complex ones (JSON).
 	if len(q.Filters) > 0 {
 		if cfg.Filter.AllowDjangoStyle {
 			var jsonFilters r3.Filters
@@ -30,7 +29,6 @@ func formatDecomposed(q r3.Query, cfg Config) (url.Values, error) {
 				}
 			}
 
-			// Format Django-style filters as individual params
 			if len(djangoFilters) > 0 {
 				djangoValues := FormatDjangoFilters(djangoFilters, cfg)
 				for k, vs := range djangoValues {
@@ -40,7 +38,6 @@ func formatDecomposed(q r3.Query, cfg Config) (url.Values, error) {
 				}
 			}
 
-			// Format remaining complex filters as JSON
 			if len(jsonFilters) > 0 {
 				filtersStr, err := FormatFilters(jsonFilters)
 				if err != nil {
@@ -88,8 +85,8 @@ func formatDecomposed(q r3.Query, cfg Config) (url.Values, error) {
 	return values, nil
 }
 
-// isDjangoCompatible checks if a filter can be represented in Django-style format.
-// Only simple field-operator-value filters (no AND/OR groups) qualify.
+// isDjangoCompatible reports whether f is representable Django-style: a simple
+// field-operator-value filter (no AND/OR groups) whose field passes the whitelist.
 func isDjangoCompatible(f *r3.FilterSpec, cfg Config) bool {
 	if f == nil || f.Field == nil {
 		return false
@@ -98,7 +95,6 @@ func isDjangoCompatible(f *r3.FilterSpec, cfg Config) bool {
 		return false
 	}
 
-	// If DjangoFields whitelist is set, check if the field is allowed
 	if len(cfg.Filter.DjangoFields) > 0 {
 		allowed := buildAllowedFieldsMap(cfg.Filter.DjangoFields)
 		if _, ok := allowed[f.Field.String()]; !ok {

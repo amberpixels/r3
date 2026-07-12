@@ -27,16 +27,14 @@ func FilterToYAML(f *r3.FilterSpec) (*YAMLFilter, error) {
 		return nil, newError(errors.New("nil filter spec"))
 	}
 
-	// Relationship ("has") filters are resolved by the driver against the
-	// database; they have no serialized form. Fail loudly rather than silently
-	// drop the relation and emit a match-all filter.
+	// Relationship ("has") filters resolve in the driver and have no serialized
+	// form; fail loudly rather than silently emit a match-all filter.
 	if f.Relation != "" {
 		return nil, newError(fmt.Errorf("relationship filter on %q cannot be serialized to YAML", f.Relation))
 	}
 
 	yf := &YAMLFilter{}
 
-	// Handle simple field-operator-value filters
 	if f.Field != nil {
 		yf.Field = f.Field.String()
 		yf.Value = f.Value
@@ -48,7 +46,6 @@ func FilterToYAML(f *r3.FilterSpec) (*YAMLFilter, error) {
 		yf.Operator = name
 	}
 
-	// Handle AND/OR groups recursively
 	if len(f.And) > 0 {
 		yf.And = make([]*YAMLFilter, len(f.And))
 		for i, child := range f.And {

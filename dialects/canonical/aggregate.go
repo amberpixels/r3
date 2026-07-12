@@ -6,10 +6,8 @@ import (
 	"github.com/amberpixels/r3"
 )
 
-// Canonical aggregate-function strings shared by the serialization dialects.
-// The vocabulary is fixed here even while aggregate serialization itself is
-// not yet wired into json/yaml/toml/url, so those dialects converge on the
-// same names when they grow support.
+// aggregateByName fixes the names now, even before json/yaml/toml/url wire up
+// aggregate serialization, so those dialects converge on them later.
 var aggregateByName = map[string]r3.AggregateFunc{
 	"count":          r3.AggregateCount,
 	"count_distinct": r3.AggregateCountDistinct,
@@ -19,7 +17,7 @@ var aggregateByName = map[string]r3.AggregateFunc{
 	"max":            r3.AggregateMax,
 }
 
-// nameByAggregate is the reverse mapping: r3 aggregate function → canonical string.
+// nameByAggregate is the reverse of aggregateByName.
 var nameByAggregate = func() map[r3.AggregateFunc]string {
 	m := make(map[r3.AggregateFunc]string, len(aggregateByName))
 	for name, fn := range aggregateByName {
@@ -30,9 +28,8 @@ var nameByAggregate = func() map[r3.AggregateFunc]string {
 	return m
 }()
 
-// ParseAggregateFunc parses a canonical aggregate-function string to
-// r3.AggregateFunc. Recognized strings: "count", "count_distinct", "sum",
-// "avg", "min", "max".
+// ParseAggregateFunc parses a canonical aggregate-function string ("count",
+// "count_distinct", "sum", "avg", "min", "max") to r3.AggregateFunc.
 func ParseAggregateFunc(s string) (r3.AggregateFunc, error) {
 	fn, ok := aggregateByName[s]
 	if !ok {
