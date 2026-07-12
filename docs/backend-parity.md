@@ -13,6 +13,10 @@ record its gap here in the same PR.
 Legend: ✅ supported · ⚠️ degrades gracefully (documented) · ❌ not implemented
 (errors or ignored).
 
+Closing the Mongo column is planned and sequenced in
+[`plan-mongo-parity.md`](./plan-mongo-parity.md) (a MongoDB consumer is driving
+it).
+
 ## Known gaps (GORM ahead of the rest)
 
 | Capability | GORM | engine/sql raw drivers (pq, pgx, mysql, sqlite3) | bun / gopg | mongo | file |
