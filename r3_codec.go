@@ -86,6 +86,16 @@ func lookupCodec(name string) (Codec, bool) {
 	return c, ok
 }
 
+// LookupCodec resolves a registered value codec by its tag name (e.g. "unixtime").
+// It lets an engine that derives field metadata reflectively - rather than through
+// the generic [SchemaOf] - build its own codec map: schema derivation resolves the
+// tag name to a [Codec], but a backend keyed on a physical field name (Mongo's
+// bson name, say) needs to resolve it independently. Returns false for an
+// unregistered name.
+func LookupCodec(name string) (Codec, bool) {
+	return lookupCodec(name)
+}
+
 // RequireCodecSupport panics if s declares any value codec, naming the attribute
 // and backend. A backend that does not yet apply codecs calls this at construction
 // so a declared codec fails loudly instead of silently storing the un-encoded

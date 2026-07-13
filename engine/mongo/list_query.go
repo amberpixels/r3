@@ -31,11 +31,28 @@ type PreparedListQuery struct {
 }
 
 // PrepareListQuery merges defaults with user args, then converts filters, sorts,
-// and pagination into BSON. Cursor pagination takes precedence over offset.
-func PrepareListQuery(dm *r3.DefaultsManager, qarg ...r3.Query) (PreparedListQuery, error) {
-	q := dm.MergeListQuery(qarg...)
+// and pagination into BSON via [PrepareMergedListQuery].
+func PrepareListQuery(dm *r3.DefaultsManager, schema r3.Schema, qarg ...r3.Query) (PreparedListQuery, error) {
+	return PrepareMergedListQuery(schema, dm.MergeListQuery(qarg...))
+}
 
+// PrepareMergedListQuery converts an already-merged query's filters, sorts, and
+// pagination into BSON. Cursor pagination takes precedence over offset. It is the
+// half of [PrepareListQuery] after the merge, exposed so a driver can transform the
+// query first (e.g. lower relationship "has" filters into key-set In filters).
+//
+// schema drives value-codec encoding of filter and cursor arguments to stored form
+// (e.g. a time.Time bound against an int column); a zero schema (no codecs) leaves
+// the arguments untouched.
+func PrepareMergedListQuery(schema r3.Schema, q r3.Query) (PreparedListQuery, error) {
 	var p PreparedListQuery
+
+	// Encode codec'd filter args to stored form before conversion.
+	filters, err := r3.EncodeFilterCodecs(schema, q.Filters)
+	if err != nil {
+		return p, fmt.Errorf("failed to encode filter codecs: %w", err)
+	}
+	q.Filters = filters
 	p.Query = q
 
 	filter, err := r3bson.FiltersToBSON(q.Filters)
@@ -69,6 +86,11 @@ func PrepareListQuery(dm *r3.DefaultsManager, qarg ...r3.Query) (PreparedListQue
 			values, err := r3.DecodeCursor(token)
 			if err != nil {
 				return p, fmt.Errorf("failed to decode cursor: %w", err)
+			}
+			// Encode codec'd cursor keys to stored form for the keyset predicate.
+			values, err = r3.EncodeCursorCodecs(schema, values)
+			if err != nil {
+				return p, fmt.Errorf("failed to encode cursor codecs: %w", err)
 			}
 			cursorFilter, err := r3bson.CursorToBSON(values, q.Sorts, q.Cursor.Direction())
 			if err != nil {

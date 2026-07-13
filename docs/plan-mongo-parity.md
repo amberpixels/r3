@@ -45,12 +45,12 @@ Both have direct Mongo equivalents, so this is the cheapest increment.
   Reference `engine/sql/bulkpatch.go`.
 
 Checklist:
-- [ ] Implement `Upsert` on `engine/mongo.BaseCRUD`; add `var _ r3.Upserter[...]`.
-- [ ] Implement `PatchWhere` on `engine/mongo.BaseCRUD`; add `var _ r3.BulkPatcher[...]`.
-- [ ] Forward both through `drivers/mongo.MongoCRUD`.
-- [ ] Tests (testcontainers): upsert insert vs update branch, conflict target,
+- [x] Implement `Upsert` on `engine/mongo.BaseCRUD`; add `var _ r3.Upserter[...]`.
+- [x] Implement `PatchWhere` on `engine/mongo.BaseCRUD`; add `var _ r3.BulkPatcher[...]`.
+- [x] Forward both through `drivers/mongo.MongoCRUD` (promoted via embedding).
+- [x] Tests (testcontainers): upsert insert vs update branch, conflict target,
       partial `UpdateFields`; bulk patch affected-count and filter scoping.
-- [ ] `backend-parity.md`: move Upsert/BulkPatch off the Mongo degrade list.
+- [x] `backend-parity.md`: move Upsert/BulkPatch off the Mongo degrade list.
 
 ## 2. Value codecs (`r3:"codec:…"`)
 
@@ -85,15 +85,26 @@ The four paths a codec touches, and Mongo's status on each:
 
 Design background: [`plan-field-codecs.md`](./plan-field-codecs.md).
 
+Chosen read strategy: **(b) post-decode**. Reads decode into a `bson.M`, convert
+each codec'd field to its domain value, then re-marshal so the driver's native
+decoder handles everything else. A per-field bson registry (option a) cannot work:
+codec'd and native `time.Time` fields are indistinguishable by Go type, and the
+four unix precisions are indistinguishable by stored BSON type. Codecs are keyed by
+**bson field name** (built in `StructMeta.Codecs` via the new public
+`r3.LookupCodec`), not the schema name, because `ParseColumnTag` - which drives
+`SchemaOf` - ignores the `bson` tag. A codec'd field's bson name must therefore
+match its schema column name (they agree in the flagship case). `Raw` reads are the
+documented exception: the escape hatch does not apply codecs.
+
 Checklist:
-- [ ] Encode on write in the `ToBSONDoc` path.
-- [ ] Wire `EncodeFilterCodecs` / `EncodeCursorCodecs` into Mongo list prep.
-- [ ] Decode on read (pick registry vs post-decode; must cover Get, List, preloads).
-- [ ] `DecodeAggregateCodecs` before returning aggregate rows.
-- [ ] Remove the two `RequireCodecSupport` guards in `engine/mongo/crud.go`.
-- [ ] Tests: round-trip a `codec:unixtime` field; filter/cursor by a `time.Time`
+- [x] Encode on write in the `ToBSONDoc` path (and Patch/Upsert/BulkPatch values).
+- [x] Wire `EncodeFilterCodecs` / `EncodeCursorCodecs` into Mongo list prep.
+- [x] Decode on read (post-decode; covers Get, List, Patch/Upsert refetch, preloads).
+- [x] `DecodeAggregateCodecs` before returning aggregate rows.
+- [x] Remove the two `RequireCodecSupport` guards in `engine/mongo/crud.go`.
+- [x] Tests: round-trip a `codec:unixtime` field; filter/cursor by a `time.Time`
       bound against the int column; `MAX` over a codec'd field decodes to a time.
-- [ ] `backend-parity.md`: clear the two Mongo codec rows.
+- [x] `backend-parity.md`: clear the two Mongo codec rows.
 
 ## 3. Relations
 
@@ -123,14 +134,21 @@ driver/engine change with no core churn. `engine/mongo/reflect.go` already carri
   even on GORM.
 
 Checklist:
-- [ ] Make `r3bson.FiltersToBSON` (or the Mongo list prep) reject/flag unresolved
-      relationship filters instead of silently dropping them, until resolved.
-- [ ] Key-set lowering for `Has` (`$in`) and `HasNo` (`$nin`, null-safe).
-- [ ] Resolve `WithRelations` metadata for Mongo.
-- [ ] Implement `AggregateThroughRelation`; add `var _ r3.RelationAggregator`.
-- [ ] Tests: `Has`/`HasNo` over has-many and m2m; null-FK anti-join; relation
-      aggregation grouped by owner with soft-delete exclusion.
-- [ ] `backend-parity.md`: clear the four Mongo relation rows.
+- [x] Make `r3bson.FilterToBSON` reject unresolved relationship filters (fail loud)
+      instead of silently dropping them.
+- [x] Key-set lowering for `Has` (`$in`) and `HasNo` (`$nin`, null-safe) via a
+      pre-query `Distinct` on the related collection - has-many, belongs-to, m2m.
+      Wired into List and Count (`engine/mongo/relfilter.go`).
+- [x] Resolve `WithRelations` metadata for Mongo (`engine/mongo/relation_spec.go`;
+      maps the spec's default `id` PK to Mongo's `_id`).
+- [x] Implement `AggregateThroughRelation`; add `var _ r3.RelationAggregator`.
+- [x] Tests: `Has`/`HasNo` over has-many, belongs-to, and m2m; null-FK anti-join;
+      relation aggregation grouped and restricted by owner filter.
+- [x] `backend-parity.md`: clear the four Mongo relation rows.
+
+Note: many-to-many *preload* (loading the related structs) is still unsupported on
+Mongo - out of scope here, which is about filters and aggregation. Aggregating
+*target* columns through an m2m (R3-011) is out of scope on every backend.
 
 ## Suggested increments
 

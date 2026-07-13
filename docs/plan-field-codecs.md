@@ -250,7 +250,10 @@ Core
 
 Engines
 - [ ] `engine/sql/reflect.go` (+ crud/list_query/upsert/bulkpatch/aggregate): bind+scan.
-- [ ] `engine/mongo/reflect.go`: marshal+unmarshal.
+- [x] `engine/mongo`: encode on write (`ToBSONDoc`/values), post-decode on read
+      (Get/List/preloads/refetch via `bson.M` round-trip), filter/cursor arg encode
+      in list prep, aggregate min/max decode. Codecs keyed by bson name via
+      `r3.LookupCodec`. See `docs/plan-mongo-parity.md`.
 - [ ] `engine/file/reflect.go` + `codec.go` (+ filter/sort eval): encode+decode.
 
 Query prep (cross-cutting)

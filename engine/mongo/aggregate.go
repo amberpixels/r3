@@ -8,6 +8,7 @@ import (
 	"github.com/amberpixels/r3"
 	r3bson "github.com/amberpixels/r3/dialects/bson"
 	"go.mongodb.org/mongo-driver/v2/bson"
+	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 var _ r3.Aggregator = (*BaseCRUD[any, any])(nil)
@@ -20,7 +21,7 @@ var _ r3.Aggregator = (*BaseCRUD[any, any])(nil)
 // COUNT(DISTINCT field) uses $addToSet, materializing the value set per group -
 // fine for the moderate cardinalities aggregates target.
 func (r *BaseCRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.AggregateRow, error) {
-	prep, err := PrepareListQuery(&r.DefaultsManager, qarg...)
+	prep, err := PrepareListQuery(&r.DefaultsManager, r.CodecSchema, qarg...)
 	if err != nil {
 		return nil, err
 	}
@@ -30,25 +31,55 @@ func (r *BaseCRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3
 		return nil, err
 	}
 
+	groupNames, err := aggregateGroupNames(q)
+	if err != nil {
+		return nil, err
+	}
+
+	var prefix bson.A
+	if filter := r.buildFilter(prep); len(filter) > 0 {
+		prefix = append(prefix, bson.D{{Key: matchOp, Value: filter}})
+	}
+
+	rows, err := runGroupPipeline(ctx, r.Collection, prefix, groupNames, q)
+	if err != nil {
+		return nil, err
+	}
+
+	// Decode codec'd group-by columns and MIN/MAX aggregates back to their domain
+	// values (e.g. a stored unix int -> time.Time).
+	if err := r3.DecodeAggregateCodecs(r.CodecSchema, q, rows); err != nil {
+		return nil, fmt.Errorf("mongo aggregate: decode codecs: %w", err)
+	}
+	return rows, nil
+}
+
+// aggregateGroupNames returns the query's group-by field names, rejecting nested
+// (dotted) names: $project cannot emit a literal dotted key (it means a nested
+// path), so flattened group keys must be plain names.
+func aggregateGroupNames(q r3.Query) ([]string, error) {
 	groupNames := r3.FieldsToStrings(q.GroupBy)
 	for _, name := range groupNames {
-		// $project cannot emit a literal dotted key (it means a nested path),
-		// so flattened group keys must be plain names.
 		if strings.Contains(name, ".") {
 			return nil, fmt.Errorf("mongo aggregate: nested group field %q is not supported", name)
 		}
 	}
+	return groupNames, nil
+}
 
-	pipeline := bson.A{}
-	if filter := r.buildFilter(prep); len(filter) > 0 {
-		pipeline = append(pipeline, bson.D{{Key: "$match", Value: filter}})
-	}
-
+// runGroupPipeline appends the $group -> $project -> $match(having) -> $sort ->
+// $skip/$limit stages onto prefix, runs the aggregation against coll, and returns
+// the normalized rows. prefix carries the stages that select and shape the input
+// rows ($match, $lookup, ...). Shared by single-table Aggregate and
+// AggregateThroughRelation; it applies no value codecs (the caller decides).
+func runGroupPipeline(
+	ctx context.Context, coll *mongo.Collection, prefix bson.A, groupNames []string, q r3.Query,
+) ([]r3.AggregateRow, error) {
 	group, project, err := buildGroupAndProject(groupNames, q.Aggregates)
 	if err != nil {
 		return nil, err
 	}
-	pipeline = append(pipeline,
+	pipeline := append(prefix, //nolint:gocritic // prefix is a fresh per-call slice
 		bson.D{{Key: "$group", Value: group}},
 		bson.D{{Key: "$project", Value: project}},
 	)
@@ -58,7 +89,7 @@ func (r *BaseCRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3
 		if err != nil {
 			return nil, fmt.Errorf("mongo aggregate: having: %w", err)
 		}
-		pipeline = append(pipeline, bson.D{{Key: "$match", Value: having}})
+		pipeline = append(pipeline, bson.D{{Key: matchOp, Value: having}})
 	}
 
 	if sorts := q.AggregateSorts(); len(sorts) > 0 {
@@ -69,14 +100,15 @@ func (r *BaseCRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3
 		pipeline = append(pipeline, bson.D{{Key: "$sort", Value: sortDoc}})
 	}
 
-	if prep.IsPaginated {
-		if prep.Offset > 0 {
-			pipeline = append(pipeline, bson.D{{Key: "$skip", Value: prep.Offset}})
+	if q.Pagination != nil && q.Pagination.IsPaginated() {
+		limit, offset := q.Pagination.ToLimitOffset()
+		if offset > 0 {
+			pipeline = append(pipeline, bson.D{{Key: "$skip", Value: int64(offset)}})
 		}
-		pipeline = append(pipeline, bson.D{{Key: "$limit", Value: prep.Limit}})
+		pipeline = append(pipeline, bson.D{{Key: "$limit", Value: int64(limit)}})
 	}
 
-	cursor, err := r.Collection.Aggregate(ctx, pipeline)
+	cursor, err := coll.Aggregate(ctx, pipeline)
 	if err != nil {
 		return nil, fmt.Errorf("mongo aggregate: %w", err)
 	}
@@ -100,6 +132,9 @@ func (r *BaseCRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3
 
 // sumOp is the MongoDB accumulator used for COUNT and SUM.
 const sumOp = "$sum"
+
+// matchOp is the MongoDB aggregation stage that filters input documents.
+const matchOp = "$match"
 
 // buildGroupAndProject translates the aggregate specs into the $group document
 // (group keys under _id.g<i>, aggregates under their aliases) and the $project

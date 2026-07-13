@@ -113,7 +113,7 @@ func preloadHasMany(
 	grouped := make(map[any][]reflect.Value)
 	for cursor.Next(ctx) {
 		childPtr := reflect.New(rel.TargetType)
-		if err := cursor.Decode(childPtr.Interface()); err != nil {
+		if err := decodeCursorInto(cursor, targetMeta, childPtr.Interface()); err != nil {
 			return err
 		}
 		child := childPtr.Elem()
@@ -197,7 +197,7 @@ func preloadBelongsTo(
 	indexed := make(map[any]reflect.Value)
 	for cursor.Next(ctx) {
 		targetPtr := reflect.New(rel.TargetType)
-		if err := cursor.Decode(targetPtr.Interface()); err != nil {
+		if err := decodeCursorInto(cursor, targetMeta, targetPtr.Interface()); err != nil {
 			return err
 		}
 		target := targetPtr.Elem()

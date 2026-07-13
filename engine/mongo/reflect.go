@@ -18,19 +18,25 @@ const (
 	RelHasMany = r3tag.RelHasMany
 	// RelBelongsTo represents a many-to-one relationship.
 	RelBelongsTo = r3tag.RelBelongsTo
+	// RelManyToMany represents a many-to-many relationship via a join collection.
+	RelManyToMany = r3tag.RelManyToMany
 
 	// bsonIDField is the standard MongoDB primary key field name.
 	bsonIDField = "_id"
 )
 
-// RelationMeta holds metadata about a struct field that represents a relation.
+// RelationMeta holds metadata about a relation - either reflected from a struct
+// field (preloadable) or declared explicitly via [r3.WithRelations] (FieldIndex
+// -1, TargetType nil).
 type RelationMeta struct {
-	FieldName  string       // Go struct field name (matched against PreloadSpec.Name)
-	FieldIndex int          // struct field index for reflection-based assignment
-	Kind       RelationKind // has-many or belongs-to
-	FKField    string       // foreign key field name (BSON field name on the "many" side)
-	TargetMeta StructMeta   // metadata for the related entity type
-	TargetType reflect.Type // reflect.Type of the target entity (element type, not slice/ptr)
+	FieldName  string       // relation name (Go field name, or spec name)
+	FieldIndex int          // struct field index for preload assignment; -1 for a declared spec
+	Kind       RelationKind // has-many, belongs-to, or many-to-many
+	FKField    string       // foreign key field: child-side (has-many), owner-side (belongs-to), owner-side in join (m2m)
+	RefField   string       // related-side FK field in the join collection (many-to-many only)
+	JoinTable  string       // join collection name (many-to-many only)
+	TargetMeta StructMeta   // metadata for the related entity (collection, IDField, SoftDeleteField)
+	TargetType reflect.Type // reflect.Type of the target entity (element type); nil for a declared spec
 }
 
 // StructMeta is reflection-based metadata about a struct type T, the MongoDB
@@ -50,6 +56,12 @@ type StructMeta struct {
 	// the "not deleted" filter must match it as well as null. Nil for a pointer
 	// field (live records store null) or when soft-delete is disabled.
 	SoftDeleteZero any
+
+	// Codecs maps a BSON field name to the value codec declared on it
+	// (r3:"...,codec:name"). Keyed by the physical bson name - not the schema
+	// name - because reads/writes and filter args all reference the stored field.
+	// Empty when the type declares no codecs.
+	Codecs map[string]r3.Codec
 
 	Relations []RelationMeta
 }
@@ -106,6 +118,21 @@ func buildStructMeta(typ reflect.Type, parseRelations bool) StructMeta {
 
 		meta.Fields = append(meta.Fields, bsonName)
 		meta.FieldIndices = append(meta.FieldIndices, i)
+
+		// Resolve a value codec declared on the field, keyed by the bson name so the
+		// read/write and filter paths (which reference the stored field) find it. An
+		// unregistered codec name is a deterministic developer error (a typo), so fail
+		// loudly - matching SchemaOf - rather than silently storing un-encoded values.
+		if ct := r3tag.ParseColumnTag(field); ct.Codec != "" {
+			c, ok := r3.LookupCodec(ct.Codec)
+			if !ok {
+				panic(fmt.Errorf("%w: %q on field %q", r3.ErrUnknownCodec, ct.Codec, field.Name))
+			}
+			if meta.Codecs == nil {
+				meta.Codecs = make(map[string]r3.Codec)
+			}
+			meta.Codecs[bsonName] = c
+		}
 
 		if isPK || bsonName == bsonIDField {
 			meta.IDField = bsonName

@@ -54,6 +54,15 @@ func OperatorToBSON(op r3.FilterOperatorSpec) (BSONOperator, error) {
 
 // FilterToBSON converts a FilterSpec to a bson.D filter document.
 func FilterToBSON(f *r3.FilterSpec) (bson.D, error) {
+	// A relationship ("has") filter has no direct BSON form: Mongo has no
+	// server-side join, so the driver must lower it to a key-set In/NotIn via a
+	// pre-query before translation. Reaching here unresolved means it would
+	// otherwise be silently dropped (returning unfiltered rows), so fail loudly.
+	if f.Relation != "" {
+		return nil, fmt.Errorf(
+			"relationship filter on %q must be resolved by the driver before BSON translation", f.Relation)
+	}
+
 	// Simple filter (Field set).
 	if f.Field != nil {
 		fieldName := f.Field.String()

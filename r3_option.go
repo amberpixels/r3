@@ -51,7 +51,7 @@ func WithConfig(cfg Config) Option {
 //		),
 //	)
 //
-// Relation support is currently implemented by the GORM driver only.
+// Relation support is currently implemented by the GORM and Mongo drivers.
 func WithRelations(rels ...RelationSpec) Option {
 	return func(o *Options) {
 		o.Relations = append(o.Relations, rels...)

@@ -28,6 +28,11 @@ type BaseCRUD[T any, ID comparable] struct {
 	Meta   StructMeta
 	Config r3.Config
 	Raw    *BaseRaw[T, ID]
+
+	// CodecSchema is the minimal schema (codec'd fields, keyed by bson name) that
+	// drives value-codec encoding of filter and cursor arguments. Zero when the
+	// type declares no codecs.
+	CodecSchema r3.Schema
 }
 
 var _ r3.CRUD[any, any] = &BaseCRUD[any, any]{}
@@ -36,15 +41,14 @@ var _ r3.CRUD[any, any] = &BaseCRUD[any, any]{}
 // [r3.Option] values.
 func NewBaseCRUD[T any, ID comparable](coll *mongo.Collection, opts ...r3.Option) *BaseCRUD[T, ID] {
 	resolved := r3.ResolveOptions(opts...)
-	meta := GetStructMeta[T]()
-	// This engine has no codec support yet: fail loudly rather than store un-encoded values.
-	r3.RequireCodecSupport(r3.SchemaOf[T](r3.WithSchemaNaming(resolved.Config.Naming)), "r3/mongo")
+	meta := WithDeclaredRelations(GetStructMeta[T](), resolved.Relations)
 	return &BaseCRUD[T, ID]{
 		Collection:      coll,
 		DefaultsManager: r3.NewDefaultsManagerWithConfig(resolved.Config),
 		Meta:            meta,
 		Config:          resolved.Config,
 		Raw:             NewBaseRaw[T, ID](coll, meta),
+		CodecSchema:     meta.codecSchema(),
 	}
 }
 
@@ -52,9 +56,7 @@ func NewBaseCRUD[T any, ID comparable](coll *mongo.Collection, opts ...r3.Option
 // Accepts optional [r3.Option] values.
 func NewBaseCRUDFromDB[T any, ID comparable](db *mongo.Database, opts ...r3.Option) *BaseCRUD[T, ID] {
 	resolved := r3.ResolveOptions(opts...)
-	meta := GetStructMeta[T]()
-	// This engine has no codec support yet: fail loudly rather than store un-encoded values.
-	r3.RequireCodecSupport(r3.SchemaOf[T](r3.WithSchemaNaming(resolved.Config.Naming)), "r3/mongo")
+	meta := WithDeclaredRelations(GetStructMeta[T](), resolved.Relations)
 	coll := db.Collection(meta.CollectionName)
 	return &BaseCRUD[T, ID]{
 		Collection:      coll,
@@ -62,12 +64,16 @@ func NewBaseCRUDFromDB[T any, ID comparable](db *mongo.Database, opts ...r3.Opti
 		Meta:            meta,
 		Config:          resolved.Config,
 		Raw:             NewBaseRaw[T, ID](coll, meta),
+		CodecSchema:     meta.codecSchema(),
 	}
 }
 
 // Create inserts a document and returns it with the driver-generated _id.
 func (r *BaseCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 	doc := r.Meta.ToBSONDoc(entity, false) // exclude _id, let MongoDB generate it
+	if err := r.Meta.encodeWriteDoc(doc); err != nil {
+		return entity, err
+	}
 
 	result, err := r.Collection.InsertOne(ctx, doc)
 	if err != nil {
@@ -98,12 +104,25 @@ func (r *BaseCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 		opts.SetProjection(projection)
 	}
 
-	err := r.Collection.FindOne(ctx, filter, opts).Decode(&entity)
-	if err != nil {
-		if errors.Is(err, mongo.ErrNoDocuments) {
-			return entity, r3.ErrNotFound
+	if r.Meta.HasCodecs() {
+		var raw bson.M
+		if err := r.Collection.FindOne(ctx, filter, opts).Decode(&raw); err != nil {
+			if errors.Is(err, mongo.ErrNoDocuments) {
+				return entity, r3.ErrNotFound
+			}
+			return entity, err
 		}
-		return entity, err
+		if err := unmarshalWithCodecs(&r.Meta, raw, &entity); err != nil {
+			return entity, err
+		}
+	} else {
+		err := r.Collection.FindOne(ctx, filter, opts).Decode(&entity)
+		if err != nil {
+			if errors.Is(err, mongo.ErrNoDocuments) {
+				return entity, r3.ErrNotFound
+			}
+			return entity, err
+		}
 	}
 
 	if len(q.Preloads) > 0 && len(r.Meta.Relations) > 0 {
@@ -136,22 +155,25 @@ func (r *BaseCRUD[T, ID]) buildFilter(prep PreparedListQuery) bson.D {
 	if filter == nil {
 		filter = bson.D{}
 	}
+	return r.applyLiveFilter(filter, prep.Query.IncludeTrashed.Some(true))
+}
 
-	if r.Meta.SoftDeleteField != "" && !prep.Query.IncludeTrashed.Some(true) {
-		sdFilter := bson.D{{Key: r.Meta.SoftDeleteField, Value: r.Meta.liveRecordCondition()}}
-		if len(filter) == 0 {
-			filter = sdFilter
-		} else {
-			filter = bson.D{{Key: "$and", Value: bson.A{filter, sdFilter}}}
-		}
+// applyLiveFilter ANDs the "not soft-deleted" condition onto filter, unless
+// includeTrashed is set or the model has no soft-delete field.
+func (r *BaseCRUD[T, ID]) applyLiveFilter(filter bson.D, includeTrashed bool) bson.D {
+	if r.Meta.SoftDeleteField == "" || includeTrashed {
+		return filter
 	}
-
-	return filter
+	sdFilter := bson.D{{Key: r.Meta.SoftDeleteField, Value: r.Meta.liveRecordCondition()}}
+	if len(filter) == 0 {
+		return sdFilter
+	}
+	return bson.D{{Key: "$and", Value: bson.A{filter, sdFilter}}}
 }
 
 // Count returns the number of documents matching the query's filters.
 func (r *BaseCRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, error) {
-	prep, err := PrepareListQuery(&r.DefaultsManager, qarg...)
+	prep, err := r.prepareListQuery(ctx, qarg...)
 	if err != nil {
 		return 0, err
 	}
@@ -165,7 +187,7 @@ func (r *BaseCRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, e
 
 // List retrieves documents matching the query.
 func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, error) {
-	prep, err := PrepareListQuery(&r.DefaultsManager, qarg...)
+	prep, err := r.prepareListQuery(ctx, qarg...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -216,8 +238,8 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 	}
 	defer cursor.Close(ctx)
 
-	var entities []T
-	if err := cursor.All(ctx, &entities); err != nil {
+	entities, err := r.decodeList(ctx, cursor)
+	if err != nil {
 		return nil, 0, fmt.Errorf("mongo decode: %w", err)
 	}
 
@@ -241,6 +263,9 @@ func (r *BaseCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	idVal := r.Meta.IDValue(entity)
 
 	doc := r.Meta.ToBSONDoc(entity, false)
+	if err := r.Meta.encodeWriteDoc(doc); err != nil {
+		return entity, err
+	}
 	update := bson.D{{Key: setOp, Value: doc}}
 
 	filter := bson.D{{Key: r.Meta.IDField, Value: idVal}}
@@ -270,6 +295,9 @@ func (r *BaseCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields)
 
 	setDoc := bson.D{}
 	vals := r.Meta.FieldValuesForFields(entity, fieldNames)
+	if err := r.Meta.encodeWriteValues(fieldNames, vals); err != nil {
+		return entity, err
+	}
 	for i, name := range fieldNames {
 		setDoc = append(setDoc, bson.E{Key: name, Value: vals[i]})
 	}
@@ -284,13 +312,27 @@ func (r *BaseCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields)
 		return entity, r3.ErrNotFound
 	}
 
-	var updated T
-	err = r.Collection.FindOne(ctx, filter).Decode(&updated)
+	updated, err := r.getByFilter(ctx, filter)
 	if err != nil {
 		return entity, fmt.Errorf("mongo patch refetch: %w", err)
 	}
-
 	return updated, nil
+}
+
+// getByFilter fetches the single document matching filter into a fresh entity,
+// applying value codecs on decode.
+func (r *BaseCRUD[T, ID]) getByFilter(ctx context.Context, filter bson.D) (T, error) {
+	var entity T
+	if !r.Meta.HasCodecs() {
+		err := r.Collection.FindOne(ctx, filter).Decode(&entity)
+		return entity, err
+	}
+	var raw bson.M
+	if err := r.Collection.FindOne(ctx, filter).Decode(&raw); err != nil {
+		return entity, err
+	}
+	err := unmarshalWithCodecs(&r.Meta, raw, &entity)
+	return entity, err
 }
 
 // Delete removes a document by its _id, or soft-deletes it (setting the
