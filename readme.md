@@ -10,7 +10,6 @@ A universal, backend-agnostic CRUD repository abstraction for Go.
 
 [![Go Reference](https://pkg.go.dev/badge/github.com/amberpixels/r3.svg)](https://pkg.go.dev/github.com/amberpixels/r3)
 [![CI](https://github.com/amberpixels/r3/actions/workflows/go.yml/badge.svg)](https://github.com/amberpixels/r3/actions/workflows/go.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/amberpixels/r3)](https://goreportcard.com/report/github.com/amberpixels/r3)
 [![Go Version](https://img.shields.io/github/go-mod/go-version/amberpixels/r3)](go.mod)
 [![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
 
