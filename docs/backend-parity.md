@@ -73,6 +73,7 @@ These are feature gaps (not backend-parity gaps) tracked in the p44 feedback log
 ## Already at parity (for reference)
 
 `Aggregator` (single-table `GROUP BY`), `Count`, `ErrNotFound` normalization,
-`Upserter` and `BulkPatcher` (GORM + engine/sql raw drivers + mongo; file/bun/gopg
-degrade to their respective `Err…NotSupported`). See each capability's doc
-comment for the authoritative per-backend status.
+`Upserter` (GORM + engine/sql raw drivers + mongo + bun; file/gopg degrade to
+`ErrUpsertNotSupported`) and `BulkPatcher` (GORM + engine/sql raw drivers +
+mongo; file/bun/gopg degrade to `ErrBulkPatchNotSupported`). See each
+capability's doc comment for the authoritative per-backend status.

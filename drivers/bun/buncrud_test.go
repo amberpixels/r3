@@ -289,6 +289,29 @@ func TestBunRepository(t *testing.T) {
 		assert.Equal(t, 99, updated.Popularity, "location popularity not updated")
 	})
 
+	t.Run("Upsert inserts then updates on conflict", func(t *testing.T) {
+		// Insert branch: a fresh row upserts as an insert (RETURNING fills the PK).
+		seed, err := cityRepo.Create(ctx, City{Name: "UpsertCity", CountryName: "Origland", Popularity: 1})
+		require.NoError(t, err, "seed create failed")
+		require.NotZero(t, seed.ID)
+
+		// Conflict branch: same PK, update only the named columns.
+		updated, err := r3.UpsertOf(ctx, cityRepo,
+			City{ID: seed.ID, Name: "UpsertCityV2", CountryName: "IGNORED", Popularity: 42},
+			r3.OnConflict("id"),
+			r3.UpdateOnConflict(r3.NewFieldSpec("name"), r3.NewFieldSpec("popularity")),
+		)
+		require.NoError(t, err, "upsert (conflict) failed")
+		assert.Equal(t, seed.ID, updated.ID, "upsert must not change the PK")
+		assert.Equal(t, "UpsertCityV2", updated.Name, "conflict must update the name")
+		assert.Equal(t, 42, updated.Popularity, "conflict must update popularity")
+
+		// country_name was not in the update set, so the original survives.
+		got, err := cityRepo.Get(ctx, seed.ID)
+		require.NoError(t, err, "get after upsert failed")
+		assert.Equal(t, "Origland", got.CountryName, "non-updated column must be preserved")
+	})
+
 	t.Run("List events for a location", func(t *testing.T) {
 		result, _, err := eventRepo.List(ctx, r3.Query{
 			Filters: r3.Filters{
