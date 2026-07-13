@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"encoding/json"
 	"os"
-	"slices"
 	"testing"
 	"time"
 
 	"github.com/amberpixels/r3"
 	r3schema "github.com/amberpixels/r3/dialects/schema"
+	"github.com/expectto/be"
 )
 
 // Campaign is a representative model covering scalars, enum, immutable/readonly
@@ -34,41 +34,29 @@ type Adset struct {
 
 func TestMarshalSchema_Golden(t *testing.T) {
 	data, err := r3schema.MarshalSchema(r3.SchemaOf[Campaign]())
-	if err != nil {
-		t.Fatalf("MarshalSchema: %v", err)
-	}
+	be.NoError(t, err)
 
 	var indented bytes.Buffer
-	if err := json.Indent(&indented, data, "", "  "); err != nil {
-		t.Fatalf("indent: %v", err)
-	}
+	err = json.Indent(&indented, data, "", "  ")
+	be.NoError(t, err)
 	indented.WriteByte('\n')
 
 	want, err := os.ReadFile("testdata/campaign.json")
-	if err != nil {
-		t.Fatalf("read golden: %v", err)
-	}
-	if !bytes.Equal(indented.Bytes(), want) {
-		t.Errorf("schema JSON does not match golden.\n--- got ---\n%s\n--- want ---\n%s",
-			indented.String(), want)
-	}
+	be.NoError(t, err)
+
+	be.AssertThat(t, indented.Bytes(), be.Eq(want))
 }
 
 func TestMarshalSchema_OmitsNonQueryable(t *testing.T) {
 	data, err := r3schema.MarshalSchema(r3.SchemaOf[Campaign]())
-	if err != nil {
-		t.Fatalf("MarshalSchema: %v", err)
-	}
-	if bytes.Contains(data, []byte("secret_token")) {
-		t.Error("non-queryable attribute secret_token must not be serialized")
-	}
+	be.NoError(t, err)
+
+	be.AssertThat(t, bytes.Contains(data, []byte("secret_token")), be.False())
 }
 
 func TestMarshalSchema_OperatorsMatchTypeDefaults(t *testing.T) {
 	data, err := r3schema.MarshalSchema(r3.SchemaOf[Campaign]())
-	if err != nil {
-		t.Fatalf("MarshalSchema: %v", err)
-	}
+	be.NoError(t, err)
 
 	var decoded struct {
 		Version    int `json:"version"`
@@ -79,25 +67,16 @@ func TestMarshalSchema_OperatorsMatchTypeDefaults(t *testing.T) {
 			Enum []string `json:"enum"`
 		} `json:"attributes"`
 	}
-	if err := json.Unmarshal(data, &decoded); err != nil {
-		t.Fatalf("unmarshal: %v", err)
-	}
-	if decoded.Version != r3schema.Version {
-		t.Errorf("version = %d, want %d", decoded.Version, r3schema.Version)
-	}
+	err = json.Unmarshal(data, &decoded)
+	be.NoError(t, err)
+	be.AssertThat(t, decoded.Version, be.Eq(r3schema.Version))
 
 	ops := map[string][]string{}
 	for _, a := range decoded.Attributes {
 		ops[a.Name] = a.Ops
 	}
 	// A numeric column carries range operators; a string column carries LIKE.
-	if !slices.Contains(ops["budget"], "between") {
-		t.Error("budget (float) should expose between")
-	}
-	if slices.Contains(ops["title"], "between") {
-		t.Error("title (string) should not expose between")
-	}
-	if !slices.Contains(ops["title"], "ilike") {
-		t.Error("title (string) should expose ilike")
-	}
+	be.AssertThat(t, ops["budget"], be.ContainElement("between"))
+	be.AssertThat(t, ops["title"], be.Not(be.ContainElement("between")))
+	be.AssertThat(t, ops["title"], be.ContainElement("ilike"))
 }

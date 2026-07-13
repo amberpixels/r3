@@ -7,6 +7,7 @@ import (
 
 	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/features/history"
+	"github.com/expectto/be"
 )
 
 // capMemory adds the Upserter/BulkPatcher capabilities to the in-memory Order
@@ -88,43 +89,31 @@ func TestHistory_Upsert_RecordsCreateThenUpdate(t *testing.T) {
 
 	// First upsert: no pre-state → recorded as a create.
 	created, err := repo.Upsert(ctx, Order{Name: "o", Total: 100, Status: "pending"})
-	if err != nil {
-		t.Fatalf("upsert insert: %v", err)
-	}
+	be.NoError(t, err)
 
 	recs, _, err := listForRecord(ctx, store, "orders", strconv.FormatInt(created.ID, 10))
-	if err != nil {
-		t.Fatalf("list: %v", err)
-	}
-	if len(recs) != 1 || recs[0].Action != history.ActionCreate {
-		t.Fatalf("first upsert must record a create, got %+v", recs)
-	}
+	be.NoError(t, err)
+
+	be.RequireThat(t, recs, be.HaveLength(1))
+	be.RequireThat(t, recs[0].Action, be.Eq(history.ActionCreate))
 
 	// Second upsert on the same key: pre-state exists → recorded as an update.
 	created.Status = "confirmed"
-	if _, err := repo.Upsert(ctx, created); err != nil {
-		t.Fatalf("upsert update: %v", err)
-	}
+	_, err = repo.Upsert(ctx, created)
+	be.NoError(t, err)
 
 	recs, _, err = listForRecord(ctx, store, "orders", strconv.FormatInt(created.ID, 10))
-	if err != nil {
-		t.Fatalf("list: %v", err)
-	}
-	if len(recs) != 2 {
-		t.Fatalf("expected 2 change records, got %d", len(recs))
-	}
+	be.NoError(t, err)
+
+	be.RequireThat(t, recs, be.HaveLength(2))
 	var sawUpdate bool
 	for _, r := range recs {
 		if r.Action == history.ActionUpdate {
 			sawUpdate = true
-			if len(r.Changes.Val) == 0 {
-				t.Errorf("update record must carry a diff")
-			}
+			be.AssertThat(t, r.Changes.Val, be.NotEmpty())
 		}
 	}
-	if !sawUpdate {
-		t.Fatalf("second upsert must record an update; got %+v", recs)
-	}
+	be.RequireThat(t, sawUpdate, be.True())
 }
 
 func TestHistory_PatchWhere_RecordsPerAffectedRow(t *testing.T) {
@@ -144,21 +133,16 @@ func TestHistory_PatchWhere_RecordsPerAffectedRow(t *testing.T) {
 		Order{Status: "interrupted"},
 		r3.Fields{r3.NewFieldSpec("status")},
 	)
-	if err != nil {
-		t.Fatalf("patchwhere: %v", err)
-	}
-	if n != 2 {
-		t.Fatalf("expected 2 affected, got %d", n)
-	}
+	be.NoError(t, err)
+
+	be.RequireThat(t, n, be.Eq(int64(2)))
 
 	// Exactly the two matching rows get an ActionPatch record; the "done" row does not.
 	for _, id := range []int64{a.ID, b.ID} {
 		recs, _, err := listForRecord(ctx, store, "orders", strconv.FormatInt(id, 10))
-		if err != nil {
-			t.Fatalf("list: %v", err)
-		}
-		if len(recs) != 1 || recs[0].Action != history.ActionPatch {
-			t.Fatalf("row %d must have one patch record, got %+v", id, recs)
-		}
+		be.NoError(t, err)
+
+		be.RequireThat(t, recs, be.HaveLength(1))
+		be.RequireThat(t, recs[0].Action, be.Eq(history.ActionPatch))
 	}
 }

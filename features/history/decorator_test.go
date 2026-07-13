@@ -12,6 +12,9 @@ import (
 
 	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/features/history"
+	"github.com/expectto/be"
+	"github.com/expectto/be/be_string"
+	"github.com/expectto/be/be_time"
 )
 
 // ── In-Memory CRUD (mock for entity) ─────────────────────────────────────
@@ -479,40 +482,24 @@ func TestCRUD_CreateRecordsHistory(t *testing.T) {
 
 	ctx := context.Background()
 	order, err := repo.Create(ctx, Order{Name: "Test Order", Total: 100, Status: "pending"})
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
+	be.NoError(t, err)
 
-	if order.ID == 0 {
-		t.Fatal("expected non-zero ID")
-	}
+	be.RequireThat(t, order.ID, be.NonZero())
 
 	// Check history was recorded
 	records, count, err := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
-	if err != nil {
-		t.Fatalf("List failed: %v", err)
-	}
+	be.NoError(t, err)
 
-	if count != 1 {
-		t.Fatalf("expected 1 record, got %d", count)
-	}
+	be.RequireThat(t, count, be.Eq(int64(1)))
 
 	rec := records[0]
-	if rec.Action != history.ActionCreate {
-		t.Errorf("expected action 'create', got %q", rec.Action)
-	}
-	if rec.Version != 1 {
-		t.Errorf("expected version 1, got %d", rec.Version)
-	}
-	if len(rec.Changes.Val) == 0 {
-		t.Error("expected non-empty changes for create")
-	}
+	be.AssertThat(t, rec.Action, be.Eq(history.ActionCreate))
+	be.AssertThat(t, rec.Version, be.Eq(int64(1)))
+	be.AssertThat(t, rec.Changes.Val, be.NotEmpty())
 
 	// Verify create changes contain all fields with nil OldValue
 	for _, c := range rec.Changes.Val {
-		if c.OldValue != nil {
-			t.Errorf("create change for %s should have nil OldValue, got %v", c.Field, c.OldValue)
-		}
+		be.AssertThat(t, c.OldValue, be.Nil())
 	}
 }
 
@@ -531,27 +518,17 @@ func TestCRUD_UpdateRecordsDiff(t *testing.T) {
 	order.Total = 200
 	order.Status = "confirmed"
 	updated, err := repo.Update(ctx, order)
-	if err != nil {
-		t.Fatalf("Update failed: %v", err)
-	}
+	be.NoError(t, err)
 
-	if updated.Total != 200 {
-		t.Errorf("expected Total=200, got %d", updated.Total)
-	}
+	be.AssertThat(t, updated.Total, be.Eq(200))
 
 	// Check history
 	records, count, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
-	if count != 2 {
-		t.Fatalf("expected 2 records, got %d", count)
-	}
+	be.RequireThat(t, count, be.Eq(int64(2)))
 
 	updateRec := records[1]
-	if updateRec.Action != history.ActionUpdate {
-		t.Errorf("expected action 'update', got %q", updateRec.Action)
-	}
-	if updateRec.Version != 2 {
-		t.Errorf("expected version 2, got %d", updateRec.Version)
-	}
+	be.AssertThat(t, updateRec.Action, be.Eq(history.ActionUpdate))
+	be.AssertThat(t, updateRec.Version, be.Eq(int64(2)))
 
 	// Check that changes include the diff
 	changeMap := make(map[string]history.FieldChange)
@@ -559,12 +536,10 @@ func TestCRUD_UpdateRecordsDiff(t *testing.T) {
 		changeMap[c.Field] = c
 	}
 
-	if _, ok := changeMap["total"]; !ok {
-		t.Error("expected 'total' in changes")
-	}
-	if _, ok := changeMap["status"]; !ok {
-		t.Error("expected 'status' in changes")
-	}
+	_, ok := changeMap["total"]
+	be.AssertThat(t, ok, be.True())
+	_, ok = changeMap["status"]
+	be.AssertThat(t, ok, be.True())
 }
 
 func TestCRUD_PatchRecordsDiff(t *testing.T) {
@@ -581,27 +556,17 @@ func TestCRUD_PatchRecordsDiff(t *testing.T) {
 	// Patch only "status"
 	order.Status = "shipped"
 	_, err := repo.Patch(ctx, order, r3.Fields{r3.NewFieldSpec("status")})
-	if err != nil {
-		t.Fatalf("Patch failed: %v", err)
-	}
+	be.NoError(t, err)
 
 	records, count, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
-	if count != 2 {
-		t.Fatalf("expected 2 records, got %d", count)
-	}
+	be.RequireThat(t, count, be.Eq(int64(2)))
 
 	patchRec := records[1]
-	if patchRec.Action != history.ActionPatch {
-		t.Errorf("expected action 'patch', got %q", patchRec.Action)
-	}
+	be.AssertThat(t, patchRec.Action, be.Eq(history.ActionPatch))
 
 	// Patch should only record changes for the patched fields
-	if len(patchRec.Changes.Val) != 1 {
-		t.Fatalf("expected 1 change for patch, got %d: %v", len(patchRec.Changes.Val), patchRec.Changes.Val)
-	}
-	if patchRec.Changes.Val[0].Field != "status" {
-		t.Errorf("expected field 'status', got %q", patchRec.Changes.Val[0].Field)
-	}
+	be.RequireThat(t, patchRec.Changes.Val, be.HaveLength(1))
+	be.AssertThat(t, patchRec.Changes.Val[0].Field, be.Eq("status"))
 }
 
 func TestCRUD_DeleteRecordsHistory(t *testing.T) {
@@ -616,27 +581,17 @@ func TestCRUD_DeleteRecordsHistory(t *testing.T) {
 	order, _ := repo.Create(ctx, Order{Name: "Doomed", Total: 50, Status: "pending"})
 
 	err := repo.Delete(ctx, order.ID)
-	if err != nil {
-		t.Fatalf("Delete failed: %v", err)
-	}
+	be.NoError(t, err)
 
 	records, count, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
-	if count != 2 {
-		t.Fatalf("expected 2 records, got %d", count)
-	}
+	be.RequireThat(t, count, be.Eq(int64(2)))
 
 	deleteRec := records[1]
-	if deleteRec.Action != history.ActionDelete {
-		t.Errorf("expected action 'delete', got %q", deleteRec.Action)
-	}
+	be.AssertThat(t, deleteRec.Action, be.Eq(history.ActionDelete))
 	// Delete should have changes with nil NewValue for each field
-	if len(deleteRec.Changes.Val) == 0 {
-		t.Error("expected non-empty changes for delete")
-	}
+	be.AssertThat(t, deleteRec.Changes.Val, be.NotEmpty())
 	for _, c := range deleteRec.Changes.Val {
-		if c.NewValue != nil {
-			t.Errorf("delete change for %s should have nil NewValue, got %v", c.Field, c.NewValue)
-		}
+		be.AssertThat(t, c.NewValue, be.Nil())
 	}
 }
 
@@ -655,10 +610,8 @@ func TestCRUD_ReadsDontRecordHistory(t *testing.T) {
 	_, _ = repo.Get(ctx, order.ID)
 	_, _, _ = repo.List(ctx)
 
-	records, count, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
-	if count != 1 {
-		t.Fatalf("expected 1 record (only create), got %d: %v", count, records)
-	}
+	_, count, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
+	be.RequireThat(t, count, be.Eq(int64(1)))
 }
 
 func TestCRUD_MetadataFunc(t *testing.T) {
@@ -678,13 +631,9 @@ func TestCRUD_MetadataFunc(t *testing.T) {
 	order, _ := repo.Create(ctx, Order{Name: "Test", Total: 100, Status: "ok"})
 
 	records, _, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
-	if len(records) == 0 {
-		t.Fatal("expected at least 1 record")
-	}
+	be.RequireThat(t, records, be.NotEmpty())
 
-	if records[0].Metadata.Val.Source != "api" {
-		t.Errorf("expected Source 'api', got %q", records[0].Metadata.Val.Source)
-	}
+	be.AssertThat(t, records[0].Metadata.Val.Source, be.Eq("api"))
 }
 
 func TestCRUD_ActorContext_AutoPopulate(t *testing.T) {
@@ -700,16 +649,10 @@ func TestCRUD_ActorContext_AutoPopulate(t *testing.T) {
 	order, _ := repo.Create(ctx, Order{Name: "Test", Total: 100, Status: "ok"})
 
 	records, _, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
-	if len(records) == 0 {
-		t.Fatal("expected at least 1 record")
-	}
+	be.RequireThat(t, records, be.NotEmpty())
 
-	if records[0].ActorID != "42" {
-		t.Errorf("expected ActorID '42', got %q", records[0].ActorID)
-	}
-	if records[0].ActorType != "user" {
-		t.Errorf("expected ActorType 'user', got %q", records[0].ActorType)
-	}
+	be.AssertThat(t, records[0].ActorID, be.Eq("42"))
+	be.AssertThat(t, records[0].ActorType, be.Eq("user"))
 }
 
 func TestCRUD_RecordEvent(t *testing.T) {
@@ -723,20 +666,14 @@ func TestCRUD_RecordEvent(t *testing.T) {
 	order, _ := repo.Create(ctx, Order{Name: "X", Total: 1, Status: "ok"})
 
 	ev, err := repo.RecordEvent(ctx, order.ID, "comment_added", map[string]any{"text": "hi"})
-	if err != nil {
-		t.Fatalf("RecordEvent: %v", err)
-	}
-	if ev.Action != history.ActionEvent || ev.EventType != "comment_added" {
-		t.Errorf("event shape wrong: action=%q type=%q", ev.Action, ev.EventType)
-	}
-	if ev.EventData.Val["text"] != "hi" {
-		t.Errorf("event data not stored: %+v", ev.EventData.Val)
-	}
+	be.NoError(t, err)
+
+	be.AssertThat(t, ev.Action, be.Eq(history.ActionEvent))
+	be.AssertThat(t, ev.EventType, be.Eq("comment_added"))
+	be.AssertThat(t, ev.EventData.Val["text"], be.Eq("hi"))
 	// The event shares the timeline: create (v1) + event (v2).
 	records, _, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
-	if len(records) != 2 {
-		t.Fatalf("expected create + event = 2 records, got %d", len(records))
-	}
+	be.RequireThat(t, records, be.HaveLength(2))
 }
 
 func TestCRUD_RecordSyntheticCreate(t *testing.T) {
@@ -750,18 +687,14 @@ func TestCRUD_RecordSyntheticCreate(t *testing.T) {
 	born := time.Date(2025, 12, 1, 9, 0, 0, 0, time.UTC)
 	old := Order{ID: 7, Name: "Old", Total: 9, Status: "ok"}
 	rec, err := repo.RecordSyntheticCreate(context.Background(), old, born)
-	if err != nil {
-		t.Fatalf("RecordSyntheticCreate: %v", err)
-	}
-	if rec.Action != history.ActionCreate || !rec.Synthetic {
-		t.Errorf("expected synthetic create, got action=%q synthetic=%v", rec.Action, rec.Synthetic)
-	}
-	if !rec.CreatedAt.Equal(born) {
-		t.Errorf("synthetic create should be dated %v, got %v", born, rec.CreatedAt)
-	}
-	if rec.ActorID != "1" || rec.Note == "" || len(rec.Changes.Val) == 0 {
-		t.Errorf("synthetic create missing actor/note/changes: %+v", rec)
-	}
+	be.NoError(t, err)
+
+	be.AssertThat(t, rec.Action, be.Eq(history.ActionCreate))
+	be.AssertThat(t, rec.Synthetic, be.True())
+	be.AssertThat(t, rec.CreatedAt, be_time.SameExactSecond(born))
+	be.AssertThat(t, rec.ActorID, be.Eq("1"))
+	be.AssertThat(t, rec.Note, be_string.NonEmptyString())
+	be.AssertThat(t, rec.Changes.Val, be.NotEmpty())
 }
 
 func TestCRUD_FixedActor(t *testing.T) {
@@ -779,13 +712,10 @@ func TestCRUD_FixedActor(t *testing.T) {
 	order, _ := repo.Create(ctx, Order{Name: "Test", Total: 1, Status: "ok"})
 
 	records, _, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
-	if len(records) == 0 {
-		t.Fatal("expected at least 1 record")
-	}
-	if records[0].ActorID != "1" || records[0].ActorType != "system" {
-		t.Errorf("fixed actor not applied: got id=%q type=%q, want 1/system",
-			records[0].ActorID, records[0].ActorType)
-	}
+	be.RequireThat(t, records, be.NotEmpty())
+
+	be.AssertThat(t, records[0].ActorID, be.Eq("1"))
+	be.AssertThat(t, records[0].ActorType, be.Eq("system"))
 }
 
 func TestCRUD_ActorContext_SystemDefault(t *testing.T) {
@@ -801,16 +731,10 @@ func TestCRUD_ActorContext_SystemDefault(t *testing.T) {
 	order, _ := repo.Create(ctx, Order{Name: "Test", Total: 100, Status: "ok"})
 
 	records, _, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
-	if len(records) == 0 {
-		t.Fatal("expected at least 1 record")
-	}
+	be.RequireThat(t, records, be.NotEmpty())
 
-	if records[0].ActorID != "" {
-		t.Errorf("expected empty ActorID for SystemActor, got %q", records[0].ActorID)
-	}
-	if records[0].ActorType != "system" {
-		t.Errorf("expected ActorType 'system', got %q", records[0].ActorType)
-	}
+	be.AssertThat(t, records[0].ActorID, be_string.EmptyString())
+	be.AssertThat(t, records[0].ActorType, be.Eq("system"))
 }
 
 func TestCRUD_ActorContext_IsSourceOfTruth(t *testing.T) {
@@ -833,19 +757,11 @@ func TestCRUD_ActorContext_IsSourceOfTruth(t *testing.T) {
 	order, _ := repo.Create(ctx, Order{Name: "Test", Total: 100, Status: "ok"})
 
 	records, _, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
-	if len(records) == 0 {
-		t.Fatal("expected at least 1 record")
-	}
+	be.RequireThat(t, records, be.NotEmpty())
 
-	if records[0].ActorID != "7" {
-		t.Errorf("expected ActorID '7' from context, got %q", records[0].ActorID)
-	}
-	if records[0].ActorType != "admin" {
-		t.Errorf("expected ActorType 'admin' from context, got %q", records[0].ActorType)
-	}
-	if records[0].Metadata.Val.Source != "admin_ui" {
-		t.Errorf("expected Source 'admin_ui' from MetadataFunc, got %q", records[0].Metadata.Val.Source)
-	}
+	be.AssertThat(t, records[0].ActorID, be.Eq("7"))
+	be.AssertThat(t, records[0].ActorType, be.Eq("admin"))
+	be.AssertThat(t, records[0].Metadata.Val.Source, be.Eq("admin_ui"))
 }
 
 func TestReverter_ActorContext(t *testing.T) {
@@ -864,31 +780,21 @@ func TestReverter_ActorContext(t *testing.T) {
 
 	// Revert to v1
 	_, err := repo.Reverter().RevertTo(ctx, order.ID, 1)
-	if err != nil {
-		t.Fatalf("RevertTo failed: %v", err)
-	}
+	be.NoError(t, err)
 
 	records, _, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
 	// Should have 3 records: create + update + revert.
-	if len(records) != 3 {
-		t.Fatalf("expected 3 records, got %d", len(records))
-	}
+	be.RequireThat(t, records, be.HaveLength(3))
 
 	// All records should have the Actor info.
 	for _, rec := range records {
-		if rec.ActorID != "admin_1" {
-			t.Errorf("record %s: expected ActorID 'admin_1', got %q", rec.Action, rec.ActorID)
-		}
-		if rec.ActorType != "admin" {
-			t.Errorf("record %s: expected ActorType 'admin', got %q", rec.Action, rec.ActorType)
-		}
+		be.AssertThat(t, rec.ActorID, be.Eq("admin_1"))
+		be.AssertThat(t, rec.ActorType, be.Eq("admin"))
 	}
 
 	// The revert record should also have extra metadata.
 	revertRec := records[2]
-	if revertRec.Metadata.Val.Extra["reverted_to_version"] != "1" {
-		t.Errorf("expected reverted_to_version '1', got %q", revertRec.Metadata.Val.Extra["reverted_to_version"])
-	}
+	be.AssertThat(t, revertRec.Metadata.Val.Extra["reverted_to_version"], be.Eq("1"))
 }
 
 func TestCRUD_ChangesOnlyNoSnapshots(t *testing.T) {
@@ -905,9 +811,7 @@ func TestCRUD_ChangesOnlyNoSnapshots(t *testing.T) {
 
 	// Create should have changes (every field with nil OldValue)
 	records, _, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
-	if len(records[0].Changes.Val) == 0 {
-		t.Error("create should have non-empty changes (all fields)")
-	}
+	be.AssertThat(t, records[0].Changes.Val, be.NotEmpty())
 
 	// Update should have changes (only changed fields)
 	order.Total = 200
@@ -915,9 +819,7 @@ func TestCRUD_ChangesOnlyNoSnapshots(t *testing.T) {
 
 	records, _, _ = listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
 	updateRec := records[1]
-	if len(updateRec.Changes.Val) == 0 {
-		t.Error("update should have non-empty changes")
-	}
+	be.AssertThat(t, updateRec.Changes.Val, be.NotEmpty())
 }
 
 func TestCRUD_ParentRef(t *testing.T) {
@@ -943,27 +845,19 @@ func TestCRUD_ParentRef(t *testing.T) {
 	adset, _ := repo.Create(ctx, Adset{CampaignID: 5, Name: "Test Adset"})
 
 	records, _, _ := listForRecord(ctx, store, "adsets", strconv.FormatInt(adset.ID, 10))
-	if len(records) == 0 {
-		t.Fatal("expected at least 1 record")
-	}
+	be.RequireThat(t, records, be.NotEmpty())
 
 	rec := records[0]
-	if rec.ParentType != "campaigns" {
-		t.Errorf("expected ParentType 'campaigns', got %q", rec.ParentType)
-	}
-	if rec.ParentID != "5" {
-		t.Errorf("expected ParentID '5', got %q", rec.ParentID)
-	}
+	be.AssertThat(t, rec.ParentType, be.Eq("campaigns"))
+	be.AssertThat(t, rec.ParentID, be.Eq("5"))
 
 	// Now test ForTree query
 	treeQuery := history.QueryForTree([]history.TreeScope{
 		{RecordType: "campaigns", RecordID: "5"},
 		{RecordType: "adsets", ParentType: "campaigns", ParentID: "5"},
 	})
-	treeRecords, count, _ := store.List(ctx, treeQuery)
-	if count != 1 {
-		t.Fatalf("expected 1 tree record, got %d: %v", count, treeRecords)
-	}
+	_, count, _ := store.List(ctx, treeQuery)
+	be.RequireThat(t, count, be.Eq(int64(1)))
 }
 
 func TestReverter_RevertTo(t *testing.T) {
@@ -987,27 +881,17 @@ func TestReverter_RevertTo(t *testing.T) {
 
 	// Revert to version 1 (reconstruct from diffs)
 	reverted, err := repo.Reverter().RevertTo(ctx, order.ID, 1)
-	if err != nil {
-		t.Fatalf("RevertTo failed: %v", err)
-	}
+	be.NoError(t, err)
 
-	if reverted.Name != "Original" {
-		t.Errorf("expected Name='Original' after revert, got %q", reverted.Name)
-	}
-	if reverted.Total != 100 {
-		t.Errorf("expected Total=100 after revert, got %d", reverted.Total)
-	}
+	be.AssertThat(t, reverted.Name, be.Eq("Original"))
+	be.AssertThat(t, reverted.Total, be.Eq(100))
 
 	// Check that the revert itself was recorded
 	records, count, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
-	if count != 3 {
-		t.Fatalf("expected 3 records (create + update + revert), got %d", count)
-	}
+	be.RequireThat(t, count, be.Eq(int64(3)))
 
 	revertRec := records[2]
-	if revertRec.Action != history.ActionRevert {
-		t.Errorf("expected action 'revert', got %q", revertRec.Action)
-	}
+	be.AssertThat(t, revertRec.Action, be.Eq(history.ActionRevert))
 }
 
 func TestReverter_RevertTo_ViaChangeReplay(t *testing.T) {
@@ -1036,19 +920,11 @@ func TestReverter_RevertTo_ViaChangeReplay(t *testing.T) {
 
 	// Revert to v2 — must reconstruct from v1 changes + v2 changes
 	reverted, err := repo.Reverter().RevertTo(ctx, order.ID, 2)
-	if err != nil {
-		t.Fatalf("RevertTo via replay failed: %v", err)
-	}
+	be.NoError(t, err)
 
-	if reverted.Name != "V2" {
-		t.Errorf("expected Name='V2' after replay revert, got %q", reverted.Name)
-	}
-	if reverted.Total != 200 {
-		t.Errorf("expected Total=200 after replay revert, got %d", reverted.Total)
-	}
-	if reverted.Status != "pending" {
-		t.Errorf("expected Status='pending' after replay revert, got %q", reverted.Status)
-	}
+	be.AssertThat(t, reverted.Name, be.Eq("V2"))
+	be.AssertThat(t, reverted.Total, be.Eq(200))
+	be.AssertThat(t, reverted.Status, be.Eq("pending"))
 }
 
 func TestReverter_Reconstruct(t *testing.T) {
@@ -1078,39 +954,35 @@ func TestReverter_Reconstruct(t *testing.T) {
 
 	// Reconstruct v1 (from create changes)
 	v1, err := reverter.Reconstruct(ctx, recordID, 1)
-	if err != nil {
-		t.Fatalf("Reconstruct v1 failed: %v", err)
-	}
-	if v1.Name != "V1" || v1.Total != 100 || v1.Status != "a" {
-		t.Errorf("v1 mismatch: %+v", v1)
-	}
+	be.NoError(t, err)
+
+	be.AssertThat(t, v1.Name, be.Eq("V1"))
+	be.AssertThat(t, v1.Total, be.Eq(100))
+	be.AssertThat(t, v1.Status, be.Eq("a"))
 
 	// Reconstruct v2 (replay v1 + v2 changes)
 	v2, err := reverter.Reconstruct(ctx, recordID, 2)
-	if err != nil {
-		t.Fatalf("Reconstruct v2 failed: %v", err)
-	}
-	if v2.Name != "V2" || v2.Total != 100 || v2.Status != "a" {
-		t.Errorf("v2 mismatch: got %+v", v2)
-	}
+	be.NoError(t, err)
+
+	be.AssertThat(t, v2.Name, be.Eq("V2"))
+	be.AssertThat(t, v2.Total, be.Eq(100))
+	be.AssertThat(t, v2.Status, be.Eq("a"))
 
 	// Reconstruct v3 (replay v1+v2+v3 changes)
 	v3, err := reverter.Reconstruct(ctx, recordID, 3)
-	if err != nil {
-		t.Fatalf("Reconstruct v3 failed: %v", err)
-	}
-	if v3.Name != "V2" || v3.Total != 300 || v3.Status != "a" {
-		t.Errorf("v3 mismatch: got %+v", v3)
-	}
+	be.NoError(t, err)
+
+	be.AssertThat(t, v3.Name, be.Eq("V2"))
+	be.AssertThat(t, v3.Total, be.Eq(300))
+	be.AssertThat(t, v3.Status, be.Eq("a"))
 
 	// Reconstruct v4 (replay all changes)
 	v4, err := reverter.Reconstruct(ctx, recordID, 4)
-	if err != nil {
-		t.Fatalf("Reconstruct v4 failed: %v", err)
-	}
-	if v4.Name != "V2" || v4.Total != 300 || v4.Status != "b" {
-		t.Errorf("v4 mismatch: got %+v", v4)
-	}
+	be.NoError(t, err)
+
+	be.AssertThat(t, v4.Name, be.Eq("V2"))
+	be.AssertThat(t, v4.Total, be.Eq(300))
+	be.AssertThat(t, v4.Status, be.Eq("b"))
 }
 
 func TestReverter_RevertLast(t *testing.T) {
@@ -1132,16 +1004,10 @@ func TestReverter_RevertLast(t *testing.T) {
 
 	// RevertLast should go back to V2 (reconstructed from v1+v2 changes)
 	reverted, err := repo.Reverter().RevertLast(ctx, order.ID)
-	if err != nil {
-		t.Fatalf("RevertLast failed: %v", err)
-	}
+	be.NoError(t, err)
 
-	if reverted.Name != "V2" {
-		t.Errorf("expected Name='V2' after RevertLast, got %q", reverted.Name)
-	}
-	if reverted.Total != 100 {
-		t.Errorf("expected Total=100 after RevertLast, got %d", reverted.Total)
-	}
+	be.AssertThat(t, reverted.Name, be.Eq("V2"))
+	be.AssertThat(t, reverted.Total, be.Eq(100))
 }
 
 func TestCRUD_DeriveRecordType(t *testing.T) {
@@ -1157,12 +1023,9 @@ func TestCRUD_DeriveRecordType(t *testing.T) {
 	order, _ := repo.Create(ctx, Order{Name: "Test", Total: 1, Status: "ok"})
 
 	records, _, _ := listForRecord(ctx, store, "orders", strconv.FormatInt(order.ID, 10))
-	if len(records) == 0 {
-		t.Fatal("expected at least 1 record")
-	}
-	if records[0].RecordType != "orders" {
-		t.Errorf("expected RecordType 'orders', got %q", records[0].RecordType)
-	}
+	be.RequireThat(t, records, be.NotEmpty())
+
+	be.AssertThat(t, records[0].RecordType, be.Eq("orders"))
 }
 
 func TestCRUD_SnapshotRules(t *testing.T) {
@@ -1190,47 +1053,32 @@ func TestCRUD_SnapshotRules(t *testing.T) {
 	order, _ := repo.Create(ctx, Order{Name: "Test", Total: 100, Status: "draft"})
 
 	snaps, _, _ := listSnapshots(ctx, snapStore, strconv.FormatInt(order.ID, 10))
-	if len(snaps) != 0 {
-		t.Fatalf("expected 0 snapshots after create with draft status, got %d", len(snaps))
-	}
+	be.RequireThat(t, snaps, be.Empty())
 
 	// Update status to "published" — should trigger snapshot
 	order.Status = "published"
 	order, _ = repo.Update(ctx, order)
 
 	snaps, _, _ = listSnapshots(ctx, snapStore, strconv.FormatInt(order.ID, 10))
-	if len(snaps) != 1 {
-		t.Fatalf("expected 1 snapshot after publish, got %d", len(snaps))
-	}
+	be.RequireThat(t, snaps, be.HaveLength(1))
 
 	snap := snaps[0]
-	if snap.RuleName != "on_publish" {
-		t.Errorf("expected rule name 'on_publish', got %q", snap.RuleName)
-	}
-	if snap.RecordType != "orders" {
-		t.Errorf("expected record type 'orders', got %q", snap.RecordType)
-	}
+	be.AssertThat(t, snap.RuleName, be.Eq("on_publish"))
+	be.AssertThat(t, snap.RecordType, be.Eq("orders"))
 
 	// Verify snapshot data deserializes correctly
 	restored, err := history.UnmarshalSnapshot[Order](snap.Data)
-	if err != nil {
-		t.Fatalf("failed to unmarshal snapshot data: %v", err)
-	}
-	if restored.Status != "published" {
-		t.Errorf("expected snapshot status 'published', got %q", restored.Status)
-	}
-	if restored.Name != "Test" {
-		t.Errorf("expected snapshot name 'Test', got %q", restored.Name)
-	}
+	be.NoError(t, err)
+
+	be.AssertThat(t, restored.Status, be.Eq("published"))
+	be.AssertThat(t, restored.Name, be.Eq("Test"))
 
 	// Another update (not changing to published) — should NOT trigger another snapshot
 	order.Total = 200
 	order, _ = repo.Update(ctx, order)
 
 	snaps, _, _ = listSnapshots(ctx, snapStore, strconv.FormatInt(order.ID, 10))
-	if len(snaps) != 1 {
-		t.Fatalf("expected still 1 snapshot after non-publish update, got %d", len(snaps))
-	}
+	be.RequireThat(t, snaps, be.HaveLength(1))
 }
 
 func TestCRUD_SnapshotRules_MultipleRules(t *testing.T) {
@@ -1271,12 +1119,8 @@ func TestCRUD_SnapshotRules_MultipleRules(t *testing.T) {
 	snaps1, _, _ := listSnapshots(ctx, snapStore1, strconv.FormatInt(order.ID, 10))
 	snaps2, _, _ := listSnapshots(ctx, snapStore2, strconv.FormatInt(order.ID, 10))
 
-	if len(snaps1) != 0 {
-		t.Errorf("expected 0 publish snapshots, got %d", len(snaps1))
-	}
-	if len(snaps2) != 1 {
-		t.Errorf("expected 1 high-value snapshot, got %d", len(snaps2))
-	}
+	be.AssertThat(t, snaps1, be.Empty())
+	be.AssertThat(t, snaps2, be.HaveLength(1))
 
 	// Now publish — Rule 1 fires, Rule 2 does not (not a create)
 	order.Status = "published"
@@ -1285,12 +1129,8 @@ func TestCRUD_SnapshotRules_MultipleRules(t *testing.T) {
 	snaps1, _, _ = listSnapshots(ctx, snapStore1, strconv.FormatInt(order.ID, 10))
 	snaps2, _, _ = listSnapshots(ctx, snapStore2, strconv.FormatInt(order.ID, 10))
 
-	if len(snaps1) != 1 {
-		t.Errorf("expected 1 publish snapshot, got %d", len(snaps1))
-	}
-	if len(snaps2) != 1 {
-		t.Errorf("expected still 1 high-value snapshot, got %d", len(snaps2))
-	}
+	be.AssertThat(t, snaps1, be.HaveLength(1))
+	be.AssertThat(t, snaps2, be.HaveLength(1))
 }
 
 // TestHistory_QueryBuilders tests that the query builders return correct results
@@ -1312,37 +1152,24 @@ func TestHistory_QueryBuilders(t *testing.T) {
 
 	// QueryForRecord
 	records, _, err := store.List(ctx, history.QueryForRecord("orders", recordID))
-	if err != nil {
-		t.Fatalf("QueryForRecord failed: %v", err)
-	}
-	if len(records) != 2 {
-		t.Errorf("expected 2 records, got %d", len(records))
-	}
+	be.NoError(t, err)
+
+	be.AssertThat(t, records, be.HaveLength(2))
 	// Should be sorted by version ascending
-	if records[0].Version > records[1].Version {
-		t.Error("expected records sorted by version ASC")
-	}
+	be.AssertThat(t, records[0].Version, be.Lte(records[1].Version))
 
 	// QueryForType
 	records, _, err = store.List(ctx, history.QueryForType("orders"))
-	if err != nil {
-		t.Fatalf("QueryForType failed: %v", err)
-	}
-	if len(records) != 2 {
-		t.Errorf("expected 2 records for type, got %d", len(records))
-	}
+	be.NoError(t, err)
+
+	be.AssertThat(t, records, be.HaveLength(2))
 
 	// QueryLatestVersion
 	records, _, err = store.List(ctx, history.QueryLatestVersion("orders", recordID))
-	if err != nil {
-		t.Fatalf("QueryLatestVersion failed: %v", err)
-	}
-	if len(records) != 1 {
-		t.Fatalf("expected 1 latest record, got %d", len(records))
-	}
-	if records[0].Version != 2 {
-		t.Errorf("expected latest version 2, got %d", records[0].Version)
-	}
+	be.NoError(t, err)
+
+	be.RequireThat(t, records, be.HaveLength(1))
+	be.AssertThat(t, records[0].Version, be.Eq(int64(2)))
 }
 
 // ── Retention Tests ──────────────────────────────────────────────────────
@@ -1368,18 +1195,14 @@ func TestRetentionEnforcer_MaxAge(t *testing.T) {
 
 	// Verify we have 3 records.
 	records, _, _ := listForRecord(ctx, store, "orders", recordID)
-	if len(records) != 3 {
-		t.Fatalf("expected 3 records, got %d", len(records))
-	}
+	be.RequireThat(t, records, be.HaveLength(3))
 
 	// The enforcer with a very short MaxAge should delete nothing since records are fresh.
 	enforcer := history.NewRetentionEnforcer(store, history.RetentionPolicy{
 		MaxAge: 24 * time.Hour,
 	})
 	deleted := enforcer.Enforce(ctx, "orders")
-	if deleted != 0 {
-		t.Errorf("expected 0 deleted (all fresh), got %d", deleted)
-	}
+	be.AssertThat(t, deleted, be.Eq(int64(0)))
 }
 
 func TestRetentionEnforcer_MaxVersions(t *testing.T) {
@@ -1401,28 +1224,20 @@ func TestRetentionEnforcer_MaxVersions(t *testing.T) {
 
 	recordID := strconv.FormatInt(order.ID, 10)
 	records, _, _ := listForRecord(ctx, store, "orders", recordID)
-	if len(records) != 5 {
-		t.Fatalf("expected 5 records, got %d", len(records))
-	}
+	be.RequireThat(t, records, be.HaveLength(5))
 
 	// Keep only 3 versions.
 	enforcer := history.NewRetentionEnforcer(store, history.RetentionPolicy{
 		MaxVersions: 3,
 	})
 	deleted := enforcer.Enforce(ctx, "orders")
-	if deleted != 2 {
-		t.Errorf("expected 2 deleted, got %d", deleted)
-	}
+	be.AssertThat(t, deleted, be.Eq(int64(2)))
 
 	// Remaining should be the latest 3.
 	remaining, _, _ := listForRecord(ctx, store, "orders", recordID)
-	if len(remaining) != 3 {
-		t.Fatalf("expected 3 remaining records, got %d", len(remaining))
-	}
+	be.RequireThat(t, remaining, be.HaveLength(3))
 	// Oldest remaining should be version 3.
-	if remaining[0].Version != 3 {
-		t.Errorf("expected oldest remaining version 3, got %d", remaining[0].Version)
-	}
+	be.AssertThat(t, remaining[0].Version, be.Eq(int64(3)))
 }
 
 // ── Generic mock CRUD for testing with different types ────────────────
@@ -1508,9 +1323,7 @@ func TestCRUD_ConcurrentUpdatesGetUniqueVersions(t *testing.T) {
 	ctx := context.Background()
 
 	created, err := repo.Create(ctx, Order{Name: "init"})
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
+	be.NoError(t, err)
 
 	const n = 50
 	var wg sync.WaitGroup
@@ -1518,45 +1331,34 @@ func TestCRUD_ConcurrentUpdatesGetUniqueVersions(t *testing.T) {
 	for i := range n {
 		go func(i int) {
 			defer wg.Done()
-			if _, err := repo.Update(ctx, Order{ID: created.ID, Name: fmt.Sprintf("v%d", i)}); err != nil {
-				t.Errorf("Update %d failed: %v", i, err)
-			}
+			_, err := repo.Update(ctx, Order{ID: created.ID, Name: fmt.Sprintf("v%d", i)})
+			be.AssertThat(t, err, be.Succeed())
 		}(i)
 	}
 	wg.Wait()
 
 	records, _, err := store.List(ctx)
-	if err != nil {
-		t.Fatalf("List failed: %v", err)
-	}
+	be.NoError(t, err)
 
 	// 1 create + n updates.
 	wantCount := n + 1
-	if len(records) != wantCount {
-		t.Fatalf("expected %d change records, got %d", wantCount, len(records))
-	}
+	be.RequireThat(t, records, be.HaveLength(wantCount))
 
 	versions := make(map[int64]int, wantCount)
 	ids := make(map[string]int, wantCount)
 	for _, r := range records {
 		versions[r.Version]++
-		if r.ID == "" {
-			t.Error("change record has empty ID")
-		}
+		be.AssertThat(t, r.ID, be_string.NonEmptyString())
 		ids[r.ID]++
 	}
 
 	// Versions must be exactly 1..wantCount, each assigned once.
 	for v := int64(1); v <= int64(wantCount); v++ {
-		if versions[v] != 1 {
-			t.Errorf("version %d assigned %d times, want exactly 1", v, versions[v])
-		}
+		be.AssertThat(t, versions[v], be.Eq(1))
 	}
 	// IDs must be unique.
-	for id, c := range ids {
-		if c != 1 {
-			t.Errorf("ID %q assigned %d times, want unique", id, c)
-		}
+	for _, c := range ids {
+		be.AssertThat(t, c, be.Eq(1))
 	}
 }
 
@@ -1588,15 +1390,10 @@ func TestCRUD_SyncRecordErrorPolicy(t *testing.T) {
 		)
 
 		created, err := repo.Create(context.Background(), Order{Name: "x"})
-		if err != nil {
-			t.Fatalf("default policy must not fail the operation, got %v", err)
-		}
-		if created.ID == 0 {
-			t.Error("entity should have been created")
-		}
-		if handled == nil {
-			t.Error("ErrorHandler should have been called on audit-write failure")
-		}
+		be.NoError(t, err)
+
+		be.AssertThat(t, created.ID, be.NonZero())
+		be.AssertThat(t, handled, be.HaveOccurred())
 	})
 
 	t.Run("FailOnError surfaces the audit error", func(t *testing.T) {
@@ -1608,12 +1405,9 @@ func TestCRUD_SyncRecordErrorPolicy(t *testing.T) {
 		)
 
 		_, err := repo.Create(context.Background(), Order{Name: "y"})
-		if err == nil {
-			t.Fatal("FailOnError must surface the audit-write failure")
-		}
+		be.Error(t, err)
+
 		// The mutation was already applied before the audit attempt.
-		if n := len(inner.data); n != 1 {
-			t.Errorf("entity should be persisted despite audit failure, got %d rows", n)
-		}
+		be.AssertThat(t, len(inner.data), be.Eq(1))
 	})
 }

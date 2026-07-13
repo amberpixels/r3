@@ -2,11 +2,11 @@ package permissions_test
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/features/permissions"
+	"github.com/expectto/be"
 )
 
 // Doc is an entity with a nullable foreign key (pointer field), the common shape
@@ -76,21 +76,17 @@ func TestScoper_GetMatchesPointerForeignKey(t *testing.T) {
 	// Actor scoped to tenant 1.
 	ctx := r3.WithActor(context.Background(), r3.Actor{ID: "u", Type: "user", Claims: int64(1)})
 
-	if _, err := repo.Get(ctx, 10); err != nil {
-		t.Fatalf("in-scope (tenant 1) row should be visible, got %v", err)
-	}
-	if _, err := repo.Get(ctx, 20); !errors.Is(err, r3.ErrNotFound) {
-		t.Fatalf("out-of-scope (tenant 2) row should be ErrNotFound, got %v", err)
-	}
-	if _, err := repo.Get(ctx, 30); !errors.Is(err, r3.ErrNotFound) {
-		t.Fatalf("unassigned (nil FK) row should be ErrNotFound for a scoped actor, got %v", err)
-	}
+	_, err := repo.Get(ctx, 10)
+	be.NoError(t, err, "in-scope (tenant 1) row should be visible")
+	_, err = repo.Get(ctx, 20)
+	be.ErrorIs(t, err, r3.ErrNotFound, "out-of-scope (tenant 2) row should be ErrNotFound")
+	_, err = repo.Get(ctx, 30)
+	be.ErrorIs(t, err, r3.ErrNotFound, "unassigned (nil FK) row should be ErrNotFound for a scoped actor")
 
 	// An unscoped actor (no claim) sees every row, including the nil-FK one.
 	admin := r3.WithActor(context.Background(), r3.Actor{ID: "root", Type: "admin"})
 	for _, id := range []int64{10, 20, 30} {
-		if _, err := repo.Get(admin, id); err != nil {
-			t.Fatalf("admin should read row %d, got %v", id, err)
-		}
+		_, err := repo.Get(admin, id)
+		be.NoError(t, err, "admin should read every row")
 	}
 }

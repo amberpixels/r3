@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	enginesql "github.com/amberpixels/r3/engine/sql"
+	"github.com/expectto/be"
 )
 
 // TestQuoteIdentifiers verifies that the dialect's ANSI double-quoted identifiers
@@ -38,9 +39,7 @@ func TestQuoteIdentifiers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := tt.flavor.QuoteIdentifiers(ansi); got != tt.want {
-				t.Errorf("QuoteIdentifiers()\n got: %s\nwant: %s", got, tt.want)
-			}
+			be.AssertThat(t, tt.flavor.QuoteIdentifiers(ansi), be.Eq(tt.want))
 		})
 	}
 }
@@ -48,10 +47,6 @@ func TestQuoteIdentifiers(t *testing.T) {
 // TestQuoteIdentifiers_DottedAndEscaped covers dotted identifiers (joins) and the
 // doubled-quote escape, which must map to the doubled target quote for MySQL.
 func TestQuoteIdentifiers_DottedAndEscaped(t *testing.T) {
-	if got := enginesql.FlavorMySQL.QuoteIdentifiers(`"users"."name"`); got != "`users`.`name`" {
-		t.Errorf("dotted: got %s, want `users`.`name`", got)
-	}
-	if got := enginesql.FlavorMySQL.QuoteIdentifiers(`"a""b"`); got != "`a``b`" {
-		t.Errorf("escaped: got %s, want `a``b`", got)
-	}
+	be.AssertThat(t, enginesql.FlavorMySQL.QuoteIdentifiers(`"users"."name"`), be.Eq("`users`.`name`"))
+	be.AssertThat(t, enginesql.FlavorMySQL.QuoteIdentifiers(`"a""b"`), be.Eq("`a``b`"))
 }

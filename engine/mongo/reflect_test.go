@@ -5,6 +5,7 @@ import (
 	"time"
 
 	enginemongo "github.com/amberpixels/r3/engine/mongo"
+	"github.com/expectto/be"
 )
 
 // nonPtrSoftDelete uses a non-pointer time.Time soft-delete field, which mongo
@@ -29,15 +30,13 @@ type ptrSoftDelete struct {
 func TestSoftDeleteZero_NonPointer(t *testing.T) {
 	meta := enginemongo.GetStructMeta[nonPtrSoftDelete]()
 
-	if meta.SoftDeleteField != "deleted_at" {
-		t.Fatalf("SoftDeleteField = %q, want %q", meta.SoftDeleteField, "deleted_at")
-	}
-	if meta.SoftDeleteZero == nil {
-		t.Fatal("SoftDeleteZero is nil for a non-pointer time.Time field; want the zero time")
-	}
-	if z, ok := meta.SoftDeleteZero.(time.Time); !ok || !z.IsZero() {
-		t.Fatalf("SoftDeleteZero = %v, want zero time.Time", meta.SoftDeleteZero)
-	}
+	be.RequireThat(t, meta.SoftDeleteField, be.Eq("deleted_at"))
+	be.RequireThat(t, meta.SoftDeleteZero, be.NotNil(),
+		"SoftDeleteZero is nil for a non-pointer time.Time field; want the zero time")
+
+	z, ok := meta.SoftDeleteZero.(time.Time)
+	be.RequireThat(t, ok && z.IsZero(), be.True(),
+		"SoftDeleteZero = %v, want zero time.Time", meta.SoftDeleteZero)
 }
 
 // TestSoftDeleteZero_Pointer verifies a pointer soft-delete field captures no
@@ -45,10 +44,7 @@ func TestSoftDeleteZero_NonPointer(t *testing.T) {
 func TestSoftDeleteZero_Pointer(t *testing.T) {
 	meta := enginemongo.GetStructMeta[ptrSoftDelete]()
 
-	if meta.SoftDeleteField != "deleted_at" {
-		t.Fatalf("SoftDeleteField = %q, want %q", meta.SoftDeleteField, "deleted_at")
-	}
-	if meta.SoftDeleteZero != nil {
-		t.Fatalf("SoftDeleteZero = %v, want nil for a pointer field", meta.SoftDeleteZero)
-	}
+	be.RequireThat(t, meta.SoftDeleteField, be.Eq("deleted_at"))
+	be.RequireThat(t, meta.SoftDeleteZero, be.Nil(),
+		"SoftDeleteZero = %v, want nil for a pointer field", meta.SoftDeleteZero)
 }

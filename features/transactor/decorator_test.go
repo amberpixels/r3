@@ -10,6 +10,7 @@ import (
 
 	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/features/transactor"
+	"github.com/expectto/be"
 )
 
 // ── Test entity ──────────────────────────────────────────────────────────
@@ -180,15 +181,9 @@ func TestCRUD_PassthroughCreate(t *testing.T) {
 
 	ctx := context.Background()
 	user, err := repo.Create(ctx, User{Name: "Alice", Email: "alice@example.com"})
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
-	if user.ID == 0 {
-		t.Fatal("expected non-zero ID")
-	}
-	if user.Name != "Alice" {
-		t.Errorf("expected Name='Alice', got %q", user.Name)
-	}
+	be.NoError(t, err)
+	be.RequireThat(t, user.ID, be.NonZero())
+	be.AssertThat(t, user.Name, be.Eq("Alice"))
 }
 
 func TestCRUD_PassthroughGet(t *testing.T) {
@@ -199,12 +194,8 @@ func TestCRUD_PassthroughGet(t *testing.T) {
 	created, _ := repo.Create(ctx, User{Name: "Bob", Email: "bob@example.com"})
 
 	got, err := repo.Get(ctx, created.ID)
-	if err != nil {
-		t.Fatalf("Get failed: %v", err)
-	}
-	if got.Name != "Bob" {
-		t.Errorf("expected Name='Bob', got %q", got.Name)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, got.Name, be.Eq("Bob"))
 }
 
 func TestCRUD_PassthroughList(t *testing.T) {
@@ -216,15 +207,9 @@ func TestCRUD_PassthroughList(t *testing.T) {
 	_, _ = repo.Create(ctx, User{Name: "B"})
 
 	list, count, err := repo.List(ctx)
-	if err != nil {
-		t.Fatalf("List failed: %v", err)
-	}
-	if count != 2 {
-		t.Errorf("expected count=2, got %d", count)
-	}
-	if len(list) != 2 {
-		t.Errorf("expected 2 items, got %d", len(list))
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, count, be.Eq(int64(2)))
+	be.AssertThat(t, list, be.HaveLength(2))
 }
 
 func TestCRUD_PassthroughUpdate(t *testing.T) {
@@ -235,12 +220,8 @@ func TestCRUD_PassthroughUpdate(t *testing.T) {
 	user, _ := repo.Create(ctx, User{Name: "Carol"})
 	user.Name = "Carol Updated"
 	updated, err := repo.Update(ctx, user)
-	if err != nil {
-		t.Fatalf("Update failed: %v", err)
-	}
-	if updated.Name != "Carol Updated" {
-		t.Errorf("expected Name='Carol Updated', got %q", updated.Name)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, updated.Name, be.Eq("Carol Updated"))
 }
 
 func TestCRUD_PassthroughPatch(t *testing.T) {
@@ -251,12 +232,8 @@ func TestCRUD_PassthroughPatch(t *testing.T) {
 	user, _ := repo.Create(ctx, User{Name: "Dave", Email: "dave@example.com"})
 	user.Email = "newemail@example.com"
 	patched, err := repo.Patch(ctx, user, r3.Fields{r3.NewFieldSpec("email")})
-	if err != nil {
-		t.Fatalf("Patch failed: %v", err)
-	}
-	if patched.Email != "newemail@example.com" {
-		t.Errorf("expected Email='newemail@example.com', got %q", patched.Email)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, patched.Email, be.Eq("newemail@example.com"))
 }
 
 func TestCRUD_PassthroughDelete(t *testing.T) {
@@ -267,14 +244,10 @@ func TestCRUD_PassthroughDelete(t *testing.T) {
 	user, _ := repo.Create(ctx, User{Name: "Eve"})
 
 	err := repo.Delete(ctx, user.ID)
-	if err != nil {
-		t.Fatalf("Delete failed: %v", err)
-	}
+	be.NoError(t, err)
 
 	_, err = repo.Get(ctx, user.ID)
-	if err == nil {
-		t.Fatal("expected Get to fail after Delete")
-	}
+	be.Error(t, err)
 }
 
 // ── Tests: Transaction support ───────────────────────────────────────────
@@ -283,18 +256,14 @@ func TestSupportsTransactions_True(t *testing.T) {
 	inner := newTxCRUD()
 	repo := transactor.WithTransactor[User, int64](inner)
 
-	if !repo.SupportsTransactions() {
-		t.Fatal("expected SupportsTransactions()=true for txCRUD")
-	}
+	be.RequireThat(t, repo.SupportsTransactions(), be.True())
 }
 
 func TestSupportsTransactions_False(t *testing.T) {
 	inner := newPlainCRUD()
 	repo := transactor.WithTransactor[User, int64](inner)
 
-	if repo.SupportsTransactions() {
-		t.Fatal("expected SupportsTransactions()=false for plainCRUD")
-	}
+	be.RequireThat(t, repo.SupportsTransactions(), be.False())
 }
 
 func TestBeginTx_Supported(t *testing.T) {
@@ -303,22 +272,15 @@ func TestBeginTx_Supported(t *testing.T) {
 
 	ctx := context.Background()
 	tx, err := repo.BeginTx(ctx)
-	if err != nil {
-		t.Fatalf("BeginTx failed: %v", err)
-	}
+	be.NoError(t, err)
 
 	// Should be able to use the tx CRUD
 	user, err := tx.Create(ctx, User{Name: "TxUser"})
-	if err != nil {
-		t.Fatalf("Create in tx failed: %v", err)
-	}
-	if user.Name != "TxUser" {
-		t.Errorf("expected Name='TxUser', got %q", user.Name)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, user.Name, be.Eq("TxUser"))
 
-	if err := tx.Commit(); err != nil {
-		t.Fatalf("Commit failed: %v", err)
-	}
+	err = tx.Commit()
+	be.NoError(t, err)
 }
 
 func TestBeginTx_NotSupported(t *testing.T) {
@@ -327,9 +289,7 @@ func TestBeginTx_NotSupported(t *testing.T) {
 
 	ctx := context.Background()
 	_, err := repo.BeginTx(ctx)
-	if !errors.Is(err, r3.ErrTransactionsNotSupported) {
-		t.Fatalf("expected ErrTransactionsNotSupported, got %v", err)
-	}
+	be.ErrorIs(t, err, r3.ErrTransactionsNotSupported)
 }
 
 func TestInTx_Supported(t *testing.T) {
@@ -347,12 +307,8 @@ func TestInTx_Supported(t *testing.T) {
 		createdID = user.ID
 		return nil
 	})
-	if err != nil {
-		t.Fatalf("InTx failed: %v", err)
-	}
-	if createdID == 0 {
-		t.Fatal("expected non-zero ID from InTx operation")
-	}
+	be.NoError(t, err)
+	be.RequireThat(t, createdID, be.NonZero())
 }
 
 func TestInTx_NotSupported(t *testing.T) {
@@ -363,9 +319,7 @@ func TestInTx_NotSupported(t *testing.T) {
 	err := repo.InTx(ctx, func(_ r3.CRUD[User, int64]) error {
 		return nil
 	})
-	if !errors.Is(err, r3.ErrTransactionsNotSupported) {
-		t.Fatalf("expected ErrTransactionsNotSupported, got %v", err)
-	}
+	be.ErrorIs(t, err, r3.ErrTransactionsNotSupported)
 }
 
 func TestInTx_RollbackOnError(t *testing.T) {
@@ -378,9 +332,7 @@ func TestInTx_RollbackOnError(t *testing.T) {
 	err := repo.InTx(ctx, func(_ r3.CRUD[User, int64]) error {
 		return fnErr
 	})
-	if !errors.Is(err, fnErr) {
-		t.Fatalf("expected fn error, got %v", err)
-	}
+	be.ErrorIs(t, err, fnErr)
 }
 
 func TestInner(t *testing.T) {
@@ -388,9 +340,7 @@ func TestInner(t *testing.T) {
 	repo := transactor.WithTransactor[User, int64](inner)
 
 	got := repo.Inner()
-	if got != inner {
-		t.Error("Inner() should return the wrapped CRUD")
-	}
+	be.AssertThat(t, got, be.Eq(inner))
 }
 
 // countingCRUD is a minimal decorator that counts Create calls and participates
@@ -449,12 +399,8 @@ func TestInTx_DecoratorsRunInsideTransaction(t *testing.T) {
 		_, cErr := tx.Create(ctx, User{Name: "TxUser"})
 		return cErr
 	})
-	if err != nil {
-		t.Fatalf("InTx failed: %v", err)
-	}
-	if got := atomic.LoadInt32(&creates); got != 1 {
-		t.Fatalf("expected decorator Create to run once inside the tx, got %d", got)
-	}
+	be.NoError(t, err)
+	be.RequireThat(t, atomic.LoadInt32(&creates), be.Eq(int32(1)))
 }
 
 // TestBeginTx_DecoratorsRunInsideTransaction verifies the same for the BeginTx
@@ -467,16 +413,10 @@ func TestBeginTx_DecoratorsRunInsideTransaction(t *testing.T) {
 
 	ctx := context.Background()
 	tx, err := repo.BeginTx(ctx)
-	if err != nil {
-		t.Fatalf("BeginTx failed: %v", err)
-	}
-	if _, err := tx.Create(ctx, User{Name: "TxUser"}); err != nil {
-		t.Fatalf("Create in tx failed: %v", err)
-	}
-	if err := tx.Commit(); err != nil {
-		t.Fatalf("Commit failed: %v", err)
-	}
-	if got := atomic.LoadInt32(&creates); got != 1 {
-		t.Fatalf("expected decorator Create to run once inside the tx, got %d", got)
-	}
+	be.NoError(t, err)
+	_, err = tx.Create(ctx, User{Name: "TxUser"})
+	be.NoError(t, err)
+	err = tx.Commit()
+	be.NoError(t, err)
+	be.RequireThat(t, atomic.LoadInt32(&creates), be.Eq(int32(1)))
 }

@@ -1,10 +1,11 @@
 package r3_test
 
 import (
-	"errors"
 	"testing"
 
 	"github.com/amberpixels/r3"
+	"github.com/expectto/be"
+	"github.com/expectto/be/be_string"
 )
 
 func TestValidateQuery_AcceptsAllowedFields(t *testing.T) {
@@ -18,9 +19,7 @@ func TestValidateQuery_AcceptsAllowedFields(t *testing.T) {
 	q.Sorts = r3.Sorts{r3.NewSortAscSpec(r3.NewFieldSpec("created_at"))}
 	q.Fields = r3.Fields{r3.NewFieldSpec("title"), r3.NewFieldSpec("id")}
 
-	if err := s.ValidateQuery(q); err != nil {
-		t.Fatalf("ValidateQuery rejected a valid query: %v", err)
-	}
+	be.NoError(t, s.ValidateQuery(q))
 }
 
 func TestValidateQuery_RejectsTypedErrors(t *testing.T) {
@@ -73,12 +72,8 @@ func TestValidateQuery_RejectsTypedErrors(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			err := s.ValidateQuery(tc.query)
-			if !errors.Is(err, tc.wantErr) {
-				t.Fatalf("error = %v, want %v", err, tc.wantErr)
-			}
-			if !errorMentions(err, tc.field) {
-				t.Errorf("error %q should mention field %q", err, tc.field)
-			}
+			be.ErrorIs(t, err, tc.wantErr)
+			be.AssertThat(t, err.Error(), be_string.ContainingSubstring(tc.field))
 		})
 	}
 }
@@ -91,38 +86,16 @@ func TestValidateQuery_SkipsRelationAndDottedFields(t *testing.T) {
 		Filters: r3.Filters{r3.Eq("city.name", "Berlin")},
 		Sorts:   r3.Sorts{r3.NewSortAscSpec(r3.NewFieldSpec("city.name"))},
 	}
-	if err := s.ValidateQuery(q); err != nil {
-		t.Errorf("dotted field should be skipped, got %v", err)
-	}
+	be.AssertThat(t, s.ValidateQuery(q), be.Succeed())
 
 	// Relationship ("has") filters are resolved by the driver — skip them here.
 	hasQ := r3.Query{Filters: r3.Filters{r3.Has("Children", r3.Eq("name", "x"))}}
-	if err := s.ValidateQuery(hasQ); err != nil {
-		t.Errorf("relationship filter should be skipped, got %v", err)
-	}
+	be.AssertThat(t, s.ValidateQuery(hasQ), be.Succeed())
 }
 
 func TestValidateQuery_ZeroSchemaValidatesNothing(t *testing.T) {
 	var s r3.Schema
-	if !s.IsZero() {
-		t.Fatal("zero schema should report IsZero")
-	}
+	be.RequireThat(t, s.IsZero(), be.True())
 	q := r3.Query{Filters: r3.Filters{r3.Eq("anything", 1)}}
-	if err := s.ValidateQuery(q); err != nil {
-		t.Errorf("zero schema should validate nothing, got %v", err)
-	}
-}
-
-// errorMentions reports whether the error message contains the field name.
-func errorMentions(err error, field string) bool {
-	return err != nil && contains(err.Error(), field)
-}
-
-func contains(s, sub string) bool {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
+	be.AssertThat(t, s.ValidateQuery(q), be.Succeed())
 }

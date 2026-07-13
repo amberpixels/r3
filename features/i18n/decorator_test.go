@@ -9,6 +9,7 @@ import (
 
 	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/features/i18n"
+	"github.com/expectto/be"
 )
 
 // Article is the entity under test: two translatable string fields (one via
@@ -225,9 +226,7 @@ func newRepo(
 func seedTranslation(t *testing.T, store *memoryTranslationCRUD, tr i18n.Translation) i18n.Translation {
 	t.Helper()
 	row, err := i18n.Upsert(context.Background(), store, tr)
-	if err != nil {
-		t.Fatalf("seed Upsert: %v", err)
-	}
+	be.NoError(t, err)
 	return row
 }
 
@@ -245,33 +244,19 @@ func TestGetOverlaysContextLocale(t *testing.T) {
 
 	// No locale: source text untouched.
 	got, err := repo.Get(context.Background(), 1)
-	if err != nil {
-		t.Fatalf("Get: %v", err)
-	}
-	if got.Title != "Trotuar blocat" {
-		t.Errorf("no-locale Title = %q, want source text", got.Title)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, got.Title, be.Eq("Trotuar blocat"))
 
 	// ru locale: title overlaid, untranslated body falls back to source.
 	got, err = repo.Get(r3.WithLocale(context.Background(), "ru"), 1)
-	if err != nil {
-		t.Fatalf("Get(ru): %v", err)
-	}
-	if got.Title != "Заблокированный тротуар" {
-		t.Errorf("ru Title = %q, want translation", got.Title)
-	}
-	if got.BodyText != "Mașini pe trotuar" {
-		t.Errorf("ru BodyText = %q, want source fallback", got.BodyText)
-	}
-	if got.Views != 7 {
-		t.Errorf("Views = %d, want untouched 7", got.Views)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, got.Title, be.Eq("Заблокированный тротуар"))
+	be.AssertThat(t, got.BodyText, be.Eq("Mașini pe trotuar"))
+	be.AssertThat(t, got.Views, be.Eq(int64(7)))
 
 	// A locale with no rows at all: everything falls back.
 	got, _ = repo.Get(r3.WithLocale(context.Background(), "en"), 1)
-	if got.Title != "Trotuar blocat" {
-		t.Errorf("en Title = %q, want source fallback", got.Title)
-	}
+	be.AssertThat(t, got.Title, be.Eq("Trotuar blocat"))
 }
 
 func TestListOverlaysInSingleStoreQuery(t *testing.T) {
@@ -294,28 +279,19 @@ func TestListOverlaysInSingleStoreQuery(t *testing.T) {
 
 	store.lists = 0
 	items, total, err := repo.List(r3.WithLocale(context.Background(), "ru"))
-	if err != nil {
-		t.Fatalf("List: %v", err)
-	}
-	if total != 3 || len(items) != 3 {
-		t.Fatalf("List = %d items (total %d), want 3", len(items), total)
-	}
-	if items[0].Title != "Один" || items[1].Title != "Doi" || items[2].Title != "Три" {
-		t.Errorf("titles = %q, %q, %q - want overlay on 1 and 3 only",
-			items[0].Title, items[1].Title, items[2].Title)
-	}
-	if store.lists != 1 {
-		t.Errorf("store List calls = %d, want exactly 1 (batched overlay)", store.lists)
-	}
+	be.NoError(t, err)
+	be.RequireThat(t, total, be.Eq(int64(3)))
+	be.RequireThat(t, items, be.HaveLength(3))
+	be.AssertThat(t, items[0].Title, be.Eq("Один"))
+	be.AssertThat(t, items[1].Title, be.Eq("Doi"))
+	be.AssertThat(t, items[2].Title, be.Eq("Три"))
+	be.AssertThat(t, store.lists, be.Eq(1))
 
 	// Without a locale the store must not be queried at all.
 	store.lists = 0
-	if _, _, err := repo.List(context.Background()); err != nil {
-		t.Fatalf("List (no locale): %v", err)
-	}
-	if store.lists != 0 {
-		t.Errorf("store List calls without locale = %d, want 0", store.lists)
-	}
+	_, _, err = repo.List(context.Background())
+	be.NoError(t, err)
+	be.AssertThat(t, store.lists, be.Eq(0))
 }
 
 func TestUpdateMarksChangedFieldsStale(t *testing.T) {
@@ -333,31 +309,22 @@ func TestUpdateMarksChangedFieldsStale(t *testing.T) {
 	})
 
 	// Change only the title.
-	if _, err := repo.Update(context.Background(), Article{ID: 1, Title: "Nou", BodyText: "Corp"}); err != nil {
-		t.Fatalf("Update: %v", err)
-	}
+	_, err := repo.Update(context.Background(), Article{ID: 1, Title: "Nou", BodyText: "Corp"})
+	be.NoError(t, err)
 
 	gotTitle, _ := store.Get(context.Background(), titleTr.ID)
-	if !gotTitle.Stale {
-		t.Error("title translation not marked stale after source change")
-	}
+	be.AssertThat(t, gotTitle.Stale, be.True())
 	gotBody, _ := store.Get(context.Background(), bodyTr.ID)
-	if gotBody.Stale {
-		t.Error("body translation marked stale though its source is unchanged")
-	}
+	be.AssertThat(t, gotBody.Stale, be.False())
 
 	// Stale translations are still served by default...
 	got, _ := repo.Get(r3.WithLocale(context.Background(), "ru"), 1)
-	if got.Title != "Старый" {
-		t.Errorf("default stale Title = %q, want stale translation served", got.Title)
-	}
+	be.AssertThat(t, got.Title, be.Eq("Старый"))
 
 	// ...and hidden with WithoutStale.
 	strict := newRepo(inner, store, i18n.WithoutStale[Article, int64]())
 	got, _ = strict.Get(r3.WithLocale(context.Background(), "ru"), 1)
-	if got.Title != "Nou" {
-		t.Errorf("WithoutStale Title = %q, want source fallback", got.Title)
-	}
+	be.AssertThat(t, got.Title, be.Eq("Nou"))
 }
 
 func TestUpsertReplacesAndClearsStale(t *testing.T) {
@@ -371,29 +338,19 @@ func TestUpsertReplacesAndClearsStale(t *testing.T) {
 
 	// Simulate staleness, then re-translate via Upsert.
 	first.Stale = true
-	if _, err := store.Update(ctx, first); err != nil {
-		t.Fatalf("mark stale: %v", err)
-	}
+	_, err := store.Update(ctx, first)
+	be.NoError(t, err)
 	second, err := i18n.Upsert(ctx, store, i18n.Translation{
 		EntityType: "articles", EntityID: "1", Field: "title", Lang: "ru",
 		Value: "Второй", Source: i18n.SourceAI, SourceHash: i18n.Hash("v2"),
 	})
-	if err != nil {
-		t.Fatalf("Upsert: %v", err)
-	}
+	be.NoError(t, err)
 
-	if second.ID != first.ID {
-		t.Errorf("Upsert created a new row (id %s), want update of %s", second.ID, first.ID)
-	}
-	if second.Stale {
-		t.Error("Upsert left the row stale, want cleared")
-	}
-	if second.Value != "Второй" {
-		t.Errorf("Value = %q, want replaced", second.Value)
-	}
-	if n, _ := store.Count(ctx); n != 1 {
-		t.Errorf("row count = %d, want 1 (no duplicates)", n)
-	}
+	be.AssertThat(t, second.ID, be.Eq(first.ID))
+	be.AssertThat(t, second.Stale, be.False())
+	be.AssertThat(t, second.Value, be.Eq("Второй"))
+	n, _ := store.Count(ctx)
+	be.AssertThat(t, n, be.Eq(int64(1)))
 }
 
 func TestDeleteCleanupIsOptIn(t *testing.T) {
@@ -407,12 +364,10 @@ func TestDeleteCleanupIsOptIn(t *testing.T) {
 		EntityType: "articles", EntityID: "1", Field: "title", Lang: "ru",
 		Value: "Один", Source: i18n.SourceAI, SourceHash: i18n.Hash("Unu"),
 	})
-	if err := repo.Delete(ctx, 1); err != nil {
-		t.Fatalf("Delete: %v", err)
-	}
-	if n, _ := store.Count(ctx); n != 1 {
-		t.Errorf("default Delete removed translations, want kept (%d rows)", n)
-	}
+	err := repo.Delete(ctx, 1)
+	be.NoError(t, err)
+	n, _ := store.Count(ctx)
+	be.AssertThat(t, n, be.Eq(int64(1)))
 
 	// Opt-in: translations go with the entity.
 	inner = newMemoryArticleCRUD(Article{ID: 2, Title: "Doi"})
@@ -422,42 +377,30 @@ func TestDeleteCleanupIsOptIn(t *testing.T) {
 		EntityType: "articles", EntityID: "2", Field: "title", Lang: "ru",
 		Value: "Два", Source: i18n.SourceAI, SourceHash: i18n.Hash("Doi"),
 	})
-	if err := repo.Delete(ctx, 2); err != nil {
-		t.Fatalf("Delete: %v", err)
-	}
-	if n, _ := store.Count(ctx); n != 0 {
-		t.Errorf("opt-in Delete kept %d translations, want 0", n)
-	}
+	err = repo.Delete(ctx, 2)
+	be.NoError(t, err)
+	n, _ = store.Count(ctx)
+	be.AssertThat(t, n, be.Eq(int64(0)))
 }
 
 func TestWithTranslationsPanicsOnMisconfiguration(t *testing.T) {
 	inner := newMemoryArticleCRUD()
 	store := &memoryTranslationCRUD{}
 
-	assertPanics := func(name string, fn func()) {
-		t.Helper()
-		defer func() {
-			if recover() == nil {
-				t.Errorf("%s: want panic, got none", name)
-			}
-		}()
-		fn()
-	}
-
-	assertPanics("missing IDFunc", func() {
+	be.AssertThat(t, func() {
 		i18n.WithTranslations(inner, store,
 			i18n.WithFields[Article, int64]("title"))
-	})
-	assertPanics("missing fields", func() {
+	}, be.Panic(), "missing IDFunc: want panic, got none")
+	be.AssertThat(t, func() {
 		i18n.WithTranslations(inner, store,
 			i18n.WithIDFunc(func(a Article) int64 { return a.ID }))
-	})
-	assertPanics("unknown field", func() {
+	}, be.Panic(), "missing fields: want panic, got none")
+	be.AssertThat(t, func() {
 		newRepo(inner, store, i18n.WithFields[Article, int64]("no_such_field"))
-	})
-	assertPanics("non-string field", func() {
+	}, be.Panic(), "unknown field: want panic, got none")
+	be.AssertThat(t, func() {
 		newRepo(inner, store, i18n.WithFields[Article, int64]("views"))
-	})
+	}, be.Panic(), "non-string field: want panic, got none")
 }
 
 func TestWithoutOverlayStillMarksStale(t *testing.T) {
@@ -473,24 +416,15 @@ func TestWithoutOverlayStillMarksStale(t *testing.T) {
 	// Reads pass through even with a locale set — and never hit the store.
 	store.lists = 0
 	got, err := repo.Get(r3.WithLocale(context.Background(), "ru"), 1)
-	if err != nil {
-		t.Fatalf("Get: %v", err)
-	}
-	if got.Title != "Vechi" {
-		t.Errorf("Title = %q, want untranslated source (overlay disabled)", got.Title)
-	}
-	if store.lists != 0 {
-		t.Errorf("store List calls = %d, want 0 (overlay disabled)", store.lists)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, got.Title, be.Eq("Vechi"))
+	be.AssertThat(t, store.lists, be.Eq(0))
 
 	// Writes still invalidate.
-	if _, err := repo.Update(context.Background(), Article{ID: 1, Title: "Nou"}); err != nil {
-		t.Fatalf("Update: %v", err)
-	}
+	_, err = repo.Update(context.Background(), Article{ID: 1, Title: "Nou"})
+	be.NoError(t, err)
 	gotTr, _ := store.Get(context.Background(), tr.ID)
-	if !gotTr.Stale {
-		t.Error("translation not marked stale by WithoutOverlay repo")
-	}
+	be.AssertThat(t, gotTr.Stale, be.True())
 }
 
 func TestEmptyTranslationValueIsNeverOverlaid(t *testing.T) {
@@ -506,7 +440,5 @@ func TestEmptyTranslationValueIsNeverOverlaid(t *testing.T) {
 	})
 
 	got, _ := repo.Get(r3.WithLocale(context.Background(), "ru"), 1)
-	if got.Title != "Sursă" {
-		t.Errorf("Title = %q, want source text (empty translation ignored)", got.Title)
-	}
+	be.AssertThat(t, got.Title, be.Eq("Sursă"))
 }

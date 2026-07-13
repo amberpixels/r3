@@ -5,8 +5,7 @@ go 1.26
 require (
 	github.com/amberpixels/k1 v0.1.8
 	github.com/d3rty/json v0.0.0-20260223214742-da23dcd77ba2
-	github.com/expectto/be v1.0.0-rc.6
-	github.com/expectto/be/x/testify v1.0.0-rc.5
+	github.com/expectto/be v1.0.0-rc.8
 	github.com/go-pg/pg/v10 v10.15.1
 	github.com/go-sql-driver/mysql v1.10.0
 	github.com/google/uuid v1.6.0
@@ -79,7 +78,6 @@ require (
 	github.com/puzpuzpuz/xsync/v3 v3.5.1 // indirect
 	github.com/shirou/gopsutil/v4 v4.26.5 // indirect
 	github.com/sirupsen/logrus v1.9.4 // indirect
-	github.com/stretchr/objx v0.5.3 // indirect
 	github.com/tklauser/go-sysconf v0.3.16 // indirect
 	github.com/tklauser/numcpus v0.11.0 // indirect
 	github.com/tmthrgd/go-hex v0.0.0-20190904060850-447a3041c3bc // indirect

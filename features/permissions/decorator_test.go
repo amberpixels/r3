@@ -2,13 +2,14 @@ package permissions_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"testing"
 
 	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/features/permissions"
+	"github.com/expectto/be"
+	"github.com/expectto/be/be_string"
 )
 
 // ── Test entity ──────────────────────────────────────────────────────────
@@ -142,15 +143,9 @@ func TestAllowAll_Create(t *testing.T) {
 
 	ctx := context.Background()
 	post, err := repo.Create(ctx, Post{Title: "Hello"})
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
-	if post.ID == 0 {
-		t.Fatal("expected non-zero ID")
-	}
-	if post.Title != "Hello" {
-		t.Errorf("expected Title='Hello', got %q", post.Title)
-	}
+	be.NoError(t, err)
+	be.RequireThat(t, post.ID, be.NonZero(), "expected non-zero ID")
+	be.AssertThat(t, post.Title, be.Eq("Hello"))
 }
 
 func TestAllowAll_Get(t *testing.T) {
@@ -160,12 +155,8 @@ func TestAllowAll_Get(t *testing.T) {
 	ctx := context.Background()
 	created, _ := repo.Create(ctx, Post{Title: "Test"})
 	got, err := repo.Get(ctx, created.ID)
-	if err != nil {
-		t.Fatalf("Get failed: %v", err)
-	}
-	if got.Title != "Test" {
-		t.Errorf("expected Title='Test', got %q", got.Title)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, got.Title, be.Eq("Test"))
 }
 
 func TestAllowAll_List(t *testing.T) {
@@ -176,15 +167,9 @@ func TestAllowAll_List(t *testing.T) {
 	_, _ = repo.Create(ctx, Post{Title: "A"})
 	_, _ = repo.Create(ctx, Post{Title: "B"})
 	list, count, err := repo.List(ctx)
-	if err != nil {
-		t.Fatalf("List failed: %v", err)
-	}
-	if count != 2 {
-		t.Errorf("expected count=2, got %d", count)
-	}
-	if len(list) != 2 {
-		t.Errorf("expected 2 items, got %d", len(list))
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, count, be.Eq(int64(2)))
+	be.AssertThat(t, list, be.HaveLength(2))
 }
 
 func TestAllowAll_Update(t *testing.T) {
@@ -195,12 +180,8 @@ func TestAllowAll_Update(t *testing.T) {
 	post, _ := repo.Create(ctx, Post{Title: "Original"})
 	post.Title = "Updated"
 	updated, err := repo.Update(ctx, post)
-	if err != nil {
-		t.Fatalf("Update failed: %v", err)
-	}
-	if updated.Title != "Updated" {
-		t.Errorf("expected Title='Updated', got %q", updated.Title)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, updated.Title, be.Eq("Updated"))
 }
 
 func TestAllowAll_Patch(t *testing.T) {
@@ -211,12 +192,8 @@ func TestAllowAll_Patch(t *testing.T) {
 	post, _ := repo.Create(ctx, Post{Title: "Original"})
 	post.Title = "Patched"
 	patched, err := repo.Patch(ctx, post, r3.Fields{r3.NewFieldSpec("title")})
-	if err != nil {
-		t.Fatalf("Patch failed: %v", err)
-	}
-	if patched.Title != "Patched" {
-		t.Errorf("expected Title='Patched', got %q", patched.Title)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, patched.Title, be.Eq("Patched"))
 }
 
 func TestAllowAll_Delete(t *testing.T) {
@@ -225,13 +202,10 @@ func TestAllowAll_Delete(t *testing.T) {
 
 	ctx := context.Background()
 	post, _ := repo.Create(ctx, Post{Title: "ToDelete"})
-	if err := repo.Delete(ctx, post.ID); err != nil {
-		t.Fatalf("Delete failed: %v", err)
-	}
-	_, err := repo.Get(ctx, post.ID)
-	if err == nil {
-		t.Fatal("expected Get to fail after delete")
-	}
+	err := repo.Delete(ctx, post.ID)
+	be.NoError(t, err)
+	_, err = repo.Get(ctx, post.ID)
+	be.Error(t, err, "expected Get to fail after delete")
 }
 
 // ── Tests: DenyAll ───────────────────────────────────────────────────────
@@ -242,12 +216,8 @@ func TestDenyAll_Create(t *testing.T) {
 
 	ctx := context.Background()
 	_, err := repo.Create(ctx, Post{Title: "Hello"})
-	if !errors.Is(err, permissions.ErrAccessDenied) {
-		t.Fatalf("expected ErrAccessDenied, got %v", err)
-	}
-	if inner.createCalls != 0 {
-		t.Error("inner.Create should not have been called")
-	}
+	be.ErrorIs(t, err, permissions.ErrAccessDenied)
+	be.AssertThat(t, inner.createCalls, be.Eq(0), "inner.Create should not have been called")
 }
 
 func TestDenyAll_Get(t *testing.T) {
@@ -259,9 +229,7 @@ func TestDenyAll_Get(t *testing.T) {
 
 	ctx := context.Background()
 	_, err := repo.Get(ctx, 1)
-	if !errors.Is(err, permissions.ErrAccessDenied) {
-		t.Fatalf("expected ErrAccessDenied, got %v", err)
-	}
+	be.ErrorIs(t, err, permissions.ErrAccessDenied)
 }
 
 func TestDenyAll_List(t *testing.T) {
@@ -270,12 +238,8 @@ func TestDenyAll_List(t *testing.T) {
 
 	ctx := context.Background()
 	_, _, err := repo.List(ctx)
-	if !errors.Is(err, permissions.ErrAccessDenied) {
-		t.Fatalf("expected ErrAccessDenied, got %v", err)
-	}
-	if inner.listCalls != 0 {
-		t.Error("inner.List should not have been called")
-	}
+	be.ErrorIs(t, err, permissions.ErrAccessDenied)
+	be.AssertThat(t, inner.listCalls, be.Eq(0), "inner.List should not have been called")
 }
 
 func TestDenyAll_Update(t *testing.T) {
@@ -290,12 +254,8 @@ func TestDenyAll_Update(t *testing.T) {
 
 	ctx := context.Background()
 	_, err := repo.Update(ctx, Post{ID: 1, Title: "Hacked"})
-	if !errors.Is(err, permissions.ErrAccessDenied) {
-		t.Fatalf("expected ErrAccessDenied, got %v", err)
-	}
-	if inner.updateCalls != 0 {
-		t.Error("inner.Update should not have been called")
-	}
+	be.ErrorIs(t, err, permissions.ErrAccessDenied)
+	be.AssertThat(t, inner.updateCalls, be.Eq(0), "inner.Update should not have been called")
 }
 
 func TestDenyAll_Delete(t *testing.T) {
@@ -310,12 +270,8 @@ func TestDenyAll_Delete(t *testing.T) {
 
 	ctx := context.Background()
 	err := repo.Delete(ctx, 1)
-	if !errors.Is(err, permissions.ErrAccessDenied) {
-		t.Fatalf("expected ErrAccessDenied, got %v", err)
-	}
-	if inner.deleteCalls != 0 {
-		t.Error("inner.Delete should not have been called")
-	}
+	be.ErrorIs(t, err, permissions.ErrAccessDenied)
+	be.AssertThat(t, inner.deleteCalls, be.Eq(0), "inner.Delete should not have been called")
 }
 
 // ── Tests: ReadOnly ──────────────────────────────────────────────────────
@@ -330,21 +286,14 @@ func TestReadOnly_AllowsReads(t *testing.T) {
 
 	// Get should work
 	got, err := repo.Get(ctx, 1)
-	if err != nil {
-		t.Fatalf("Get failed: %v", err)
-	}
-	if got.Title != "Readable" {
-		t.Errorf("expected Title='Readable', got %q", got.Title)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, got.Title, be.Eq("Readable"))
 
 	// List should work
 	list, count, err := repo.List(ctx)
-	if err != nil {
-		t.Fatalf("List failed: %v", err)
-	}
-	if count != 1 || len(list) != 1 {
-		t.Errorf("expected 1 item, got %d/%d", len(list), count)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, count, be.Eq(int64(1)))
+	be.AssertThat(t, list, be.HaveLength(1))
 }
 
 func TestReadOnly_DeniesWrites(t *testing.T) {
@@ -361,27 +310,19 @@ func TestReadOnly_DeniesWrites(t *testing.T) {
 
 	// Create should be denied
 	_, err := repo.Create(ctx, Post{Title: "New"})
-	if !errors.Is(err, permissions.ErrAccessDenied) {
-		t.Fatalf("Create: expected ErrAccessDenied, got %v", err)
-	}
+	be.ErrorIs(t, err, permissions.ErrAccessDenied, "Create")
 
 	// Update should be denied
 	_, err = repo.Update(ctx, Post{ID: 1, Title: "Hacked"})
-	if !errors.Is(err, permissions.ErrAccessDenied) {
-		t.Fatalf("Update: expected ErrAccessDenied, got %v", err)
-	}
+	be.ErrorIs(t, err, permissions.ErrAccessDenied, "Update")
 
 	// Patch should be denied
 	_, err = repo.Patch(ctx, Post{ID: 1, Title: "Hacked"}, r3.Fields{r3.NewFieldSpec("title")})
-	if !errors.Is(err, permissions.ErrAccessDenied) {
-		t.Fatalf("Patch: expected ErrAccessDenied, got %v", err)
-	}
+	be.ErrorIs(t, err, permissions.ErrAccessDenied, "Patch")
 
 	// Delete should be denied
 	err = repo.Delete(ctx, 1)
-	if !errors.Is(err, permissions.ErrAccessDenied) {
-		t.Fatalf("Delete: expected ErrAccessDenied, got %v", err)
-	}
+	be.ErrorIs(t, err, permissions.ErrAccessDenied, "Delete")
 }
 
 // ── Tests: ByActorType ───────────────────────────────────────────────────
@@ -403,29 +344,21 @@ func TestByActorType(t *testing.T) {
 	// Admin can create
 	adminCtx := r3.WithActor(context.Background(), r3.Actor{ID: "1", Type: "admin"})
 	_, err := repo.Create(adminCtx, Post{Title: "Admin Post"})
-	if err != nil {
-		t.Fatalf("admin Create failed: %v", err)
-	}
+	be.NoError(t, err, "admin Create")
 
 	// User can read
 	userCtx := r3.WithActor(context.Background(), r3.Actor{ID: "2", Type: "user"})
 	_, err = repo.Get(userCtx, 1)
-	if err != nil {
-		t.Fatalf("user Get failed: %v", err)
-	}
+	be.NoError(t, err, "user Get")
 
 	// User cannot create
 	_, err = repo.Create(userCtx, Post{Title: "User Post"})
-	if !errors.Is(err, permissions.ErrAccessDenied) {
-		t.Fatalf("user Create: expected ErrAccessDenied, got %v", err)
-	}
+	be.ErrorIs(t, err, permissions.ErrAccessDenied, "user Create")
 
 	// Unknown actor type is denied
 	guestCtx := r3.WithActor(context.Background(), r3.Actor{ID: "3", Type: "guest"})
 	_, err = repo.Get(guestCtx, 1)
-	if !errors.Is(err, permissions.ErrAccessDenied) {
-		t.Fatalf("guest Get: expected ErrAccessDenied, got %v", err)
-	}
+	be.ErrorIs(t, err, permissions.ErrAccessDenied, "guest Get")
 }
 
 // ── Tests: Entity-aware checks ───────────────────────────────────────────
@@ -460,19 +393,13 @@ func TestEntityAwareCheck_OwnerCanUpdate(t *testing.T) {
 	// Owner can update
 	ownerCtx := r3.WithActor(context.Background(), r3.Actor{ID: "user42", Type: "user"})
 	updated, err := repo.Update(ownerCtx, Post{ID: 1, Title: "Updated"})
-	if err != nil {
-		t.Fatalf("owner Update failed: %v", err)
-	}
-	if updated.Title != "Updated" {
-		t.Errorf("expected Title='Updated', got %q", updated.Title)
-	}
+	be.NoError(t, err, "owner Update")
+	be.AssertThat(t, updated.Title, be.Eq("Updated"))
 
 	// Non-owner cannot update
 	otherCtx := r3.WithActor(context.Background(), r3.Actor{ID: "user99", Type: "user"})
 	_, err = repo.Update(otherCtx, Post{ID: 1, Title: "Hacked"})
-	if !errors.Is(err, permissions.ErrAccessDenied) {
-		t.Fatalf("non-owner Update: expected ErrAccessDenied, got %v", err)
-	}
+	be.ErrorIs(t, err, permissions.ErrAccessDenied, "non-owner Update")
 }
 
 func TestEntityAwareCheck_OwnerCanDelete(t *testing.T) {
@@ -501,16 +428,12 @@ func TestEntityAwareCheck_OwnerCanDelete(t *testing.T) {
 	// Non-owner cannot delete
 	otherCtx := r3.WithActor(context.Background(), r3.Actor{ID: "user99", Type: "user"})
 	err := repo.Delete(otherCtx, 1)
-	if !errors.Is(err, permissions.ErrAccessDenied) {
-		t.Fatalf("non-owner Delete: expected ErrAccessDenied, got %v", err)
-	}
+	be.ErrorIs(t, err, permissions.ErrAccessDenied, "non-owner Delete")
 
 	// Owner can delete
 	ownerCtx := r3.WithActor(context.Background(), r3.Actor{ID: "user42", Type: "user"})
 	err = repo.Delete(ownerCtx, 1)
-	if err != nil {
-		t.Fatalf("owner Delete failed: %v", err)
-	}
+	be.NoError(t, err, "owner Delete")
 }
 
 func TestEntityAwareCheck_OwnerCanPatch(t *testing.T) {
@@ -538,19 +461,13 @@ func TestEntityAwareCheck_OwnerCanPatch(t *testing.T) {
 	// Owner can patch
 	ownerCtx := r3.WithActor(context.Background(), r3.Actor{ID: "user42", Type: "user"})
 	patched, err := repo.Patch(ownerCtx, Post{ID: 1, Title: "Patched"}, r3.Fields{r3.NewFieldSpec("title")})
-	if err != nil {
-		t.Fatalf("owner Patch failed: %v", err)
-	}
-	if patched.Title != "Patched" {
-		t.Errorf("expected Title='Patched', got %q", patched.Title)
-	}
+	be.NoError(t, err, "owner Patch")
+	be.AssertThat(t, patched.Title, be.Eq("Patched"))
 
 	// Non-owner cannot patch
 	otherCtx := r3.WithActor(context.Background(), r3.Actor{ID: "user99", Type: "user"})
 	_, err = repo.Patch(otherCtx, Post{ID: 1, Title: "Hacked"}, r3.Fields{r3.NewFieldSpec("title")})
-	if !errors.Is(err, permissions.ErrAccessDenied) {
-		t.Fatalf("non-owner Patch: expected ErrAccessDenied, got %v", err)
-	}
+	be.ErrorIs(t, err, permissions.ErrAccessDenied, "non-owner Patch")
 }
 
 // ── Tests: Scoper interface ──────────────────────────────────────────────
@@ -586,24 +503,17 @@ func TestScoper_GetEnforcesScope(t *testing.T) {
 
 	// In scope: alice can read her own post.
 	got, err := repo.Get(aliceCtx, 1)
-	if err != nil {
-		t.Fatalf("expected alice to read her own post, got %v", err)
-	}
-	if got.OwnerID != "alice" {
-		t.Errorf("expected alice's post, got owner=%s", got.OwnerID)
-	}
+	be.NoError(t, err, "expected alice to read her own post")
+	be.AssertThat(t, got.OwnerID, be.Eq("alice"))
 
 	// Out of scope: alice must not read bob's post; it is invisible (ErrNotFound).
 	_, err = repo.Get(aliceCtx, 2)
-	if !errors.Is(err, r3.ErrNotFound) {
-		t.Fatalf("expected ErrNotFound for out-of-scope Get, got %v", err)
-	}
+	be.ErrorIs(t, err, r3.ErrNotFound, "expected ErrNotFound for out-of-scope Get")
 
 	// Admin scope is nil (sees everything): Get must succeed for any post.
 	adminCtx := r3.WithActor(context.Background(), r3.Actor{ID: "root", Type: "admin"})
-	if _, err := repo.Get(adminCtx, 2); err != nil {
-		t.Fatalf("expected admin to read any post, got %v", err)
-	}
+	_, err = repo.Get(adminCtx, 2)
+	be.NoError(t, err, "expected admin to read any post")
 }
 
 func TestScoper_InjectsFilters(t *testing.T) {
@@ -617,18 +527,10 @@ func TestScoper_InjectsFilters(t *testing.T) {
 	// User "alice" should only see her own posts (via scope filter).
 	aliceCtx := r3.WithActor(context.Background(), r3.Actor{ID: "alice", Type: "user"})
 	list, count, err := repo.List(aliceCtx)
-	if err != nil {
-		t.Fatalf("List failed: %v", err)
-	}
-	if count != 1 {
-		t.Errorf("expected count=1 for alice, got %d", count)
-	}
-	if len(list) != 1 {
-		t.Errorf("expected 1 item for alice, got %d", len(list))
-	}
-	if len(list) > 0 && list[0].OwnerID != "alice" {
-		t.Errorf("expected alice's post, got owner=%s", list[0].OwnerID)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, count, be.Eq(int64(1)), "expected count=1 for alice")
+	be.RequireThat(t, list, be.HaveLength(1), "expected 1 item for alice")
+	be.AssertThat(t, list[0].OwnerID, be.Eq("alice"))
 }
 
 func TestScoper_AdminSeesAll(t *testing.T) {
@@ -642,15 +544,9 @@ func TestScoper_AdminSeesAll(t *testing.T) {
 	// Admin should see everything (no scope filter injected).
 	adminCtx := r3.WithActor(context.Background(), r3.Actor{ID: "admin1", Type: "admin"})
 	list, count, err := repo.List(adminCtx)
-	if err != nil {
-		t.Fatalf("List failed: %v", err)
-	}
-	if count != 2 {
-		t.Errorf("expected count=2 for admin, got %d", count)
-	}
-	if len(list) != 2 {
-		t.Errorf("expected 2 items for admin, got %d", len(list))
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, count, be.Eq(int64(2)), "expected count=2 for admin")
+	be.AssertThat(t, list, be.HaveLength(2), "expected 2 items for admin")
 }
 
 // ── Tests: Compose ───────────────────────────────────────────────────────
@@ -671,9 +567,7 @@ func TestCompose_AllMustAllow(t *testing.T) {
 
 	ctx := context.Background()
 	_, err := repo.Get(ctx, 1)
-	if !errors.Is(err, permissions.ErrAccessDenied) {
-		t.Fatalf("expected ErrAccessDenied from Compose, got %v", err)
-	}
+	be.ErrorIs(t, err, permissions.ErrAccessDenied, "expected ErrAccessDenied from Compose")
 }
 
 func TestCompose_AllAllow(t *testing.T) {
@@ -691,12 +585,8 @@ func TestCompose_AllAllow(t *testing.T) {
 
 	ctx := context.Background()
 	got, err := repo.Get(ctx, 1)
-	if err != nil {
-		t.Fatalf("Get failed: %v", err)
-	}
-	if got.Title != "Post" {
-		t.Errorf("expected Title='Post', got %q", got.Title)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, got.Title, be.Eq("Post"))
 }
 
 func TestCompose_Empty(t *testing.T) {
@@ -712,12 +602,8 @@ func TestCompose_Empty(t *testing.T) {
 
 	ctx := context.Background()
 	got, err := repo.Get(ctx, 1)
-	if err != nil {
-		t.Fatalf("Get failed: %v", err)
-	}
-	if got.Title != "Post" {
-		t.Errorf("expected Title='Post', got %q", got.Title)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, got.Title, be.Eq("Post"))
 }
 
 // ── Tests: OperationCheckers ─────────────────────────────────────────────
@@ -741,18 +627,12 @@ func TestOperationCheckers_MappedOps(t *testing.T) {
 
 	// Read is mapped and allowed.
 	got, err := repo.Get(ctx, 1)
-	if err != nil {
-		t.Fatalf("Get failed: %v", err)
-	}
-	if got.Title != "Post" {
-		t.Errorf("expected Title='Post', got %q", got.Title)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, got.Title, be.Eq("Post"))
 
 	// Create is not mapped -> denied by default.
 	_, err = repo.Create(ctx, Post{Title: "New"})
-	if !errors.Is(err, permissions.ErrAccessDenied) {
-		t.Fatalf("Create: expected ErrAccessDenied, got %v", err)
-	}
+	be.ErrorIs(t, err, permissions.ErrAccessDenied)
 }
 
 func TestOperationCheckers_WithFallback(t *testing.T) {
@@ -775,12 +655,8 @@ func TestOperationCheckers_WithFallback(t *testing.T) {
 
 	// Create is not mapped, but fallback allows it.
 	post, err := repo.Create(ctx, Post{Title: "New"})
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
-	if post.Title != "New" {
-		t.Errorf("expected Title='New', got %q", post.Title)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, post.Title, be.Eq("New"))
 }
 
 // ── Tests: Error types ───────────────────────────────────────────────────
@@ -789,9 +665,8 @@ func TestAccessDeniedError_Is(t *testing.T) {
 	err := permissions.NewAccessDeniedError(permissions.OpCreate, r3.Actor{ID: "1", Type: "user"}, "test")
 	err.RecordType = "posts"
 
-	if !errors.Is(err, permissions.ErrAccessDenied) {
-		t.Fatal("expected AccessDeniedError to satisfy errors.Is(err, ErrAccessDenied)")
-	}
+	be.ErrorIs(t, err, permissions.ErrAccessDenied,
+		"expected AccessDeniedError to satisfy errors.Is(err, ErrAccessDenied)")
 }
 
 func TestAccessDeniedError_ErrorMessage(t *testing.T) {
@@ -801,9 +676,7 @@ func TestAccessDeniedError_ErrorMessage(t *testing.T) {
 
 	msg := err.Error()
 	expected := "r3/permissions: access denied: update on posts (id=7) by actor user/42: not the owner"
-	if msg != expected {
-		t.Errorf("error message mismatch:\n  got:  %q\n  want: %q", msg, expected)
-	}
+	be.AssertThat(t, msg, be.Eq(expected))
 }
 
 func TestAccessDeniedError_ErrorMessage_NoRecordID(t *testing.T) {
@@ -812,9 +685,7 @@ func TestAccessDeniedError_ErrorMessage_NoRecordID(t *testing.T) {
 
 	msg := err.Error()
 	expected := "r3/permissions: access denied: read on posts by actor user/42"
-	if msg != expected {
-		t.Errorf("error message mismatch:\n  got:  %q\n  want: %q", msg, expected)
-	}
+	be.AssertThat(t, msg, be.Eq(expected))
 }
 
 // ── Tests: Inner() ───────────────────────────────────────────────────────
@@ -824,9 +695,7 @@ func TestInner(t *testing.T) {
 	repo := permissions.WithPermissions[Post, int64](inner, permissions.AllowAll[Post, int64]())
 
 	got := repo.Inner()
-	if got != inner {
-		t.Error("Inner() should return the wrapped CRUD")
-	}
+	be.AssertThat(t, got, be.Identical(inner), "Inner() should return the wrapped CRUD")
 }
 
 // ── Tests: Get does not leak entity on denied ────────────────────────────
@@ -849,13 +718,9 @@ func TestGet_DoesNotLeakEntityOnDenied(t *testing.T) {
 
 	otherCtx := r3.WithActor(context.Background(), r3.Actor{ID: "user99", Type: "user"})
 	result, err := repo.Get(otherCtx, 1)
-	if !errors.Is(err, permissions.ErrAccessDenied) {
-		t.Fatalf("expected ErrAccessDenied, got %v", err)
-	}
+	be.ErrorIs(t, err, permissions.ErrAccessDenied)
 	// The zero value should be returned, not the actual entity.
-	if result.Title != "" {
-		t.Errorf("expected zero-value Post on denied Get, got Title=%q", result.Title)
-	}
+	be.AssertThat(t, result.Title, be_string.EmptyString())
 }
 
 // ── Tests: CheckerFunc adapter ───────────────────────────────────────────
@@ -870,12 +735,8 @@ func TestCheckerFunc(t *testing.T) {
 	)
 
 	err := checker.Check(context.Background(), permissions.AccessRequest[Post, int64]{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !called {
-		t.Fatal("CheckerFunc was not called")
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, called, be.True(), "CheckerFunc was not called")
 }
 
 // ── Tests: WithRecordType option ─────────────────────────────────────────
@@ -890,15 +751,11 @@ func TestWithRecordType(t *testing.T) {
 
 	ctx := context.Background()
 	_, err := repo.Create(ctx, Post{Title: "Test"})
-	if err == nil {
-		t.Fatal("expected error")
-	}
+	be.Error(t, err, "expected error")
 	// The error should contain the custom record type.
 	// (DenyAll doesn't use RecordType, but the decorator's denied() method would.)
 	// We just verify it's an AccessDeniedError.
-	if !errors.Is(err, permissions.ErrAccessDenied) {
-		t.Fatalf("expected ErrAccessDenied, got %v", err)
-	}
+	be.ErrorIs(t, err, permissions.ErrAccessDenied)
 }
 
 // ── Tests: Update/Patch/Delete without IDFunc ────────────────────────────
@@ -921,12 +778,8 @@ func TestUpdate_WithoutIDFunc_SkipsEntityFetch(t *testing.T) {
 
 	ctx := context.Background()
 	_, err := repo.Update(ctx, Post{ID: 1, Title: "Updated"})
-	if err != nil {
-		t.Fatalf("Update failed: %v", err)
-	}
-	if gotEntity != nil {
-		t.Error("expected Entity to be nil without IDFunc")
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, gotEntity, be.Nil(), "expected Entity to be nil without IDFunc")
 }
 
 func TestDelete_WithoutIDFunc_SkipsEntityFetch(t *testing.T) {
@@ -946,12 +799,8 @@ func TestDelete_WithoutIDFunc_SkipsEntityFetch(t *testing.T) {
 
 	ctx := context.Background()
 	err := repo.Delete(ctx, 1)
-	if err != nil {
-		t.Fatalf("Delete failed: %v", err)
-	}
-	if gotEntity != nil {
-		t.Error("expected Entity to be nil without IDFunc")
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, gotEntity, be.Nil(), "expected Entity to be nil without IDFunc")
 }
 
 // ── Tests: Actor from context ────────────────────────────────────────────
@@ -972,9 +821,8 @@ func TestActorFromContext(t *testing.T) {
 	ctx := r3.WithActor(context.Background(), r3.Actor{ID: "42", Type: "user"})
 	_, _ = repo.Create(ctx, Post{Title: "Test"})
 
-	if capturedActor.ID != "42" || capturedActor.Type != "user" {
-		t.Errorf("expected actor {42, user}, got {%s, %s}", capturedActor.ID, capturedActor.Type)
-	}
+	be.AssertThat(t, capturedActor.ID, be.Eq("42"))
+	be.AssertThat(t, capturedActor.Type, be.Eq("user"))
 }
 
 func TestActorFromContext_Default(t *testing.T) {
@@ -994,9 +842,7 @@ func TestActorFromContext_Default(t *testing.T) {
 	ctx := context.Background()
 	_, _ = repo.Create(ctx, Post{Title: "Test"})
 
-	if capturedActor != r3.SystemActor {
-		t.Errorf("expected SystemActor, got {%s, %s}", capturedActor.ID, capturedActor.Type)
-	}
+	be.AssertThat(t, capturedActor, be.Eq(r3.SystemActor))
 }
 
 // relScoper scopes via a relationship ("has") filter, which the in-memory
@@ -1049,10 +895,8 @@ func TestScoper_GetWithRelationshipFilter(t *testing.T) {
 	)
 	ctx := r3.WithActor(context.Background(), r3.Actor{ID: "u", Type: "user"})
 
-	if _, err := repo.Get(ctx, 1); err != nil {
-		t.Fatalf("expected in-scope post 1 to be readable, got %v", err)
-	}
-	if _, err := repo.Get(ctx, 2); !errors.Is(err, r3.ErrNotFound) {
-		t.Fatalf("expected ErrNotFound for out-of-scope post 2 (no fail-open), got %v", err)
-	}
+	_, err := repo.Get(ctx, 1)
+	be.NoError(t, err, "expected in-scope post 1 to be readable")
+	_, err = repo.Get(ctx, 2)
+	be.ErrorIs(t, err, r3.ErrNotFound, "expected ErrNotFound for out-of-scope post 2 (no fail-open)")
 }

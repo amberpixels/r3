@@ -5,6 +5,7 @@ import (
 
 	"github.com/amberpixels/r3"
 	r3sql "github.com/amberpixels/r3/dialects/sql"
+	"github.com/expectto/be"
 )
 
 func TestSortSpec_DialectString(t *testing.T) {
@@ -43,15 +44,10 @@ func TestSortSpec_DialectString(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			sqlSort, err := r3sql.SortToSQL(tt.sort)
-			if err != nil {
-				t.Errorf("SortToSQL() error = %v", err)
-				return
-			}
+			be.NoError(t, err)
 
 			result := sqlSort.String()
-			if result != tt.expected {
-				t.Errorf("SortToSQL().String() = %v, want %v", result, tt.expected)
-			}
+			be.AssertThat(t, result, be.Eq(tt.expected))
 		})
 	}
 }

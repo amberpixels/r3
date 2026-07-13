@@ -6,11 +6,9 @@ import (
 
 	"github.com/amberpixels/r3"
 	r3url "github.com/amberpixels/r3/dialects/url"
+	"github.com/expectto/be"
 	"github.com/expectto/be/be_reflected"
 	"github.com/expectto/be/be_url"
-	betestify "github.com/expectto/be/x/testify"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestParsePagination(t *testing.T) {
@@ -77,21 +75,21 @@ func TestParsePagination(t *testing.T) {
 			result, err := r3url.ParsePagination(tt.values, params)
 
 			if tt.expectError {
-				require.Error(t, err)
-				assert.True(t, r3url.IsErrDialectorFailure(err))
+				be.Error(t, err)
+				be.AssertThat(t, r3url.IsErrDialectorFailure(err), be.True())
 				return
 			}
 
-			require.NoError(t, err)
+			be.NoError(t, err)
 			if tt.isNil {
-				assert.Nil(t, result)
+				be.AssertThat(t, result, be.Nil())
 			} else if tt.expectedPage > 0 || tt.expectedSize > 0 {
-				require.NotNil(t, result)
+				be.RequireThat(t, result, be.NotNil())
 				if tt.expectedPage > 0 {
-					assert.Equal(t, tt.expectedPage, result.GetPageNum())
+					be.AssertThat(t, result.GetPageNum(), be.Eq(tt.expectedPage))
 				}
 				if tt.expectedSize > 0 {
-					assert.Equal(t, tt.expectedSize, result.GetPageSize())
+					be.AssertThat(t, result.GetPageSize(), be.Eq(tt.expectedSize))
 				}
 			}
 		})
@@ -106,7 +104,7 @@ func TestFormatPagination(t *testing.T) {
 
 		// Build a *url.URL from the produced url.Values so be_url matchers apply.
 		u := &url.URL{RawQuery: result.Encode()}
-		betestify.Assert(t, u, be_url.URL(
+		be.AssertThat(t, u, be_url.URL(
 			// plain-value form
 			be_url.HavingSearchParam("page", "2"),
 			// matcher-value form: page_size must be a numeric string ("25")
@@ -119,7 +117,7 @@ func TestFormatPagination(t *testing.T) {
 
 		// Empty url.Values -> empty raw query, no page params present.
 		u := &url.URL{RawQuery: result.Encode()}
-		betestify.Assert(t, u, be_url.URL(
+		be.AssertThat(t, u, be_url.URL(
 			be_url.HavingRawQuery(""),
 			be_url.HavingSearchParam("page", ""),
 			be_url.HavingSearchParam("page_size", ""),
@@ -133,9 +131,9 @@ func TestPaginationRoundTrip(t *testing.T) {
 
 	formatted := r3url.FormatPagination(original, params)
 	parsed, err := r3url.ParsePagination(formatted, params)
-	require.NoError(t, err)
-	require.NotNil(t, parsed)
+	be.NoError(t, err)
+	be.RequireThat(t, parsed, be.NotNil())
 
-	assert.Equal(t, original.GetPageNum(), parsed.GetPageNum())
-	assert.Equal(t, original.GetPageSize(), parsed.GetPageSize())
+	be.AssertThat(t, parsed.GetPageNum(), be.Eq(original.GetPageNum()))
+	be.AssertThat(t, parsed.GetPageSize(), be.Eq(original.GetPageSize()))
 }

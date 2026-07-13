@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/amberpixels/r3/features/history"
+	"github.com/expectto/be"
 )
 
 // TestRetention_CompactionPreservesReconstruction verifies M9: pruning old
@@ -37,45 +38,37 @@ func TestRetention_CompactionPreservesReconstruction(t *testing.T) {
 
 	// Sanity: full reconstruction before pruning.
 	full, err := reverter.Reconstruct(ctx, recordID, 4)
-	if err != nil {
-		t.Fatalf("pre-prune Reconstruct failed: %v", err)
-	}
-	if full.Name != "V2" || full.Total != 300 || full.Status != "b" {
-		t.Fatalf("pre-prune state mismatch: %+v", full)
-	}
+	be.NoError(t, err)
+
+	be.RequireThat(t, full.Name, be.Eq("V2"))
+	be.RequireThat(t, full.Total, be.Eq(300))
+	be.RequireThat(t, full.Status, be.Eq("b"))
 
 	// Keep only the 2 most recent versions. v1+v2 must be folded into v3.
 	enforcer := history.NewRetentionEnforcer(store, history.RetentionPolicy{MaxVersions: 2})
 	deleted := enforcer.Enforce(ctx, "orders")
-	if deleted != 2 {
-		t.Fatalf("expected 2 records pruned, got %d", deleted)
-	}
+	be.RequireThat(t, deleted, be.Eq(int64(2)))
 
 	remaining, _, err := store.List(ctx, history.QueryForRecord("orders", recordID))
-	if err != nil {
-		t.Fatalf("list after prune failed: %v", err)
-	}
-	if len(remaining) != 2 {
-		t.Fatalf("expected 2 surviving records, got %d", len(remaining))
-	}
+	be.NoError(t, err)
+
+	be.RequireThat(t, remaining, be.HaveLength(2))
 
 	// Reconstruction of the latest version must still be correct — the folded
 	// baseline on the oldest survivor (v3) carries the dropped fields.
 	got, err := reverter.Reconstruct(ctx, recordID, 4)
-	if err != nil {
-		t.Fatalf("post-prune Reconstruct(4) failed: %v", err)
-	}
-	if got.Name != "V2" || got.Total != 300 || got.Status != "b" {
-		t.Errorf("post-prune latest state corrupted: got %+v, want {Name:V2 Total:300 Status:b}", got)
-	}
+	be.NoError(t, err)
+
+	be.AssertThat(t, got.Name, be.Eq("V2"))
+	be.AssertThat(t, got.Total, be.Eq(300))
+	be.AssertThat(t, got.Status, be.Eq("b"))
 
 	// The oldest surviving version (v3) must reconstruct to its own full state:
 	// Name=V2 (from v2), Total=300 (v3), Status=a (still original at v3).
 	v3, err := reverter.Reconstruct(ctx, recordID, 3)
-	if err != nil {
-		t.Fatalf("post-prune Reconstruct(3) failed: %v", err)
-	}
-	if v3.Name != "V2" || v3.Total != 300 || v3.Status != "a" {
-		t.Errorf("oldest survivor reconstruction wrong: got %+v, want {Name:V2 Total:300 Status:a}", v3)
-	}
+	be.NoError(t, err)
+
+	be.AssertThat(t, v3.Name, be.Eq("V2"))
+	be.AssertThat(t, v3.Total, be.Eq(300))
+	be.AssertThat(t, v3.Status, be.Eq("a"))
 }

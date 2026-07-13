@@ -10,9 +10,6 @@ import (
 	"github.com/expectto/be/be_reflected"
 	"github.com/expectto/be/be_string"
 	"github.com/expectto/be/be_url"
-	betestify "github.com/expectto/be/x/testify"
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestParseDjangoFilters(t *testing.T) {
@@ -29,62 +26,62 @@ func TestParseDjangoFilters(t *testing.T) {
 			name:   "simple eq (bare field)",
 			values: url.Values{"status": {"active"}},
 			validate: func(t *testing.T, result r3.Filters) {
-				require.Len(t, result, 1)
-				assert.Equal(t, "status", result[0].Field.String())
-				assert.Equal(t, r3.OperatorEq, result[0].Operator)
-				assert.Equal(t, "active", result[0].Value)
+				be.RequireThat(t, result, be.HaveLength(1))
+				be.AssertThat(t, result[0].Field.String(), be.Eq("status"))
+				be.AssertThat(t, result[0].Operator, be.Eq(r3.OperatorEq))
+				be.AssertThat(t, result[0].Value, be.Eq("active"))
 			},
 		},
 		{
 			name:   "operator suffix",
 			values: url.Values{"age__gte": {"18"}},
 			validate: func(t *testing.T, result r3.Filters) {
-				require.Len(t, result, 1)
-				assert.Equal(t, "age", result[0].Field.String())
-				assert.Equal(t, r3.OperatorGte, result[0].Operator)
-				assert.Equal(t, "18", result[0].Value)
+				be.RequireThat(t, result, be.HaveLength(1))
+				be.AssertThat(t, result[0].Field.String(), be.Eq("age"))
+				be.AssertThat(t, result[0].Operator, be.Eq(r3.OperatorGte))
+				be.AssertThat(t, result[0].Value, be.Eq("18"))
 			},
 		},
 		{
 			name:   "in operator with comma values",
 			values: url.Values{"tags__in": {"a,b,c"}},
 			validate: func(t *testing.T, result r3.Filters) {
-				require.Len(t, result, 1)
-				assert.Equal(t, "tags", result[0].Field.String())
-				assert.Equal(t, r3.OperatorIn, result[0].Operator)
-				assert.Equal(t, []any{"a", "b", "c"}, result[0].Value)
+				be.RequireThat(t, result, be.HaveLength(1))
+				be.AssertThat(t, result[0].Field.String(), be.Eq("tags"))
+				be.AssertThat(t, result[0].Operator, be.Eq(r3.OperatorIn))
+				be.AssertThat(t, result[0].Value, be.Eq([]any{"a", "b", "c"}))
 			},
 		},
 		{
 			name:   "reserved params are skipped",
 			values: url.Values{"status": {"active"}, "page": {"2"}, "fields": {"id,name"}},
 			validate: func(t *testing.T, result r3.Filters) {
-				require.Len(t, result, 1)
-				assert.Equal(t, "status", result[0].Field.String())
+				be.RequireThat(t, result, be.HaveLength(1))
+				be.AssertThat(t, result[0].Field.String(), be.Eq("status"))
 			},
 		},
 		{
 			name:   "unknown field skipped (whitelist)",
 			values: url.Values{"unknown_field": {"value"}},
 			validate: func(t *testing.T, result r3.Filters) {
-				assert.Empty(t, result)
+				be.AssertThat(t, result, be.Empty())
 			},
 		},
 		{
 			name:   "unknown operator treated as non-filter",
 			values: url.Values{"status__xyz": {"value"}},
 			validate: func(t *testing.T, result r3.Filters) {
-				assert.Empty(t, result)
+				be.AssertThat(t, result, be.Empty())
 			},
 		},
 		{
 			name:   "like operator",
 			values: url.Values{"name__like": {"John%"}},
 			validate: func(t *testing.T, result r3.Filters) {
-				require.Len(t, result, 1)
-				assert.Equal(t, "name", result[0].Field.String())
-				assert.Equal(t, r3.OperatorLike, result[0].Operator)
-				assert.Equal(t, "John%", result[0].Value)
+				be.RequireThat(t, result, be.HaveLength(1))
+				be.AssertThat(t, result[0].Field.String(), be.Eq("name"))
+				be.AssertThat(t, result[0].Operator, be.Eq(r3.OperatorLike))
+				be.AssertThat(t, result[0].Value, be.Eq("John%"))
 			},
 		},
 	}
@@ -92,7 +89,7 @@ func TestParseDjangoFilters(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result, err := r3url.ParseDjangoFilters(tt.values, cfg)
-			require.NoError(t, err)
+			be.NoError(t, err)
 			if tt.validate != nil {
 				tt.validate(t, result)
 			}
@@ -117,25 +114,25 @@ func TestParseDjangoFilters_Deterministic(t *testing.T) {
 	}
 
 	first, err := r3url.ParseDjangoFilters(values, cfg)
-	require.NoError(t, err)
-	require.Len(t, first, 5)
+	be.NoError(t, err)
+	be.RequireThat(t, first, be.HaveLength(5))
 
 	fields := make([]string, len(first))
 	for i, f := range first {
 		fields[i] = f.Field.String()
 	}
 	// Sorted by key: "age", "country", "name", "status", "tags".
-	assert.Equal(t, []string{"age", "country", "name", "status", "tags"}, fields)
+	be.AssertThat(t, fields, be.Eq([]string{"age", "country", "name", "status", "tags"}))
 
 	// Re-parsing many times must produce the identical order.
 	for range 50 {
 		again, err := r3url.ParseDjangoFilters(values, cfg)
-		require.NoError(t, err)
+		be.NoError(t, err)
 		got := make([]string, len(again))
 		for i, f := range again {
 			got[i] = f.Field.String()
 		}
-		assert.Equal(t, fields, got)
+		be.AssertThat(t, got, be.Eq(fields))
 	}
 }
 
@@ -144,8 +141,8 @@ func TestParseDjangoFilters_Disabled(t *testing.T) {
 	values := url.Values{"status": {"active"}}
 
 	result, err := r3url.ParseDjangoFilters(values, cfg)
-	require.NoError(t, err)
-	assert.Nil(t, result)
+	be.NoError(t, err)
+	be.AssertThat(t, result, be.Nil())
 }
 
 func TestParseDjangoFilters_AllFieldsAllowed(t *testing.T) {
@@ -155,8 +152,8 @@ func TestParseDjangoFilters_AllFieldsAllowed(t *testing.T) {
 
 	values := url.Values{"status": {"active"}, "age__gte": {"18"}}
 	result, err := r3url.ParseDjangoFilters(values, cfg)
-	require.NoError(t, err)
-	assert.Len(t, result, 2)
+	be.NoError(t, err)
+	be.AssertThat(t, result, be.HaveLength(2))
 }
 
 func TestFormatDjangoFilters(t *testing.T) {
@@ -180,7 +177,7 @@ func TestFormatDjangoFilters(t *testing.T) {
 
 	// Assert on the produced url.Values via be_url by wrapping them in a *url.URL.
 	u := &url.URL{RawQuery: result.Encode()}
-	betestify.Assert(t, u, be_url.URL(
+	be.AssertThat(t, u, be_url.URL(
 		// plain-value form: bare field for the default "eq" operator
 		be_url.HavingSearchParam("status", "active"),
 		// matcher-value form: the "__gte" suffix encodes to "age__gte"
@@ -209,7 +206,7 @@ func TestFormatDjangoFilters_SkipsGroups(t *testing.T) {
 
 	// AND/OR groups are not representable in Django style, so nothing is emitted.
 	u := &url.URL{RawQuery: result.Encode()}
-	betestify.Assert(t, u, be_url.URL(be_url.HavingRawQuery("")))
+	be.AssertThat(t, u, be_url.URL(be_url.HavingRawQuery("")))
 }
 
 // TestFormatQuery_DjangoEndToEnd exercises the full FormatQuery -> url.Values path
@@ -242,10 +239,10 @@ func TestFormatQuery_DjangoEndToEnd(t *testing.T) {
 	}
 
 	values, err := r3url.FormatQuery(q, r3url.WithDjangoStyleFilters("status", "age", "tags"))
-	betestify.Assert(t, err, be.Succeed())
+	be.AssertThat(t, err, be.Succeed())
 
 	u := &url.URL{RawQuery: values.Encode()}
-	betestify.Assert(t, u, be_url.URL(
+	be.AssertThat(t, u, be_url.URL(
 		// Django-style filters: bare field for eq, "__gt" suffix for gt.
 		be_url.HavingSearchParam("status", "active"),
 		be_url.HavingSearchParam("age__gt", be_reflected.AsNumericString()),
@@ -260,8 +257,8 @@ func TestFormatQuery_DjangoEndToEnd(t *testing.T) {
 
 	// HavingMultipleSearchParam reads the []string slice for a key; each Django
 	// param here is single-valued, so the slice has exactly one element.
-	betestify.Assert(t, u, be_url.HavingMultipleSearchParam("status", be.HaveLength(1)))
+	be.AssertThat(t, u, be_url.HavingMultipleSearchParam("status", be.HaveLength(1)))
 
 	// be.HaveKeyWithValue works directly on url.Values (a map[string][]string).
-	betestify.Assert(t, values, be.HaveKeyWithValue("status", []string{"active"}))
+	be.AssertThat(t, values, be.HaveKeyWithValue("status", []string{"active"}))
 }

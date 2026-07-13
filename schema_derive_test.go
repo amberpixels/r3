@@ -1,11 +1,11 @@
 package r3_test
 
 import (
-	"slices"
 	"testing"
 	"time"
 
 	"github.com/amberpixels/r3"
+	"github.com/expectto/be"
 )
 
 // schemaModel exercises every tag combination and default-rule exception.
@@ -36,9 +36,7 @@ type schemaChild struct {
 func attr(t *testing.T, s r3.Schema, name string) r3.Attribute {
 	t.Helper()
 	a, ok := s.Lookup(name)
-	if !ok {
-		t.Fatalf("attribute %q not found in schema", name)
-	}
+	be.RequireThat(t, ok, be.True())
 	return a
 }
 
@@ -73,12 +71,8 @@ func TestSchemaOf_DefaultCapabilities(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			a := attr(t, s, tc.name)
-			if a.Caps != tc.caps {
-				t.Errorf("caps = %05b, want %05b", a.Caps, tc.caps)
-			}
-			if a.Type != tc.typ {
-				t.Errorf("type = %q, want %q", a.Type, tc.typ)
-			}
+			be.AssertThat(t, a.Caps, be.Eq(tc.caps))
+			be.AssertThat(t, a.Type, be.Eq(tc.typ))
 		})
 	}
 }
@@ -87,76 +81,53 @@ func TestSchemaOf_SecretIsHidden(t *testing.T) {
 	s := r3.SchemaOf[schemaModel]()
 	a := attr(t, s, "secret_token")
 	for _, c := range []r3.Capability{r3.Filterable, r3.Sortable, r3.Queryable} {
-		if a.Has(c) {
-			t.Errorf("secret_token should not have capability %05b", c)
-		}
+		be.AssertThat(t, a.Has(c), be.False())
 	}
 }
 
 func TestSchemaOf_EnumValues(t *testing.T) {
 	s := r3.SchemaOf[schemaModel]()
 	a := attr(t, s, "status")
-	want := []string{"draft", "planned", "published"}
-	if !slices.Equal(a.Enum, want) {
-		t.Errorf("enum = %v, want %v", a.Enum, want)
-	}
+	be.AssertThat(t, a.Enum, be.Eq([]string{"draft", "planned", "published"}))
 }
 
 func TestSchemaOf_OperatorsByType(t *testing.T) {
 	s := r3.SchemaOf[schemaModel]()
 
 	// Numeric attributes get range operators; strings get LIKE family.
-	if !slices.Contains(attr(t, s, "weight").Ops, r3.OperatorBetween) {
-		t.Error("weight (int) should allow Between")
-	}
-	if slices.Contains(attr(t, s, "title").Ops, r3.OperatorBetween) {
-		t.Error("title (string) should not allow Between")
-	}
-	if !slices.Contains(attr(t, s, "title").Ops, r3.OperatorILike) {
-		t.Error("title (string) should allow ILike")
-	}
+	be.AssertThat(t, attr(t, s, "weight").Ops, be.ContainElement(r3.OperatorBetween))
+	be.AssertThat(t, attr(t, s, "title").Ops, be.Not(be.ContainElement(r3.OperatorBetween)))
+	be.AssertThat(t, attr(t, s, "title").Ops, be.ContainElement(r3.OperatorILike))
 	// Non-filterable attribute carries no operators.
-	if ops := attr(t, s, "secret_token").Ops; ops != nil {
-		t.Errorf("secret_token should have no operators, got %v", ops)
-	}
+	be.AssertThat(t, attr(t, s, "secret_token").Ops, be.Nil())
 }
 
 func TestSchemaOf_Relation(t *testing.T) {
 	s := r3.SchemaOf[schemaModel]()
 	a := attr(t, s, "children")
-	if a.Type != r3.TypeRel {
-		t.Fatalf("children type = %q, want relation", a.Type)
-	}
-	if a.Caps != r3.Queryable {
-		t.Errorf("relation caps = %05b, want queryable-only", a.Caps)
-	}
-	if a.Relation == nil || a.Relation.Target != "schema_child" || a.Relation.Kind != "has-many" {
-		t.Errorf("relation ref = %+v, want target=schema_child kind=has-many", a.Relation)
-	}
+	be.RequireThat(t, a.Type, be.Eq(r3.TypeRel))
+	be.AssertThat(t, a.Caps, be.Eq(r3.Queryable))
+	be.RequireThat(t, a.Relation, be.NotNil())
+	be.AssertThat(t, a.Relation.Target, be.Eq("schema_child"))
+	be.AssertThat(t, a.Relation.Kind, be.Eq("has-many"))
 }
 
 func TestSchemaOf_SkipsIgnoredAndUnexported(t *testing.T) {
 	s := r3.SchemaOf[schemaModel]()
-	if _, ok := s.Lookup("ignored"); ok {
-		t.Error("r3:\"-\" field should be skipped")
-	}
+	_, ok := s.Lookup("ignored")
+	be.AssertThat(t, ok, be.False())
 }
 
 func TestSchemaOf_DeterministicOrder(t *testing.T) {
 	a := r3.SchemaOf[schemaModel]().Attributes()
 	b := r3.SchemaOf[schemaModel]().Attributes()
-	if len(a) != len(b) {
-		t.Fatalf("attribute count changed between calls: %d vs %d", len(a), len(b))
-	}
+	be.RequireThat(t, a, be.HaveLength(len(b)))
 	for i := range a {
-		if a[i].Name != b[i].Name {
-			t.Errorf("order differs at %d: %q vs %q", i, a[i].Name, b[i].Name)
-		}
+		be.AssertThat(t, a[i].Name, be.Eq(b[i].Name))
 	}
 	// First declared attribute must come first.
-	if len(a) == 0 || a[0].Name != "id" {
-		t.Errorf("first attribute = %q, want id", a[0].Name)
-	}
+	be.RequireThat(t, a, be.NotEmpty())
+	be.AssertThat(t, a[0].Name, be.Eq("id"))
 }
 
 func TestSchemaOf_Writable(t *testing.T) {
@@ -173,12 +144,8 @@ func TestSchemaOf_Writable(t *testing.T) {
 		{"missing", false, false},
 	}
 	for _, tc := range cases {
-		if got := s.Writable(tc.name, r3.WriteOpCreate); got != tc.create {
-			t.Errorf("Writable(%q, create) = %v, want %v", tc.name, got, tc.create)
-		}
-		if got := s.Writable(tc.name, r3.WriteOpMutate); got != tc.mutate {
-			t.Errorf("Writable(%q, mutate) = %v, want %v", tc.name, got, tc.mutate)
-		}
+		be.AssertThat(t, s.Writable(tc.name, r3.WriteOpCreate), be.Eq(tc.create))
+		be.AssertThat(t, s.Writable(tc.name, r3.WriteOpMutate), be.Eq(tc.mutate))
 	}
 }
 
@@ -191,14 +158,9 @@ func TestSchemaOf_With_Override(t *testing.T) {
 	)
 
 	// Original schema is unchanged (immutability).
-	if !s.Writable("title", r3.WriteOpMutate) {
-		t.Error("original schema mutated by With")
-	}
-	if a := attr(t, s2, "title"); a.Has(r3.Mutable) {
-		t.Error("override did not tighten title caps")
-	}
+	be.AssertThat(t, s.Writable("title", r3.WriteOpMutate), be.True())
+	be.AssertThat(t, attr(t, s2, "title").Has(r3.Mutable), be.False())
 	c := attr(t, s2, "raids_created")
-	if !c.Computed || !c.Has(r3.Sortable) {
-		t.Errorf("computed attribute not added correctly: %+v", c)
-	}
+	be.AssertThat(t, c.Computed, be.True())
+	be.AssertThat(t, c.Has(r3.Sortable), be.True())
 }

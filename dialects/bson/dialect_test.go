@@ -5,6 +5,7 @@ import (
 
 	"github.com/amberpixels/r3"
 	r3bson "github.com/amberpixels/r3/dialects/bson"
+	"github.com/expectto/be"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
@@ -12,9 +13,7 @@ func TestFilterToBSON_SimpleEq(t *testing.T) {
 	f := r3.F(r3.NewFieldSpec("name"), "Alice")
 
 	doc, err := r3bson.FilterToBSON(f)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	be.NoError(t, err)
 
 	// Expected: {"name": {"$eq": "Alice"}}
 	expected := bson.D{{Key: "name", Value: bson.D{{Key: "$eq", Value: "Alice"}}}}
@@ -25,9 +24,7 @@ func TestFilterToBSON_NilValue(t *testing.T) {
 	f := r3.F(r3.NewFieldSpec("deleted_at"), nil)
 
 	doc, err := r3bson.FilterToBSON(f)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	be.NoError(t, err)
 
 	// Expected: {"deleted_at": {"$eq": null}}
 	expected := bson.D{{Key: "deleted_at", Value: bson.D{{Key: "$eq", Value: nil}}}}
@@ -38,9 +35,7 @@ func TestFilterToBSON_Gt(t *testing.T) {
 	f := r3.Fop(r3.NewFieldSpec("age"), r3.OperatorGt, 18)
 
 	doc, err := r3bson.FilterToBSON(f)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	be.NoError(t, err)
 
 	expected := bson.D{{Key: "age", Value: bson.D{{Key: "$gt", Value: 18}}}}
 	assertBSONEqual(t, expected, doc)
@@ -50,9 +45,7 @@ func TestFilterToBSON_In(t *testing.T) {
 	f := r3.Fop(r3.NewFieldSpec("status"), r3.OperatorIn, []string{"active", "pending"})
 
 	doc, err := r3bson.FilterToBSON(f)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	be.NoError(t, err)
 
 	expected := bson.D{{Key: "status", Value: bson.D{{Key: "$in", Value: []string{"active", "pending"}}}}}
 	assertBSONEqual(t, expected, doc)
@@ -62,9 +55,7 @@ func TestFilterToBSON_Like(t *testing.T) {
 	f := r3.FLike(r3.NewFieldSpec("name"), "%alice%")
 
 	doc, err := r3bson.FilterToBSON(f)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	be.NoError(t, err)
 
 	// LIKE "%alice%" -> regex "^.*alice.*$"
 	expected := bson.D{{Key: "name", Value: bson.D{
@@ -77,9 +68,7 @@ func TestFilterToBSON_ILike(t *testing.T) {
 	f := r3.FILike(r3.NewFieldSpec("name"), "%alice%")
 
 	doc, err := r3bson.FilterToBSON(f)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	be.NoError(t, err)
 
 	// ILIKE "%alice%" -> regex "^.*alice.*$" with options "i"
 	expected := bson.D{{Key: "name", Value: bson.D{
@@ -96,9 +85,7 @@ func TestFilterToBSON_AndGroup(t *testing.T) {
 	)
 
 	doc, err := r3bson.FilterToBSON(f)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	be.NoError(t, err)
 
 	expected := bson.D{{Key: "$and", Value: bson.A{
 		bson.D{{Key: "name", Value: bson.D{{Key: "$eq", Value: "Alice"}}}},
@@ -114,9 +101,7 @@ func TestFilterToBSON_OrGroup(t *testing.T) {
 	)
 
 	doc, err := r3bson.FilterToBSON(f)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	be.NoError(t, err)
 
 	expected := bson.D{{Key: "$or", Value: bson.A{
 		bson.D{{Key: "status", Value: bson.D{{Key: "$eq", Value: "active"}}}},
@@ -132,9 +117,7 @@ func TestFiltersToBSON_MultipleFilters(t *testing.T) {
 	}
 
 	doc, err := r3bson.FiltersToBSON(filters)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	be.NoError(t, err)
 
 	// Multiple filters combined with $and
 	expected := bson.D{{Key: "$and", Value: bson.A{
@@ -146,13 +129,9 @@ func TestFiltersToBSON_MultipleFilters(t *testing.T) {
 
 func TestFiltersToBSON_Empty(t *testing.T) {
 	doc, err := r3bson.FiltersToBSON(nil)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	be.NoError(t, err)
 
-	if len(doc) != 0 {
-		t.Fatalf("expected empty bson.D, got %v", doc)
-	}
+	be.RequireThat(t, doc, be.Empty())
 }
 
 func TestSortsToBSON(t *testing.T) {
@@ -162,9 +141,7 @@ func TestSortsToBSON(t *testing.T) {
 	}
 
 	doc, err := r3bson.SortsToBSON(sorts)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	be.NoError(t, err)
 
 	expected := bson.D{
 		{Key: "name", Value: 1},
@@ -192,17 +169,13 @@ func TestFieldsToBSON_Projection(t *testing.T) {
 
 func TestFieldsToBSON_Empty(t *testing.T) {
 	doc := r3bson.FieldsToBSON(nil)
-	if doc != nil {
-		t.Fatalf("expected nil for empty fields, got %v", doc)
-	}
+	be.RequireThat(t, doc, be.Nil())
 }
 
 func TestFilterToBSON_InvalidField(t *testing.T) {
 	f := r3.F(r3.NewFieldSpec("1invalid"), "foo")
 	_, err := r3bson.FilterToBSON(f)
-	if err == nil {
-		t.Fatal("expected error for invalid field name")
-	}
+	be.Error(t, err)
 }
 
 func TestFilterToBSON_Between(t *testing.T) {
@@ -210,9 +183,7 @@ func TestFilterToBSON_Between(t *testing.T) {
 	f := r3.Fop(r3.NewFieldSpec("age"), r3.OperatorBetween, []int{18, 65})
 
 	doc, err := r3bson.FilterToBSON(f)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	be.NoError(t, err)
 
 	expected := bson.D{{Key: "age", Value: bson.D{
 		{Key: "$gte", Value: 18},
@@ -226,9 +197,7 @@ func TestFilterToBSON_BetweenEx(t *testing.T) {
 	f := r3.Fop(r3.NewFieldSpec("age"), r3.OperatorBetweenEx, []int{18, 65})
 
 	doc, err := r3bson.FilterToBSON(f)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	be.NoError(t, err)
 
 	expected := bson.D{{Key: "age", Value: bson.D{
 		{Key: "$gt", Value: 18},
@@ -242,9 +211,7 @@ func TestFilterToBSON_BetweenExInc(t *testing.T) {
 	f := r3.Fop(r3.NewFieldSpec("age"), r3.OperatorBetweenExInc, []int{18, 65})
 
 	doc, err := r3bson.FilterToBSON(f)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	be.NoError(t, err)
 
 	expected := bson.D{{Key: "age", Value: bson.D{
 		{Key: "$gt", Value: 18},
@@ -258,9 +225,7 @@ func TestFilterToBSON_BetweenIncEx(t *testing.T) {
 	f := r3.Fop(r3.NewFieldSpec("age"), r3.OperatorBetweenIncEx, []int{18, 65})
 
 	doc, err := r3bson.FilterToBSON(f)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	be.NoError(t, err)
 
 	expected := bson.D{{Key: "age", Value: bson.D{
 		{Key: "$gte", Value: 18},
@@ -273,16 +238,12 @@ func TestFilterToBSON_BetweenInvalidValue(t *testing.T) {
 	// Non-slice value should fail
 	f := r3.Fop(r3.NewFieldSpec("age"), r3.OperatorBetween, 18)
 	_, err := r3bson.FilterToBSON(f)
-	if err == nil {
-		t.Fatal("expected error for non-slice between value")
-	}
+	be.Error(t, err)
 
 	// Wrong number of elements
 	f = r3.Fop(r3.NewFieldSpec("age"), r3.OperatorBetween, []int{18})
 	_, err = r3bson.FilterToBSON(f)
-	if err == nil {
-		t.Fatal("expected error for single-element between value")
-	}
+	be.Error(t, err)
 }
 
 // assertBSONEqual compares two bson.D documents by marshalling them to bytes.
@@ -290,15 +251,9 @@ func assertBSONEqual(t *testing.T, expected, actual bson.D) {
 	t.Helper()
 
 	expBytes, err := bson.Marshal(expected)
-	if err != nil {
-		t.Fatalf("failed to marshal expected: %v", err)
-	}
+	be.NoError(t, err)
 	actBytes, err := bson.Marshal(actual)
-	if err != nil {
-		t.Fatalf("failed to marshal actual: %v", err)
-	}
+	be.NoError(t, err)
 
-	if string(expBytes) != string(actBytes) {
-		t.Errorf("BSON mismatch:\n  expected: %v\n  actual:   %v", expected, actual)
-	}
+	be.AssertThat(t, string(actBytes), be.Eq(string(expBytes)))
 }

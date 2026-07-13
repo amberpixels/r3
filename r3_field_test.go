@@ -5,8 +5,6 @@ import (
 
 	"github.com/amberpixels/r3"
 	"github.com/expectto/be"
-	betestify "github.com/expectto/be/x/testify"
-	"github.com/stretchr/testify/require"
 )
 
 func TestValidateIdentifier(t *testing.T) {
@@ -26,7 +24,7 @@ func TestValidateIdentifier(t *testing.T) {
 
 	for _, s := range valid {
 		t.Run("valid/"+s, func(t *testing.T) {
-			betestify.Assert(t, r3.ValidateIdentifier(s), be.Succeed())
+			be.AssertThat(t, r3.ValidateIdentifier(s), be.Succeed())
 		})
 	}
 
@@ -53,10 +51,8 @@ func TestValidateIdentifier(t *testing.T) {
 
 	for _, s := range invalid {
 		t.Run("invalid/"+s, func(t *testing.T) {
-			err := r3.ValidateIdentifier(s)
-			betestify.Assert(t, err, be.HaveOccurred())
-			// be has no ErrorIs matcher; keep testify for the sentinel check.
-			require.ErrorIs(t, err, r3.ErrInvalidIdentifier)
+			// be.MatchError is the errors.Is-style sentinel check (implies non-nil).
+			be.AssertThat(t, r3.ValidateIdentifier(s), be.MatchError(r3.ErrInvalidIdentifier))
 		})
 	}
 }
@@ -128,7 +124,7 @@ func TestFieldsMergeWith(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			merged := tc.a.MergeWith(tc.b)
-			betestify.Assert(t, merged, be.Eq(tc.expected), "Merged fields did not match expected result")
+			be.AssertThat(t, merged, be.Eq(tc.expected), "Merged fields did not match expected result")
 		})
 	}
 }
@@ -180,7 +176,7 @@ func TestFieldsDedupe(t *testing.T) {
 			copy(input, tc.input)
 
 			input.Dedupe()
-			betestify.Assert(t, input, be.Eq(tc.expected), "Dedupe result did not match expected output")
+			be.AssertThat(t, input, be.Eq(tc.expected), "Dedupe result did not match expected output")
 		})
 	}
 }

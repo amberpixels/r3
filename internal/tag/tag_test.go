@@ -2,10 +2,10 @@ package r3tag_test
 
 import (
 	"reflect"
-	"slices"
 	"testing"
 
 	r3tag "github.com/amberpixels/r3/internal/tag"
+	"github.com/expectto/be"
 )
 
 type capModel struct {
@@ -23,46 +23,36 @@ type capModel struct {
 func fieldByName(t *testing.T, name string) reflect.StructField {
 	t.Helper()
 	f, ok := reflect.TypeFor[capModel]().FieldByName(name)
-	if !ok {
-		t.Fatalf("field %q not found", name)
-	}
+	be.RequireThat(t, ok, be.True(), "field %q not found", name)
 	return f
 }
 
 func TestParseColumnTag_CapabilityFlags(t *testing.T) {
 	slug := r3tag.ParseColumnTag(fieldByName(t, "Slug"))
-	if slug.Column != "slug" || !slug.Immutable || slug.ReadOnly {
-		t.Errorf("slug = %+v, want column=slug immutable=true readonly=false", slug)
-	}
+	be.AssertThat(t, slug, be.HaveFields(map[string]any{
+		"Column": "slug", "Immutable": true, "ReadOnly": false,
+	}))
 
 	pop := r3tag.ParseColumnTag(fieldByName(t, "Pop"))
-	if pop.Column != "population" || !pop.ReadOnly {
-		t.Errorf("population = %+v, want readonly=true", pop)
-	}
+	be.AssertThat(t, pop, be.HaveFields(map[string]any{"Column": "population", "ReadOnly": true}))
 
 	secret := r3tag.ParseColumnTag(fieldByName(t, "Secret"))
-	if !secret.NoFilter || !secret.NoSort || !secret.NoOutput {
-		t.Errorf("secret = %+v, want all hide flags set", secret)
-	}
+	be.AssertThat(t, secret, be.HaveFields(map[string]any{
+		"NoFilter": true, "NoSort": true, "NoOutput": true,
+	}))
 
 	status := r3tag.ParseColumnTag(fieldByName(t, "Status"))
-	if want := []string{"draft", "planned", "published"}; !slices.Equal(status.Enum, want) {
-		t.Errorf("status enum = %v, want %v", status.Enum, want)
-	}
-	if status.Column != "status" {
-		t.Errorf("status column = %q, want status", status.Column)
-	}
+	be.AssertThat(t, status.Enum, be.Eq([]string{"draft", "planned", "published"}))
+	be.AssertThat(t, status.Column, be.Eq("status"))
 
 	start := r3tag.ParseColumnTag(fieldByName(t, "Start"))
-	if start.Column != "started_at" || start.Codec != "unixtime" {
-		t.Errorf("start = %+v, want column=started_at codec=unixtime", start)
-	}
+	be.AssertThat(t, start, be.HaveFields(map[string]any{"Column": "started_at", "Codec": "unixtime"}))
 
 	// A codec composes with capability flags on the same field.
 	combo := r3tag.ParseColumnTag(fieldByName(t, "Combo"))
-	if combo.Column != "combo" || combo.Codec != "unixmilli" || !combo.ReadOnly {
-		t.Errorf("combo = %+v, want column=combo codec=unixmilli readonly=true", combo)
-	}
+	be.AssertThat(t, combo, be.HaveFields(map[string]any{
+		"Column": "combo", "Codec": "unixmilli", "ReadOnly": true,
+	}))
 }
 
 type gormModel struct {
@@ -78,56 +68,37 @@ type gormModel struct {
 func gormFieldByName(t *testing.T, name string) reflect.StructField {
 	t.Helper()
 	f, ok := reflect.TypeFor[gormModel]().FieldByName(name)
-	if !ok {
-		t.Fatalf("field %q not found", name)
-	}
+	be.RequireThat(t, ok, be.True(), "field %q not found", name)
 	return f
 }
 
 func TestParseColumnTag_GormFallback(t *testing.T) {
 	id := r3tag.ParseColumnTag(gormFieldByName(t, "ID"))
-	if id.Column != "id" || !id.IsPK {
-		t.Errorf("id = %+v, want column=id pk=true", id)
-	}
+	be.AssertThat(t, id, be.HaveFields(map[string]any{"Column": "id", "IsPK": true}))
 
 	loc := r3tag.ParseColumnTag(gormFieldByName(t, "LocationID"))
-	if loc.Column != "venue_id" {
-		t.Errorf("location = %+v, want column=venue_id", loc)
-	}
+	be.AssertThat(t, loc.Column, be.Eq("venue_id"))
 
 	name := r3tag.ParseColumnTag(gormFieldByName(t, "Name"))
-	if name.Column != "full_name" || !name.IsPK {
-		t.Errorf("name = %+v, want column=full_name pk=true", name)
-	}
+	be.AssertThat(t, name, be.HaveFields(map[string]any{"Column": "full_name", "IsPK": true}))
 
 	skipped := r3tag.ParseColumnTag(gormFieldByName(t, "Skipped"))
-	if !skipped.Skip {
-		t.Errorf("skipped = %+v, want skip=true", skipped)
-	}
+	be.AssertThat(t, skipped.Skip, be.True())
 
 	dbWins := r3tag.ParseColumnTag(gormFieldByName(t, "DBWins"))
-	if dbWins.Column != "db_name" {
-		t.Errorf("dbWins = %+v, want column=db_name (db tag beats gorm)", dbWins)
-	}
+	be.AssertThat(t, dbWins.Column, be.Eq("db_name"))
 
 	r3Wins := r3tag.ParseColumnTag(gormFieldByName(t, "R3Wins"))
-	if r3Wins.Column != "r3_name" || r3Wins.Skip {
-		t.Errorf("r3Wins = %+v, want column=r3_name skip=false (r3 tag beats gorm)", r3Wins)
-	}
+	be.AssertThat(t, r3Wins, be.HaveFields(map[string]any{"Column": "r3_name", "Skip": false}))
 
 	plain := r3tag.ParseColumnTag(gormFieldByName(t, "Plain"))
-	if plain.Column != "plain" {
-		t.Errorf("plain = %+v, want column=plain (snake_case fallback)", plain)
-	}
+	be.AssertThat(t, plain.Column, be.Eq("plain"))
 }
 
 func TestParseColumnTag_PreservesExistingBehavior(t *testing.T) {
 	id := r3tag.ParseColumnTag(fieldByName(t, "ID"))
-	if id.Column != "id" || !id.IsPK {
-		t.Errorf("id = %+v, want column=id pk=true", id)
-	}
+	be.AssertThat(t, id, be.HaveFields(map[string]any{"Column": "id", "IsPK": true}))
+
 	del := r3tag.ParseColumnTag(fieldByName(t, "Del"))
-	if del.Column != "deleted_at" || !del.SoftDelete {
-		t.Errorf("del = %+v, want column=deleted_at soft_delete=true", del)
-	}
+	be.AssertThat(t, del, be.HaveFields(map[string]any{"Column": "deleted_at", "SoftDelete": true}))
 }

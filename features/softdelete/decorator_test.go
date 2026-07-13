@@ -2,13 +2,13 @@ package softdelete_test
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sync"
 	"testing"
 
 	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/features/softdelete"
+	"github.com/expectto/be"
 )
 
 // ── Test entity ──────────────────────────────────────────────────────────
@@ -212,15 +212,9 @@ func TestCRUD_PassthroughCreate(t *testing.T) {
 
 	ctx := context.Background()
 	user, err := repo.Create(ctx, User{Name: "Alice", Email: "alice@example.com"})
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
-	if user.ID == 0 {
-		t.Fatal("expected non-zero ID")
-	}
-	if user.Name != "Alice" {
-		t.Errorf("expected Name='Alice', got %q", user.Name)
-	}
+	be.NoError(t, err)
+	be.RequireThat(t, user.ID, be.NonZero())
+	be.AssertThat(t, user.Name, be.Eq("Alice"))
 }
 
 func TestCRUD_PassthroughGet(t *testing.T) {
@@ -231,12 +225,8 @@ func TestCRUD_PassthroughGet(t *testing.T) {
 	created, _ := repo.Create(ctx, User{Name: "Bob", Email: "bob@example.com"})
 
 	got, err := repo.Get(ctx, created.ID)
-	if err != nil {
-		t.Fatalf("Get failed: %v", err)
-	}
-	if got.Name != "Bob" {
-		t.Errorf("expected Name='Bob', got %q", got.Name)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, got.Name, be.Eq("Bob"))
 }
 
 func TestCRUD_PassthroughList(t *testing.T) {
@@ -248,15 +238,9 @@ func TestCRUD_PassthroughList(t *testing.T) {
 	_, _ = repo.Create(ctx, User{Name: "B"})
 
 	list, count, err := repo.List(ctx)
-	if err != nil {
-		t.Fatalf("List failed: %v", err)
-	}
-	if count != 2 {
-		t.Errorf("expected count=2, got %d", count)
-	}
-	if len(list) != 2 {
-		t.Errorf("expected 2 items, got %d", len(list))
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, count, be.Eq(int64(2)))
+	be.AssertThat(t, list, be.HaveLength(2))
 }
 
 func TestCRUD_PassthroughUpdate(t *testing.T) {
@@ -267,12 +251,8 @@ func TestCRUD_PassthroughUpdate(t *testing.T) {
 	user, _ := repo.Create(ctx, User{Name: "Carol"})
 	user.Name = "Carol Updated"
 	updated, err := repo.Update(ctx, user)
-	if err != nil {
-		t.Fatalf("Update failed: %v", err)
-	}
-	if updated.Name != "Carol Updated" {
-		t.Errorf("expected Name='Carol Updated', got %q", updated.Name)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, updated.Name, be.Eq("Carol Updated"))
 }
 
 func TestCRUD_PassthroughPatch(t *testing.T) {
@@ -283,12 +263,8 @@ func TestCRUD_PassthroughPatch(t *testing.T) {
 	user, _ := repo.Create(ctx, User{Name: "Dave", Email: "dave@example.com"})
 	user.Email = "newemail@example.com"
 	patched, err := repo.Patch(ctx, user, r3.Fields{r3.NewFieldSpec("email")})
-	if err != nil {
-		t.Fatalf("Patch failed: %v", err)
-	}
-	if patched.Email != "newemail@example.com" {
-		t.Errorf("expected Email='newemail@example.com', got %q", patched.Email)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, patched.Email, be.Eq("newemail@example.com"))
 }
 
 func TestCRUD_PassthroughDelete(t *testing.T) {
@@ -299,15 +275,11 @@ func TestCRUD_PassthroughDelete(t *testing.T) {
 	user, _ := repo.Create(ctx, User{Name: "Eve"})
 
 	err := repo.Delete(ctx, user.ID)
-	if err != nil {
-		t.Fatalf("Delete failed: %v", err)
-	}
+	be.NoError(t, err)
 
 	// Should be soft-deleted (moved to deleted map in mock)
 	_, err = repo.Get(ctx, user.ID)
-	if err == nil {
-		t.Fatal("expected Get to fail after soft-delete")
-	}
+	be.Error(t, err)
 }
 
 // passthroughDecorator is a minimal decorator that forwards every CRUD method
@@ -354,24 +326,17 @@ func TestCRUD_RestoreThroughIntermediateDecorator(t *testing.T) {
 
 	ctx := context.Background()
 	user, _ := repo.Create(ctx, User{Name: "Heidi"})
-	if err := repo.Delete(ctx, user.ID); err != nil {
-		t.Fatalf("Delete failed: %v", err)
-	}
+	err := repo.Delete(ctx, user.ID)
+	be.NoError(t, err)
 
-	if err := repo.Restore(ctx, user.ID); err != nil {
-		t.Fatalf("Restore through intermediate decorator failed: %v", err)
-	}
+	err = repo.Restore(ctx, user.ID)
+	be.NoError(t, err)
 	restored, err := repo.Get(ctx, user.ID)
-	if err != nil {
-		t.Fatalf("Get after Restore failed: %v", err)
-	}
-	if restored.Name != "Heidi" {
-		t.Errorf("expected Name='Heidi', got %q", restored.Name)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, restored.Name, be.Eq("Heidi"))
 
-	if err := repo.HardDelete(ctx, user.ID); err != nil {
-		t.Fatalf("HardDelete through intermediate decorator failed: %v", err)
-	}
+	err = repo.HardDelete(ctx, user.ID)
+	be.NoError(t, err)
 }
 
 func TestCRUD_RestoreDelegatesToSoftDeleter(t *testing.T) {
@@ -386,24 +351,16 @@ func TestCRUD_RestoreDelegatesToSoftDeleter(t *testing.T) {
 
 	// Verify it's gone from active
 	_, err := repo.Get(ctx, user.ID)
-	if err == nil {
-		t.Fatal("expected user to be soft-deleted")
-	}
+	be.Error(t, err)
 
 	// Restore
 	err = repo.Restore(ctx, user.ID)
-	if err != nil {
-		t.Fatalf("Restore failed: %v", err)
-	}
+	be.NoError(t, err)
 
 	// Should be back
 	restored, err := repo.Get(ctx, user.ID)
-	if err != nil {
-		t.Fatalf("Get after Restore failed: %v", err)
-	}
-	if restored.Name != "Frank" {
-		t.Errorf("expected Name='Frank', got %q", restored.Name)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, restored.Name, be.Eq("Frank"))
 }
 
 func TestCRUD_HardDeleteDelegatesToSoftDeleter(t *testing.T) {
@@ -415,9 +372,7 @@ func TestCRUD_HardDeleteDelegatesToSoftDeleter(t *testing.T) {
 
 	// HardDelete should permanently remove
 	err := repo.HardDelete(ctx, user.ID)
-	if err != nil {
-		t.Fatalf("HardDelete failed: %v", err)
-	}
+	be.NoError(t, err)
 
 	// Should not be in active or deleted
 	inner.mu.Lock()
@@ -425,12 +380,8 @@ func TestCRUD_HardDeleteDelegatesToSoftDeleter(t *testing.T) {
 	_, inDeleted := inner.deleted[user.ID]
 	inner.mu.Unlock()
 
-	if inActive {
-		t.Error("expected user not to be in active data after HardDelete")
-	}
-	if inDeleted {
-		t.Error("expected user not to be in deleted data after HardDelete")
-	}
+	be.AssertThat(t, inActive, be.False())
+	be.AssertThat(t, inDeleted, be.False())
 }
 
 func TestCRUD_HardDeleteSoftDeletedRecord(t *testing.T) {
@@ -445,9 +396,7 @@ func TestCRUD_HardDeleteSoftDeletedRecord(t *testing.T) {
 
 	// Then hard-delete the soft-deleted record
 	err := repo.HardDelete(ctx, user.ID)
-	if err != nil {
-		t.Fatalf("HardDelete of soft-deleted record failed: %v", err)
-	}
+	be.NoError(t, err)
 
 	// Should be completely gone
 	inner.mu.Lock()
@@ -455,9 +404,7 @@ func TestCRUD_HardDeleteSoftDeletedRecord(t *testing.T) {
 	_, inDeleted := inner.deleted[user.ID]
 	inner.mu.Unlock()
 
-	if inActive || inDeleted {
-		t.Error("expected user to be permanently removed after HardDelete")
-	}
+	be.AssertThat(t, inActive || inDeleted, be.False())
 }
 
 func TestCRUD_RestoreReturnsErrNotSoftDeletable(t *testing.T) {
@@ -468,9 +415,7 @@ func TestCRUD_RestoreReturnsErrNotSoftDeletable(t *testing.T) {
 	user, _ := repo.Create(ctx, User{Name: "Ivan"})
 
 	err := repo.Restore(ctx, user.ID)
-	if !errors.Is(err, softdelete.ErrNotSoftDeletable) {
-		t.Fatalf("expected ErrNotSoftDeletable, got %v", err)
-	}
+	be.ErrorIs(t, err, softdelete.ErrNotSoftDeletable)
 }
 
 func TestCRUD_HardDeleteReturnsErrNotSoftDeletable(t *testing.T) {
@@ -481,9 +426,7 @@ func TestCRUD_HardDeleteReturnsErrNotSoftDeletable(t *testing.T) {
 	user, _ := repo.Create(ctx, User{Name: "Judy"})
 
 	err := repo.HardDelete(ctx, user.ID)
-	if !errors.Is(err, softdelete.ErrNotSoftDeletable) {
-		t.Fatalf("expected ErrNotSoftDeletable, got %v", err)
-	}
+	be.ErrorIs(t, err, softdelete.ErrNotSoftDeletable)
 }
 
 func TestCRUD_Inner(t *testing.T) {
@@ -492,7 +435,5 @@ func TestCRUD_Inner(t *testing.T) {
 
 	// Inner() should return the original inner CRUD
 	got := repo.Inner()
-	if got != inner {
-		t.Error("Inner() should return the wrapped CRUD")
-	}
+	be.AssertThat(t, got, be.Eq(inner))
 }

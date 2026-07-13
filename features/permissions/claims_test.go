@@ -2,11 +2,11 @@ package permissions_test
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/features/permissions"
+	"github.com/expectto/be"
 )
 
 // claimsPrincipal is an application-defined principal carried on r3.Actor.Claims.
@@ -51,9 +51,7 @@ func TestPermissions_PolicyReadsClaimsFromActor(t *testing.T) {
 		Claims: &claimsPrincipal{writableOwners: map[string]bool{"alice": true}},
 	})
 	post, err := repo.Create(seedCtx, Post{Title: "hi", OwnerID: "alice"})
-	if err != nil {
-		t.Fatalf("create as alice-writer should be allowed: %v", err)
-	}
+	be.NoError(t, err, "create as alice-writer should be allowed")
 
 	// An actor whose claims do NOT include "alice" is denied the update,
 	// purely from data carried on r3.Actor.Claims.
@@ -62,17 +60,15 @@ func TestPermissions_PolicyReadsClaimsFromActor(t *testing.T) {
 		Claims: &claimsPrincipal{writableOwners: map[string]bool{"bob": true}},
 	})
 	post.Title = "edited"
-	if _, err := repo.Update(bobCtx, post); !errors.Is(err, permissions.ErrAccessDenied) {
-		t.Fatalf("update by non-owner-writer should be denied, got: %v", err)
-	}
+	_, err = repo.Update(bobCtx, post)
+	be.ErrorIs(t, err, permissions.ErrAccessDenied,
+		"update by non-owner-writer should be denied")
 
 	// The alice-writer is allowed.
-	if _, err := repo.Update(seedCtx, post); err != nil {
-		t.Fatalf("update by alice-writer should be allowed: %v", err)
-	}
+	_, err = repo.Update(seedCtx, post)
+	be.NoError(t, err, "update by alice-writer should be allowed")
 
 	// Missing claims (system/anonymous actor) is denied for writes.
-	if _, err := repo.Update(context.Background(), post); !errors.Is(err, permissions.ErrAccessDenied) {
-		t.Fatalf("update with no claims should be denied, got: %v", err)
-	}
+	_, err = repo.Update(context.Background(), post)
+	be.ErrorIs(t, err, permissions.ErrAccessDenied, "update with no claims should be denied")
 }

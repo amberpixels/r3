@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/amberpixels/r3/features/history"
+	"github.com/expectto/be"
 )
 
 // Test entity types
@@ -64,9 +65,7 @@ func TestDiff_NoChanges(t *testing.T) {
 	cur := SimpleEntity{ID: 1, Name: "Alice", Age: 30}
 
 	changes := history.Diff(old, cur)
-	if len(changes) != 0 {
-		t.Errorf("expected no changes, got %d: %v", len(changes), changes)
-	}
+	be.AssertThat(t, changes, be.Empty())
 }
 
 func TestDiff_ScalarChanges(t *testing.T) {
@@ -74,9 +73,7 @@ func TestDiff_ScalarChanges(t *testing.T) {
 	cur := SimpleEntity{ID: 1, Name: "Bob", Age: 25}
 
 	changes := history.Diff(old, cur)
-	if len(changes) != 2 {
-		t.Fatalf("expected 2 changes, got %d: %v", len(changes), changes)
-	}
+	be.RequireThat(t, changes, be.HaveLength(2))
 
 	// Check name change
 	assertChange(t, changes, "name")
@@ -89,9 +86,7 @@ func TestDiff_IDChangeTracked(t *testing.T) {
 	cur := SimpleEntity{ID: 2, Name: "Alice", Age: 30}
 
 	changes := history.Diff(old, cur)
-	if len(changes) != 1 {
-		t.Fatalf("expected 1 change, got %d: %v", len(changes), changes)
-	}
+	be.RequireThat(t, changes, be.HaveLength(1))
 	assertChange(t, changes, "id")
 }
 
@@ -100,9 +95,7 @@ func TestDiff_R3Tags(t *testing.T) {
 	cur := TaggedEntity{ID: 1, Title: "New", Status: "published"}
 
 	changes := history.Diff(old, cur)
-	if len(changes) != 2 {
-		t.Fatalf("expected 2 changes, got %d: %v", len(changes), changes)
-	}
+	be.RequireThat(t, changes, be.HaveLength(2))
 
 	assertChange(t, changes, "title")
 	assertChange(t, changes, "status")
@@ -121,9 +114,7 @@ func TestDiff_NestedStruct_DotNotation(t *testing.T) {
 	}
 
 	changes := history.Diff(old, cur)
-	if len(changes) != 2 {
-		t.Fatalf("expected 2 changes, got %d: %v", len(changes), changes)
-	}
+	be.RequireThat(t, changes, be.HaveLength(2))
 
 	assertChange(t, changes, "address.street")
 	assertChange(t, changes, "address.zip")
@@ -138,9 +129,7 @@ func TestDiff_PointerFields(t *testing.T) {
 	cur := EntityWithPointer{ID: 1, Name: "A", Score: &score2, Note: &note}
 
 	changes := history.Diff(old, cur)
-	if len(changes) != 2 {
-		t.Fatalf("expected 2 changes, got %d: %v", len(changes), changes)
-	}
+	be.RequireThat(t, changes, be.HaveLength(2))
 
 	assertChange(t, changes, "score")
 	assertChange(t, changes, "note")
@@ -154,13 +143,9 @@ func TestDiff_TimeField(t *testing.T) {
 	cur := EntityWithTime{ID: 1, Name: "A", CreatedAt: t2}
 
 	changes := history.Diff(old, cur)
-	if len(changes) != 1 {
-		t.Fatalf("expected 1 change, got %d: %v", len(changes), changes)
-	}
+	be.RequireThat(t, changes, be.HaveLength(1))
 
-	if changes[0].Field != "created_at" {
-		t.Errorf("expected field 'created_at', got %q", changes[0].Field)
-	}
+	be.AssertThat(t, changes[0].Field, be.Eq("created_at"))
 }
 
 func TestDiff_SkipsSliceFields(t *testing.T) {
@@ -169,9 +154,7 @@ func TestDiff_SkipsSliceFields(t *testing.T) {
 
 	changes := history.Diff(old, cur)
 	// Only Name should show up, Tags and Items are slice types (skipped)
-	if len(changes) != 1 {
-		t.Fatalf("expected 1 change, got %d: %v", len(changes), changes)
-	}
+	be.RequireThat(t, changes, be.HaveLength(1))
 	assertChange(t, changes, "name")
 }
 
@@ -180,9 +163,7 @@ func TestDiff_BSONTags(t *testing.T) {
 	cur := EntityWithBSON{ID: "abc", Name: "New", Age: 25}
 
 	changes := history.Diff(old, cur)
-	if len(changes) != 2 {
-		t.Fatalf("expected 2 changes, got %d: %v", len(changes), changes)
-	}
+	be.RequireThat(t, changes, be.HaveLength(2))
 	assertChange(t, changes, "name")
 	assertChange(t, changes, "age")
 }
@@ -193,9 +174,7 @@ func TestDiffWithFields(t *testing.T) {
 
 	// Only ask for "name" changes
 	changes := history.DiffWithFields(old, cur, []string{"name"})
-	if len(changes) != 1 {
-		t.Fatalf("expected 1 change, got %d: %v", len(changes), changes)
-	}
+	be.RequireThat(t, changes, be.HaveLength(1))
 	assertChange(t, changes, "name")
 }
 
@@ -203,17 +182,11 @@ func TestDiffCreate(t *testing.T) {
 	entity := SimpleEntity{ID: 1, Name: "Alice", Age: 30}
 
 	changes := history.DiffCreate(entity)
-	if len(changes) != 3 {
-		t.Fatalf("expected 3 changes, got %d: %v", len(changes), changes)
-	}
+	be.RequireThat(t, changes, be.HaveLength(3))
 
 	for _, c := range changes {
-		if c.OldValue != nil {
-			t.Errorf("DiffCreate: field %s should have nil OldValue, got %v", c.Field, c.OldValue)
-		}
-		if c.NewValue == nil {
-			t.Errorf("DiffCreate: field %s should have non-nil NewValue", c.Field)
-		}
+		be.AssertThat(t, c.OldValue, be.Nil())
+		be.AssertThat(t, c.NewValue, be.NotNil())
 	}
 }
 
@@ -221,17 +194,11 @@ func TestDiffDelete(t *testing.T) {
 	entity := SimpleEntity{ID: 1, Name: "Alice", Age: 30}
 
 	changes := history.DiffDelete(entity)
-	if len(changes) != 3 {
-		t.Fatalf("expected 3 changes, got %d: %v", len(changes), changes)
-	}
+	be.RequireThat(t, changes, be.HaveLength(3))
 
 	for _, c := range changes {
-		if c.OldValue == nil {
-			t.Errorf("DiffDelete: field %s should have non-nil OldValue", c.Field)
-		}
-		if c.NewValue != nil {
-			t.Errorf("DiffDelete: field %s should have nil NewValue, got %v", c.Field, c.NewValue)
-		}
+		be.AssertThat(t, c.OldValue, be.NotNil())
+		be.AssertThat(t, c.NewValue, be.Nil())
 	}
 }
 
@@ -248,9 +215,7 @@ func TestResolveColumnName_Priority(t *testing.T) {
 	cur := Entity{Field1: "x", Field2: "y", Field3: "z", Field4: "w"}
 
 	changes := history.Diff(old, cur)
-	if len(changes) != 4 {
-		t.Fatalf("expected 4 changes, got %d: %v", len(changes), changes)
-	}
+	be.RequireThat(t, changes, be.HaveLength(4))
 
 	fieldNames := make(map[string]bool)
 	for _, c := range changes {
@@ -259,9 +224,7 @@ func TestResolveColumnName_Priority(t *testing.T) {
 
 	expected := []string{"r3_name", "db_only", "bson_only", "field4"}
 	for _, name := range expected {
-		if !fieldNames[name] {
-			t.Errorf("expected field %q in changes, got fields: %v", name, fieldNames)
-		}
+		be.AssertThat(t, fieldNames[name], be.True())
 	}
 }
 
@@ -269,27 +232,23 @@ func TestSnapshot_RoundTrip(t *testing.T) {
 	entity := SimpleEntity{ID: 42, Name: "Test", Age: 99}
 
 	data := history.MarshalSnapshot(entity)
-	if data == nil {
-		t.Fatal("MarshalSnapshot returned nil")
-	}
+	be.RequireThat(t, data, be.NotNil())
 
 	restored, err := history.UnmarshalSnapshot[SimpleEntity](data)
-	if err != nil {
-		t.Fatalf("UnmarshalSnapshot failed: %v", err)
-	}
+	be.NoError(t, err)
 
-	if restored != entity {
-		t.Errorf("round-trip mismatch: got %+v, want %+v", restored, entity)
-	}
+	be.AssertThat(t, restored, be.Eq(entity))
 }
 
 // assertChange checks that a FieldChange with the given field name exists.
 func assertChange(t *testing.T, changes []history.FieldChange, field string) {
 	t.Helper()
+	found := false
 	for _, c := range changes {
 		if c.Field == field {
-			return // found it
+			found = true
+			break
 		}
 	}
-	t.Errorf("expected change for field %q not found in %v", field, changes)
+	be.AssertThat(t, found, be.True(), "expected change for field %q not found in %v", field, changes)
 }

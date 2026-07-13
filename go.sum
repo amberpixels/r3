@@ -47,10 +47,8 @@ github.com/docker/go-units v0.5.0 h1:69rxXcBk27SvSaaxTtLh/8llcHD8vYHT7WSdRZ/jvr4
 github.com/docker/go-units v0.5.0/go.mod h1:fgPhTUdO+D/Jk86RDLlptpiXQzgHJF7gydDDbaIK4Dk=
 github.com/ebitengine/purego v0.10.0 h1:QIw4xfpWT6GWTzaW5XEKy3HXoqrJGx1ijYHzTF0/ISU=
 github.com/ebitengine/purego v0.10.0/go.mod h1:iIjxzd6CiRiOG0UyXP+V1+jWqUXVjPKLAI0mRfJZTmQ=
-github.com/expectto/be v1.0.0-rc.6 h1:TgOmKGRf8IypYW5qTkRp/kqyLpvSLxWY/PtESJBQ4a0=
-github.com/expectto/be v1.0.0-rc.6/go.mod h1:dnI4Ns2GqoTi99yS67rWFAP9JPWx1d/F+1xrIFJKt6U=
-github.com/expectto/be/x/testify v1.0.0-rc.5 h1:3FAszB82CuSKdXIBQROKDlMStYxOHFt7w5WCqkMQEvE=
-github.com/expectto/be/x/testify v1.0.0-rc.5/go.mod h1:UGhRErNLrCtTUl2wGKENLmNBPfbYNJNlS+ysIMhx4Bw=
+github.com/expectto/be v1.0.0-rc.8 h1:X34EkmHSX+Niz9S+7v0PNAWHLtf+l8oiElwOcA5+Jno=
+github.com/expectto/be v1.0.0-rc.8/go.mod h1:dnI4Ns2GqoTi99yS67rWFAP9JPWx1d/F+1xrIFJKt6U=
 github.com/felixge/httpsnoop v1.0.4 h1:NFTV2Zj1bL4mc9sqWACXbQFVBBg2W3GPvqp8/ESS2Wg=
 github.com/felixge/httpsnoop v1.0.4/go.mod h1:m8KPJKqk1gH5J9DgRY2ASl2lWCfGKXixSwevea8zH2U=
 github.com/fsnotify/fsnotify v1.4.9 h1:hsms1Qyu0jgnwNXIxa+/V/PDsU6CfLf6CNO8H7IWoS4=

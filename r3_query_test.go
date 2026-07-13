@@ -5,7 +5,6 @@ import (
 
 	"github.com/amberpixels/r3"
 	"github.com/expectto/be"
-	betestify "github.com/expectto/be/x/testify"
 )
 
 // A per-query Unpaginated()/NoPagination() must clear an inherited default page
@@ -15,32 +14,32 @@ func TestQueryMergeWith_UnpaginatedClearsDefault(t *testing.T) {
 
 	t.Run("Unpaginated clears the cap", func(t *testing.T) {
 		merged := base.MergeWith(r3.Query{Pagination: r3.Unpaginated()})
-		betestify.Assert(t, merged.Pagination.IsPaginated(), be.False(), "default cap must be cleared")
+		be.AssertThat(t, merged.Pagination.IsPaginated(), be.False(), "default cap must be cleared")
 	})
 
 	t.Run("NoPagination clears the cap", func(t *testing.T) {
 		merged := base.MergeWith(r3.Query{Pagination: r3.NoPagination()})
-		betestify.Assert(t, merged.Pagination.IsPaginated(), be.False(), "default cap must be cleared")
+		be.AssertThat(t, merged.Pagination.IsPaginated(), be.False(), "default cap must be cleared")
 	})
 
 	t.Run("custom size overrides the default", func(t *testing.T) {
 		merged := base.MergeWith(r3.Query{Pagination: r3.NewPaginationSpecWithSize(250)})
-		betestify.Assert(t, merged.Pagination.IsPaginated(), be.True())
-		betestify.Assert(t, merged.Pagination.GetPageSize(), be.Eq(250))
+		be.AssertThat(t, merged.Pagination.IsPaginated(), be.True())
+		be.AssertThat(t, merged.Pagination.GetPageSize(), be.Eq(250))
 	})
 
 	t.Run("partial override keeps the inherited size", func(t *testing.T) {
 		// Only the page number is set on the override; the default size survives.
 		merged := base.MergeWith(r3.Query{Pagination: r3.NewPaginationSpec(3)})
-		betestify.Assert(t, merged.Pagination.IsPaginated(), be.True())
-		betestify.Assert(t, merged.Pagination.GetPageNum(), be.Eq(3))
-		betestify.Assert(t, merged.Pagination.GetPageSize(), be.Eq(100))
+		be.AssertThat(t, merged.Pagination.IsPaginated(), be.True())
+		be.AssertThat(t, merged.Pagination.GetPageNum(), be.Eq(3))
+		be.AssertThat(t, merged.Pagination.GetPageSize(), be.Eq(100))
 	})
 
 	t.Run("no override inherits the default", func(t *testing.T) {
 		merged := base.MergeWith(r3.Query{})
-		betestify.Assert(t, merged.Pagination.IsPaginated(), be.True())
-		betestify.Assert(t, merged.Pagination.GetPageSize(), be.Eq(100))
+		be.AssertThat(t, merged.Pagination.IsPaginated(), be.True())
+		be.AssertThat(t, merged.Pagination.GetPageSize(), be.Eq(100))
 	})
 }
 
@@ -56,16 +55,16 @@ func TestQueryMergeWith_SortOverridesDefault(t *testing.T) {
 		merged := base.MergeWith(r3.Query{
 			Sorts: r3.Sorts{r3.NewSortAscSpec(r3.NewFieldSpec("price"))},
 		})
-		betestify.Require(t, merged.Sorts, be.HaveLength(1), "default sort must not remain")
-		betestify.Assert(t, merged.Sorts[0].Column.String(), be.Eq("price"))
-		betestify.Assert(t, merged.Sorts[0].Direction, be.Eq(r3.SortDirectionAsc))
+		be.RequireThat(t, merged.Sorts, be.HaveLength(1), "default sort must not remain")
+		be.AssertThat(t, merged.Sorts[0].Column.String(), be.Eq("price"))
+		be.AssertThat(t, merged.Sorts[0].Direction, be.Eq(r3.SortDirectionAsc))
 	})
 
 	t.Run("no requested sort inherits the default", func(t *testing.T) {
 		merged := base.MergeWith(r3.Query{})
-		betestify.Require(t, merged.Sorts, be.HaveLength(1))
-		betestify.Assert(t, merged.Sorts[0].Column.String(), be.Eq("created_at"))
-		betestify.Assert(t, merged.Sorts[0].Direction, be.Eq(r3.SortDirectionDesc))
+		be.RequireThat(t, merged.Sorts, be.HaveLength(1))
+		be.AssertThat(t, merged.Sorts[0].Column.String(), be.Eq("created_at"))
+		be.AssertThat(t, merged.Sorts[0].Direction, be.Eq(r3.SortDirectionDesc))
 	})
 
 	t.Run("multi-key requested sort replaces the default entirely", func(t *testing.T) {
@@ -75,15 +74,15 @@ func TestQueryMergeWith_SortOverridesDefault(t *testing.T) {
 				r3.NewSortDescSpec(r3.NewFieldSpec("price")),
 			},
 		})
-		betestify.Require(t, merged.Sorts, be.HaveLength(2))
-		betestify.Assert(t, merged.Sorts[0].Column.String(), be.Eq("status"))
-		betestify.Assert(t, merged.Sorts[1].Column.String(), be.Eq("price"))
+		be.RequireThat(t, merged.Sorts, be.HaveLength(2))
+		be.AssertThat(t, merged.Sorts[0].Column.String(), be.Eq("status"))
+		be.AssertThat(t, merged.Sorts[1].Column.String(), be.Eq("price"))
 	})
 
 	t.Run("merge does not mutate the base default", func(t *testing.T) {
 		_ = base.MergeWith(r3.Query{Sorts: r3.Sorts{r3.NewSortAscSpec(r3.NewFieldSpec("price"))}})
-		betestify.Require(t, base.Sorts, be.HaveLength(1))
-		betestify.Assert(t, base.Sorts[0].Column.String(), be.Eq("created_at"))
+		be.RequireThat(t, base.Sorts, be.HaveLength(1))
+		be.AssertThat(t, base.Sorts[0].Column.String(), be.Eq("created_at"))
 	})
 }
 
@@ -93,14 +92,14 @@ func TestDefaultsManager_UnpaginatedConfig(t *testing.T) {
 	})
 
 	// The default list query is unbounded...
-	betestify.Assert(t, dm.GetDefaultListQuery().Pagination.IsPaginated(), be.False())
+	be.AssertThat(t, dm.GetDefaultListQuery().Pagination.IsPaginated(), be.False())
 	// ...and stays unbounded when merged with an empty user query.
-	betestify.Assert(t, dm.MergeListQuery().Pagination.IsPaginated(), be.False())
+	be.AssertThat(t, dm.MergeListQuery().Pagination.IsPaginated(), be.False())
 
 	// ...but an individual query can still opt into pagination.
 	merged := dm.MergeListQuery(r3.Query{Pagination: r3.NewPaginationSpec(1, 25)})
-	betestify.Assert(t, merged.Pagination.IsPaginated(), be.True())
-	betestify.Assert(t, merged.Pagination.GetPageSize(), be.Eq(25))
+	be.AssertThat(t, merged.Pagination.IsPaginated(), be.True())
+	be.AssertThat(t, merged.Pagination.GetPageSize(), be.Eq(25))
 }
 
 func TestDefaultsManager_PageSizeConfig(t *testing.T) {
@@ -108,5 +107,5 @@ func TestDefaultsManager_PageSizeConfig(t *testing.T) {
 		Defaults: r3.DefaultsConfig{PageSize: 10},
 	})
 
-	betestify.Assert(t, dm.GetDefaultListQuery().Pagination.GetPageSize(), be.Eq(10))
+	be.AssertThat(t, dm.GetDefaultListQuery().Pagination.GetPageSize(), be.Eq(10))
 }

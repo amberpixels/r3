@@ -5,23 +5,19 @@ import (
 	"testing"
 
 	"github.com/amberpixels/r3"
+	"github.com/expectto/be"
+	"github.com/expectto/be/be_string"
 )
 
 func TestLocaleContext(t *testing.T) {
 	ctx := context.Background()
 
-	if got := r3.GetLocale(ctx); got != "" {
-		t.Errorf("GetLocale on bare context = %q, want empty", got)
-	}
+	be.AssertThat(t, r3.GetLocale(ctx), be_string.EmptyString())
 
 	ctx = r3.WithLocale(ctx, "ru")
-	if got := r3.GetLocale(ctx); got != "ru" {
-		t.Errorf("GetLocale = %q, want %q", got, "ru")
-	}
+	be.AssertThat(t, r3.GetLocale(ctx), be.Eq("ru"))
 
 	// Overriding replaces the previous value.
 	ctx = r3.WithLocale(ctx, "ro")
-	if got := r3.GetLocale(ctx); got != "ro" {
-		t.Errorf("GetLocale after override = %q, want %q", got, "ro")
-	}
+	be.AssertThat(t, r3.GetLocale(ctx), be.Eq("ro"))
 }

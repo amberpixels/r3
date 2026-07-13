@@ -11,6 +11,7 @@ import (
 
 	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/features/metrics"
+	"github.com/expectto/be"
 )
 
 // ── Test Entity ──────────────────────────────────────────────────────────
@@ -313,35 +314,21 @@ func TestCRUD_CreateRecordsMetrics(t *testing.T) {
 
 	ctx := context.Background()
 	order, err := repo.Create(ctx, Order{Name: "Test", Total: 100, Status: "new"})
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
+	be.NoError(t, err)
 
 	records := store.recordsByMetric(metrics.MetricCRUDAction)
-	if len(records) != 1 {
-		t.Fatalf("expected 1 metric record, got %d", len(records))
-	}
+	be.RequireThat(t, records, be.HaveLength(1))
 
 	rec := records[0]
-	if rec.RecordType != "orders" {
-		t.Errorf("expected RecordType 'orders', got %q", rec.RecordType)
-	}
+	be.AssertThat(t, rec.RecordType, be.Eq("orders"))
 	expectedID := strconv.FormatInt(order.ID, 10)
-	if rec.RecordID != expectedID {
-		t.Errorf("expected RecordID %q, got %q", expectedID, rec.RecordID)
-	}
-	if rec.Value != 1 {
-		t.Errorf("expected Value 1, got %f", rec.Value)
-	}
+	be.AssertThat(t, rec.RecordID, be.Eq(expectedID))
+	be.AssertThat(t, rec.Value, be.Eq(float64(1)))
 
 	// Check core labels
 	labels := rec.Labels.Val
-	if labels["operation"] != "create" {
-		t.Errorf("expected operation label 'create', got %q", labels["operation"])
-	}
-	if labels["actor_type"] != "system" {
-		t.Errorf("expected actor_type 'system', got %q", labels["actor_type"])
-	}
+	be.AssertThat(t, labels["operation"], be.Eq("create"))
+	be.AssertThat(t, labels["actor_type"], be.Eq("system"))
 }
 
 func TestCRUD_GetRecordsMetrics(t *testing.T) {
@@ -363,25 +350,15 @@ func TestCRUD_GetRecordsMetrics(t *testing.T) {
 	store.mu.Unlock()
 
 	_, err := repo.Get(ctx, created.ID)
-	if err != nil {
-		t.Fatalf("Get failed: %v", err)
-	}
+	be.NoError(t, err)
 
 	actionRecords := store.recordsByMetric(metrics.MetricCRUDAction)
-	if len(actionRecords) != 1 {
-		t.Fatalf("expected 1 crud.action record, got %d", len(actionRecords))
-	}
-	if actionRecords[0].Labels.Val["operation"] != "get" {
-		t.Errorf("expected operation 'get', got %q", actionRecords[0].Labels.Val["operation"])
-	}
+	be.RequireThat(t, actionRecords, be.HaveLength(1))
+	be.AssertThat(t, actionRecords[0].Labels.Val["operation"], be.Eq("get"))
 
 	popRecords := store.recordsByMetric(metrics.MetricEntityPopularity)
-	if len(popRecords) != 1 {
-		t.Fatalf("expected 1 popularity record, got %d", len(popRecords))
-	}
-	if popRecords[0].Labels.Val["source"] != "get" {
-		t.Errorf("expected source 'get', got %q", popRecords[0].Labels.Val["source"])
-	}
+	be.RequireThat(t, popRecords, be.HaveLength(1))
+	be.AssertThat(t, popRecords[0].Labels.Val["source"], be.Eq("get"))
 }
 
 func TestCRUD_ListRecordsMetrics(t *testing.T) {
@@ -405,36 +382,20 @@ func TestCRUD_ListRecordsMetrics(t *testing.T) {
 	store.mu.Unlock()
 
 	results, total, err := repo.List(ctx)
-	if err != nil {
-		t.Fatalf("List failed: %v", err)
-	}
-	if len(results) != 2 || total != 2 {
-		t.Fatalf("expected 2 results, got %d/%d", len(results), total)
-	}
+	be.NoError(t, err)
+	be.RequireThat(t, len(results) == 2 && total == 2, be.True())
 
 	actionRecords := store.recordsByMetric(metrics.MetricCRUDAction)
-	if len(actionRecords) != 1 {
-		t.Fatalf("expected 1 crud.action record, got %d", len(actionRecords))
-	}
-	if actionRecords[0].Labels.Val["operation"] != "list" {
-		t.Errorf("expected operation 'list', got %q", actionRecords[0].Labels.Val["operation"])
-	}
+	be.RequireThat(t, actionRecords, be.HaveLength(1))
+	be.AssertThat(t, actionRecords[0].Labels.Val["operation"], be.Eq("list"))
 
 	sizeRecords := store.recordsByMetric(metrics.MetricListResultSize)
-	if len(sizeRecords) != 1 {
-		t.Fatalf("expected 1 result_size record, got %d", len(sizeRecords))
-	}
-	if sizeRecords[0].Value != 2 {
-		t.Errorf("expected result_size value 2, got %f", sizeRecords[0].Value)
-	}
+	be.RequireThat(t, sizeRecords, be.HaveLength(1))
+	be.AssertThat(t, sizeRecords[0].Value, be.Eq(float64(2)))
 
 	totalRecords := store.recordsByMetric(metrics.MetricListTotalCount)
-	if len(totalRecords) != 1 {
-		t.Fatalf("expected 1 total_count record, got %d", len(totalRecords))
-	}
-	if totalRecords[0].Value != 2 {
-		t.Errorf("expected total_count value 2, got %f", totalRecords[0].Value)
-	}
+	be.RequireThat(t, totalRecords, be.HaveLength(1))
+	be.AssertThat(t, totalRecords[0].Value, be.Eq(float64(2)))
 }
 
 func TestCRUD_UpdateRecordsMetrics(t *testing.T) {
@@ -458,22 +419,14 @@ func TestCRUD_UpdateRecordsMetrics(t *testing.T) {
 	created.Name = "Updated"
 	created.Total = 200
 	_, err := repo.Update(ctx, created)
-	if err != nil {
-		t.Fatalf("Update failed: %v", err)
-	}
+	be.NoError(t, err)
 
 	actionRecords := store.recordsByMetric(metrics.MetricCRUDAction)
-	if len(actionRecords) != 1 {
-		t.Fatalf("expected 1 crud.action record, got %d", len(actionRecords))
-	}
-	if actionRecords[0].Labels.Val["operation"] != "update" {
-		t.Errorf("expected operation 'update', got %q", actionRecords[0].Labels.Val["operation"])
-	}
+	be.RequireThat(t, actionRecords, be.HaveLength(1))
+	be.AssertThat(t, actionRecords[0].Labels.Val["operation"], be.Eq("update"))
 
 	changeRecords := store.recordsByMetric(metrics.MetricEntityFieldChange)
-	if len(changeRecords) < 2 {
-		t.Fatalf("expected at least 2 field_change records (Name+Total), got %d", len(changeRecords))
-	}
+	be.RequireThat(t, changeRecords, be.HaveLength(be.Gte(2)))
 }
 
 func TestCRUD_DeleteRecordsMetrics(t *testing.T) {
@@ -494,17 +447,11 @@ func TestCRUD_DeleteRecordsMetrics(t *testing.T) {
 	store.mu.Unlock()
 
 	err := repo.Delete(ctx, created.ID)
-	if err != nil {
-		t.Fatalf("Delete failed: %v", err)
-	}
+	be.NoError(t, err)
 
 	records := store.recordsByMetric(metrics.MetricCRUDAction)
-	if len(records) != 1 {
-		t.Fatalf("expected 1 metric record, got %d", len(records))
-	}
-	if records[0].Labels.Val["operation"] != "delete" {
-		t.Errorf("expected operation 'delete', got %q", records[0].Labels.Val["operation"])
-	}
+	be.RequireThat(t, records, be.HaveLength(1))
+	be.AssertThat(t, records[0].Labels.Val["operation"], be.Eq("delete"))
 }
 
 func TestCRUD_ActorContext(t *testing.T) {
@@ -518,22 +465,14 @@ func TestCRUD_ActorContext(t *testing.T) {
 
 	ctx := r3.WithActor(context.Background(), r3.Actor{ID: "42", Type: "user"})
 	_, err := repo.Create(ctx, Order{Name: "Test"})
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
+	be.NoError(t, err)
 
 	records := store.recordsByMetric(metrics.MetricCRUDAction)
-	if len(records) != 1 {
-		t.Fatalf("expected 1 record, got %d", len(records))
-	}
+	be.RequireThat(t, records, be.HaveLength(1))
 
 	labels := records[0].Labels.Val
-	if labels["actor_id"] != "42" {
-		t.Errorf("expected actor_id '42', got %q", labels["actor_id"])
-	}
-	if labels["actor_type"] != "user" {
-		t.Errorf("expected actor_type 'user', got %q", labels["actor_type"])
-	}
+	be.AssertThat(t, labels["actor_id"], be.Eq("42"))
+	be.AssertThat(t, labels["actor_type"], be.Eq("user"))
 }
 
 func TestCRUD_EntityLabelers(t *testing.T) {
@@ -555,22 +494,14 @@ func TestCRUD_EntityLabelers(t *testing.T) {
 
 	ctx := context.Background()
 	_, err := repo.Create(ctx, Order{Name: "Test", Type: "manual", Status: "new"})
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
+	be.NoError(t, err)
 
 	records := store.recordsByMetric(metrics.MetricCRUDAction)
-	if len(records) != 1 {
-		t.Fatalf("expected 1 record, got %d", len(records))
-	}
+	be.RequireThat(t, records, be.HaveLength(1))
 
 	labels := records[0].Labels.Val
-	if labels["order_type"] != "manual" {
-		t.Errorf("expected order_type 'manual', got %q", labels["order_type"])
-	}
-	if labels["status"] != "new" {
-		t.Errorf("expected status 'new', got %q", labels["status"])
-	}
+	be.AssertThat(t, labels["order_type"], be.Eq("manual"))
+	be.AssertThat(t, labels["status"], be.Eq("new"))
 }
 
 func TestCRUD_ContextLabelers(t *testing.T) {
@@ -589,18 +520,12 @@ func TestCRUD_ContextLabelers(t *testing.T) {
 
 	ctx := context.Background()
 	_, err := repo.Create(ctx, Order{Name: "Test"})
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
+	be.NoError(t, err)
 
 	records := store.recordsByMetric(metrics.MetricCRUDAction)
 	labels := records[0].Labels.Val
-	if labels["source"] != "api" {
-		t.Errorf("expected source 'api', got %q", labels["source"])
-	}
-	if labels["version"] != "v2" {
-		t.Errorf("expected version 'v2', got %q", labels["version"])
-	}
+	be.AssertThat(t, labels["source"], be.Eq("api"))
+	be.AssertThat(t, labels["version"], be.Eq("v2"))
 }
 
 // TestCRUD_AsyncUsesDetachedContext verifies that in async mode collectors (and
@@ -631,38 +556,31 @@ func TestCRUD_AsyncUsesDetachedContext(t *testing.T) {
 	)
 
 	ctx, cancel := context.WithCancel(r3.WithActor(context.Background(), r3.Actor{ID: "7", Type: "user"}))
-	if _, err := repo.Create(ctx, Order{Name: "Test"}); err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
+	_, err := repo.Create(ctx, Order{Name: "Test"})
+	be.NoError(t, err)
 
 	<-started // the async goroutine has reached the collector
 	cancel()  // cancel the request context, as a handler returning would
 	close(release)
 
-	select {
-	case err := <-observed:
-		if err != nil {
-			t.Errorf("collector observed cancelled context %v; recording must use the detached context", err)
+	var observedErr error
+	be.Eventually(t, func() bool {
+		select {
+		case observedErr = <-observed:
+			return true
+		default:
+			return false
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for async recording")
-	}
+	}, be.True(), be.WithTimeout(2*time.Second), be.WithPolling(time.Millisecond))
+	be.AssertThat(t, observedErr, be.Succeed())
 
 	// The detached context must still carry request-scoped values (the Actor).
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		records := store.recordsByMetric("test")
-		if len(records) == 1 {
-			if got := records[0].Labels.Val["actor_id"]; got != "7" {
-				t.Errorf("expected actor_id '7' preserved on detached context, got %q", got)
-			}
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("expected 1 record, got %d", len(records))
-		}
-		time.Sleep(time.Millisecond)
-	}
+	be.Eventually(t, func() []metrics.MetricRecord {
+		return store.recordsByMetric("test")
+	}, be.HaveLength(1), be.WithTimeout(2*time.Second), be.WithPolling(time.Millisecond))
+
+	records := store.recordsByMetric("test")
+	be.AssertThat(t, records[0].Labels.Val["actor_id"], be.Eq("7"))
 }
 
 func TestCRUD_LatencyCollector(t *testing.T) {
@@ -676,17 +594,11 @@ func TestCRUD_LatencyCollector(t *testing.T) {
 
 	ctx := context.Background()
 	_, err := repo.Create(ctx, Order{Name: "Test"})
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
+	be.NoError(t, err)
 
 	records := store.recordsByMetric(metrics.MetricCRUDLatency)
-	if len(records) != 1 {
-		t.Fatalf("expected 1 latency record, got %d", len(records))
-	}
-	if records[0].Value < 0 {
-		t.Errorf("expected non-negative latency, got %f", records[0].Value)
-	}
+	be.RequireThat(t, records, be.HaveLength(1))
+	be.AssertThat(t, records[0].Value, be.Gte(0))
 }
 
 func TestCRUD_ErrorCollector(t *testing.T) {
@@ -703,20 +615,14 @@ func TestCRUD_ErrorCollector(t *testing.T) {
 
 	// Get a non-existent entity to trigger an error
 	_, err := repo.Get(ctx, 999)
-	if err == nil {
-		t.Fatal("expected error from Get of non-existent ID")
-	}
+	be.Error(t, err)
 
 	errorRecords := store.recordsByMetric(metrics.MetricCRUDError)
-	if len(errorRecords) != 1 {
-		t.Fatalf("expected 1 error record, got %d", len(errorRecords))
-	}
+	be.RequireThat(t, errorRecords, be.HaveLength(1))
 
 	// CRUDActionCollector should NOT fire on error
 	actionRecords := store.recordsByMetric(metrics.MetricCRUDAction)
-	if len(actionRecords) != 0 {
-		t.Errorf("expected 0 crud.action records on error, got %d", len(actionRecords))
-	}
+	be.AssertThat(t, actionRecords, be.Empty())
 }
 
 func TestCRUD_PatchSizeCollector(t *testing.T) {
@@ -740,17 +646,11 @@ func TestCRUD_PatchSizeCollector(t *testing.T) {
 		r3.NewFieldSpec("name"),
 		r3.NewFieldSpec("status"),
 	})
-	if err != nil {
-		t.Fatalf("Patch failed: %v", err)
-	}
+	be.NoError(t, err)
 
 	records := store.recordsByMetric(metrics.MetricEntityPatchSize)
-	if len(records) != 1 {
-		t.Fatalf("expected 1 patch_size record, got %d", len(records))
-	}
-	if records[0].Value != 2 {
-		t.Errorf("expected patch_size 2, got %f", records[0].Value)
-	}
+	be.RequireThat(t, records, be.HaveLength(1))
+	be.AssertThat(t, records[0].Value, be.Eq(float64(2)))
 }
 
 func TestCRUD_ListFilterCollector(t *testing.T) {
@@ -777,26 +677,18 @@ func TestCRUD_ListFilterCollector(t *testing.T) {
 		},
 	}
 	_, _, err := repo.List(ctx, q)
-	if err != nil {
-		t.Fatalf("List failed: %v", err)
-	}
+	be.NoError(t, err)
 
 	filterRecords := store.recordsByMetric(metrics.MetricListFilter)
-	if len(filterRecords) != 2 {
-		t.Fatalf("expected 2 filter records, got %d", len(filterRecords))
-	}
+	be.RequireThat(t, filterRecords, be.HaveLength(2))
 
 	// Check that we captured the filter fields
 	fields := make(map[string]bool)
 	for _, r := range filterRecords {
 		fields[r.Labels.Val["field"]] = true
 	}
-	if !fields["status"] {
-		t.Error("expected filter record for 'status'")
-	}
-	if !fields["total"] {
-		t.Error("expected filter record for 'total'")
-	}
+	be.AssertThat(t, fields["status"], be.True())
+	be.AssertThat(t, fields["total"], be.True())
 }
 
 func TestCRUD_DeriveRecordType(t *testing.T) {
@@ -812,12 +704,8 @@ func TestCRUD_DeriveRecordType(t *testing.T) {
 	repo.Create(ctx, Order{Name: "Test"})
 
 	records := store.allRecords()
-	if len(records) == 0 {
-		t.Fatal("expected at least 1 record")
-	}
-	if records[0].RecordType != "orders" {
-		t.Errorf("expected auto-derived RecordType 'orders', got %q", records[0].RecordType)
-	}
+	be.RequireThat(t, records, be.NotEmpty())
+	be.AssertThat(t, records[0].RecordType, be.Eq("orders"))
 }
 
 func TestCRUD_CustomRecordType(t *testing.T) {
@@ -834,9 +722,7 @@ func TestCRUD_CustomRecordType(t *testing.T) {
 	repo.Create(ctx, Order{Name: "Test"})
 
 	records := store.allRecords()
-	if records[0].RecordType != "custom_orders" {
-		t.Errorf("expected RecordType 'custom_orders', got %q", records[0].RecordType)
-	}
+	be.AssertThat(t, records[0].RecordType, be.Eq("custom_orders"))
 }
 
 func TestCRUD_BucketSize(t *testing.T) {
@@ -853,18 +739,12 @@ func TestCRUD_BucketSize(t *testing.T) {
 	repo.Create(ctx, Order{Name: "Test"})
 
 	records := store.allRecords()
-	if len(records) == 0 {
-		t.Fatal("expected at least 1 record")
-	}
+	be.RequireThat(t, records, be.NotEmpty())
 	// Hourly bucket should have minutes and seconds as 00
 	bucket := records[0].Bucket
 	parsed, err := time.Parse(time.RFC3339, bucket)
-	if err != nil {
-		t.Fatalf("failed to parse bucket: %v", err)
-	}
-	if parsed.Minute() != 0 || parsed.Second() != 0 {
-		t.Errorf("expected hourly bucket with 0 minutes/seconds, got %s", bucket)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, parsed.Minute() == 0 && parsed.Second() == 0, be.True())
 }
 
 func TestCRUD_NoCollectorsNoRecords(t *testing.T) {
@@ -876,9 +756,7 @@ func TestCRUD_NoCollectorsNoRecords(t *testing.T) {
 	repo.Create(ctx, Order{Name: "Test"})
 
 	records := store.allRecords()
-	if len(records) != 0 {
-		t.Errorf("expected 0 records with no collectors, got %d", len(records))
-	}
+	be.AssertThat(t, records, be.Empty())
 }
 
 func TestCRUD_InnerAccess(t *testing.T) {
@@ -895,9 +773,7 @@ func TestCRUD_InnerAccess(t *testing.T) {
 	repo.Inner().Create(ctx, Order{Name: "Bypass"})
 
 	records := store.allRecords()
-	if len(records) != 0 {
-		t.Errorf("expected 0 records via Inner(), got %d", len(records))
-	}
+	be.AssertThat(t, records, be.Empty())
 }
 
 func TestCRUD_MetricsStoreAccess(t *testing.T) {
@@ -906,9 +782,7 @@ func TestCRUD_MetricsStoreAccess(t *testing.T) {
 	repo := newTestRepo(inner, store)
 
 	metricsStore := repo.Metrics()
-	if metricsStore == nil {
-		t.Fatal("expected non-nil Metrics() store")
-	}
+	be.RequireThat(t, metricsStore, be.NotNil())
 }
 
 func TestCRUD_MultipleCollectors(t *testing.T) {
@@ -934,23 +808,15 @@ func TestCRUD_MultipleCollectors(t *testing.T) {
 	repo.Get(ctx, created.ID)
 
 	all := store.allRecords()
-	if len(all) != 3 {
-		t.Fatalf("expected 3 records (action+latency+popularity), got %d", len(all))
-	}
+	be.RequireThat(t, all, be.HaveLength(3))
 
 	metricNames := make(map[string]bool)
 	for _, r := range all {
 		metricNames[r.MetricName] = true
 	}
-	if !metricNames[metrics.MetricCRUDAction] {
-		t.Error("expected crud.action metric")
-	}
-	if !metricNames[metrics.MetricCRUDLatency] {
-		t.Error("expected crud.action.latency metric")
-	}
-	if !metricNames[metrics.MetricEntityPopularity] {
-		t.Error("expected entity.popularity metric")
-	}
+	be.AssertThat(t, metricNames[metrics.MetricCRUDAction], be.True())
+	be.AssertThat(t, metricNames[metrics.MetricCRUDLatency], be.True())
+	be.AssertThat(t, metricNames[metrics.MetricEntityPopularity], be.True())
 }
 
 func TestCRUD_CustomCollector(t *testing.T) {
@@ -978,19 +844,11 @@ func TestCRUD_CustomCollector(t *testing.T) {
 	repo.Create(ctx, Order{Name: "Expensive", Total: 999})
 
 	records := store.recordsByMetric("custom.order_value")
-	if len(records) != 1 {
-		t.Fatalf("expected 1 custom record, got %d", len(records))
-	}
-	if records[0].Value != 999 {
-		t.Errorf("expected value 999, got %f", records[0].Value)
-	}
-	if records[0].Labels.Val["custom"] != "yes" {
-		t.Errorf("expected custom label 'yes', got %q", records[0].Labels.Val["custom"])
-	}
+	be.RequireThat(t, records, be.HaveLength(1))
+	be.AssertThat(t, records[0].Value, be.Eq(float64(999)))
+	be.AssertThat(t, records[0].Labels.Val["custom"], be.Eq("yes"))
 	// Core labels should also be present
-	if records[0].Labels.Val["operation"] != "create" {
-		t.Errorf("expected operation label 'create', got %q", records[0].Labels.Val["operation"])
-	}
+	be.AssertThat(t, records[0].Labels.Val["operation"], be.Eq("create"))
 }
 
 // ── Aggregator Tests ─────────────────────────────────────────────────────
@@ -1013,12 +871,8 @@ func TestAggregator_Count(t *testing.T) {
 	count, err := agg.Count(ctx, "orders", metrics.MetricCRUDAction, metrics.LastDays(1),
 		metrics.WithLabel("operation", "create"),
 	)
-	if err != nil {
-		t.Fatalf("Count failed: %v", err)
-	}
-	if count != 3 {
-		t.Errorf("expected count 3, got %d", count)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, count, be.Eq(int64(3)))
 }
 
 func TestAggregator_Sum(t *testing.T) {
@@ -1036,12 +890,8 @@ func TestAggregator_Sum(t *testing.T) {
 
 	agg := metrics.NewAggregator(store)
 	sum, err := agg.Sum(ctx, "orders", metrics.MetricCRUDLatency, metrics.LastDays(1))
-	if err != nil {
-		t.Fatalf("Sum failed: %v", err)
-	}
-	if sum < 0 {
-		t.Errorf("expected non-negative sum, got %f", sum)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, sum, be.Gte(0))
 }
 
 func TestAggregator_GroupBy(t *testing.T) {
@@ -1060,16 +910,10 @@ func TestAggregator_GroupBy(t *testing.T) {
 
 	agg := metrics.NewAggregator(store)
 	groups, err := agg.GroupBy(ctx, "orders", metrics.MetricCRUDAction, metrics.LastDays(1), "operation")
-	if err != nil {
-		t.Fatalf("GroupBy failed: %v", err)
-	}
+	be.NoError(t, err)
 
-	if groups["create"] != 1 {
-		t.Errorf("expected 1 create, got %f", groups["create"])
-	}
-	if groups["get"] != 2 {
-		t.Errorf("expected 2 gets, got %f", groups["get"])
-	}
+	be.AssertThat(t, groups["create"], be.Eq(float64(1)))
+	be.AssertThat(t, groups["get"], be.Eq(float64(2)))
 }
 
 // ── AggregationPusher Tests ──────────────────────────────────────────────
@@ -1178,18 +1022,10 @@ func TestAggregator_PusherDelegation_Count(t *testing.T) {
 	count, err := agg.Count(ctx, "orders", "crud.action", metrics.LastDays(1),
 		metrics.WithLabel("operation", "create"),
 	)
-	if err != nil {
-		t.Fatalf("Count failed: %v", err)
-	}
-	if count != 42 {
-		t.Errorf("expected count 42 from pusher, got %d", count)
-	}
-	if store.pushCountCalls != 1 {
-		t.Errorf("expected 1 PushCount call, got %d", store.pushCountCalls)
-	}
-	if store.lastLabels["operation"] != "create" {
-		t.Errorf("expected label operation=create, got %v", store.lastLabels)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, count, be.Eq(int64(42)))
+	be.AssertThat(t, store.pushCountCalls, be.Eq(1))
+	be.AssertThat(t, store.lastLabels["operation"], be.Eq("create"))
 }
 
 func TestAggregator_PusherDelegation_Sum(t *testing.T) {
@@ -1198,15 +1034,9 @@ func TestAggregator_PusherDelegation_Sum(t *testing.T) {
 
 	ctx := context.Background()
 	sum, err := agg.Sum(ctx, "orders", "crud.action.latency", metrics.LastDays(1))
-	if err != nil {
-		t.Fatalf("Sum failed: %v", err)
-	}
-	if sum != 123.45 {
-		t.Errorf("expected sum 123.45 from pusher, got %f", sum)
-	}
-	if store.pushSumCalls != 1 {
-		t.Errorf("expected 1 PushSum call, got %d", store.pushSumCalls)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, sum, be.Eq(123.45))
+	be.AssertThat(t, store.pushSumCalls, be.Eq(1))
 }
 
 func TestAggregator_PusherDelegation_Avg(t *testing.T) {
@@ -1215,15 +1045,9 @@ func TestAggregator_PusherDelegation_Avg(t *testing.T) {
 
 	ctx := context.Background()
 	avg, err := agg.Avg(ctx, "orders", "crud.action.latency", metrics.LastDays(1))
-	if err != nil {
-		t.Fatalf("Avg failed: %v", err)
-	}
-	if avg != 41.15 {
-		t.Errorf("expected avg 41.15 from pusher, got %f", avg)
-	}
-	if store.pushAvgCalls != 1 {
-		t.Errorf("expected 1 PushAvg call, got %d", store.pushAvgCalls)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, avg, be.Eq(41.15))
+	be.AssertThat(t, store.pushAvgCalls, be.Eq(1))
 }
 
 func TestAggregator_PusherDelegation_TopN(t *testing.T) {
@@ -1232,18 +1056,10 @@ func TestAggregator_PusherDelegation_TopN(t *testing.T) {
 
 	ctx := context.Background()
 	top, err := agg.TopN(ctx, "orders", "entity.popularity", metrics.LastDays(1), 3)
-	if err != nil {
-		t.Fatalf("TopN failed: %v", err)
-	}
-	if len(top) != 3 {
-		t.Fatalf("expected 3 results from pusher, got %d", len(top))
-	}
-	if top[0].RecordID != "entity_1" {
-		t.Errorf("expected first entity 'entity_1', got %q", top[0].RecordID)
-	}
-	if store.pushTopNCalls != 1 {
-		t.Errorf("expected 1 PushTopN call, got %d", store.pushTopNCalls)
-	}
+	be.NoError(t, err)
+	be.RequireThat(t, top, be.HaveLength(3))
+	be.AssertThat(t, top[0].RecordID, be.Eq("entity_1"))
+	be.AssertThat(t, store.pushTopNCalls, be.Eq(1))
 }
 
 func TestAggregator_PusherDelegation_TimeSeries(t *testing.T) {
@@ -1252,18 +1068,10 @@ func TestAggregator_PusherDelegation_TimeSeries(t *testing.T) {
 
 	ctx := context.Background()
 	ts, err := agg.TimeSeries(ctx, "orders", "crud.action", metrics.LastDays(1), metrics.BucketDaily)
-	if err != nil {
-		t.Fatalf("TimeSeries failed: %v", err)
-	}
-	if len(ts) != 2 {
-		t.Fatalf("expected 2 buckets from pusher, got %d", len(ts))
-	}
-	if ts[0].Value != 10 || ts[1].Value != 20 {
-		t.Errorf("unexpected bucket values: %v", ts)
-	}
-	if store.pushTimeSeriesCalls != 1 {
-		t.Errorf("expected 1 PushTimeSeries call, got %d", store.pushTimeSeriesCalls)
-	}
+	be.NoError(t, err)
+	be.RequireThat(t, ts, be.HaveLength(2))
+	be.AssertThat(t, ts[0].Value == 10 && ts[1].Value == 20, be.True())
+	be.AssertThat(t, store.pushTimeSeriesCalls, be.Eq(1))
 }
 
 func TestAggregator_PusherDelegation_GroupBy(t *testing.T) {
@@ -1272,18 +1080,10 @@ func TestAggregator_PusherDelegation_GroupBy(t *testing.T) {
 
 	ctx := context.Background()
 	groups, err := agg.GroupBy(ctx, "orders", "crud.action", metrics.LastDays(1), "operation")
-	if err != nil {
-		t.Fatalf("GroupBy failed: %v", err)
-	}
-	if groups["create"] != 10 {
-		t.Errorf("expected create=10, got %f", groups["create"])
-	}
-	if groups["get"] != 20 {
-		t.Errorf("expected get=20, got %f", groups["get"])
-	}
-	if store.pushGroupByCalls != 1 {
-		t.Errorf("expected 1 PushGroupBy call, got %d", store.pushGroupByCalls)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, groups["create"], be.Eq(float64(10)))
+	be.AssertThat(t, groups["get"], be.Eq(float64(20)))
+	be.AssertThat(t, store.pushGroupByCalls, be.Eq(1))
 }
 
 func TestAggregator_FallbackToInMemory(t *testing.T) {
@@ -1304,12 +1104,8 @@ func TestAggregator_FallbackToInMemory(t *testing.T) {
 	count, err := agg.Count(ctx, "orders", metrics.MetricCRUDAction, metrics.LastDays(1),
 		metrics.WithLabel("operation", "create"),
 	)
-	if err != nil {
-		t.Fatalf("Count failed: %v", err)
-	}
-	if count != 2 {
-		t.Errorf("expected count 2 from in-memory, got %d", count)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, count, be.Eq(int64(2)))
 }
 
 // ── Bucket Tests ─────────────────────────────────────────────────────────
@@ -1329,9 +1125,7 @@ func TestComputeBucket(t *testing.T) {
 
 	for _, tt := range tests {
 		result := metrics.ComputeBucket(ts, tt.size)
-		if result != tt.expected {
-			t.Errorf("ComputeBucket(%s) = %q, want %q", tt.size, result, tt.expected)
-		}
+		be.AssertThat(t, result, be.Eq(tt.expected))
 	}
 }
 
@@ -1339,16 +1133,12 @@ func TestComputeBucket_Weekly(t *testing.T) {
 	// 2026-02-16 is a Monday
 	monday := time.Date(2026, 2, 16, 14, 0, 0, 0, time.UTC)
 	result := metrics.ComputeBucket(monday, metrics.BucketWeekly)
-	if result != "2026-02-16T00:00:00Z" {
-		t.Errorf("Monday bucket = %q, want 2026-02-16T00:00:00Z", result)
-	}
+	be.AssertThat(t, result, be.Eq("2026-02-16T00:00:00Z"))
 
 	// Wednesday should still be in the same week
 	wednesday := time.Date(2026, 2, 18, 10, 0, 0, 0, time.UTC)
 	result = metrics.ComputeBucket(wednesday, metrics.BucketWeekly)
-	if result != "2026-02-16T00:00:00Z" {
-		t.Errorf("Wednesday bucket = %q, want 2026-02-16T00:00:00Z", result)
-	}
+	be.AssertThat(t, result, be.Eq("2026-02-16T00:00:00Z"))
 }
 
 // ── Labels Tests ─────────────────────────────────────────────────────────
@@ -1358,15 +1148,9 @@ func TestLabels_Merge(t *testing.T) {
 	b := metrics.Labels{"b": "override", "c": "3"}
 
 	merged := a.Merge(b)
-	if merged["a"] != "1" {
-		t.Errorf("expected a=1, got %q", merged["a"])
-	}
-	if merged["b"] != "override" {
-		t.Errorf("expected b=override, got %q", merged["b"])
-	}
-	if merged["c"] != "3" {
-		t.Errorf("expected c=3, got %q", merged["c"])
-	}
+	be.AssertThat(t, merged["a"], be.Eq("1"))
+	be.AssertThat(t, merged["b"], be.Eq("override"))
+	be.AssertThat(t, merged["c"], be.Eq("3"))
 }
 
 func TestLabels_MergeNil(t *testing.T) {
@@ -1374,14 +1158,10 @@ func TestLabels_MergeNil(t *testing.T) {
 	b := metrics.Labels{"x": "1"}
 
 	merged := a.Merge(b)
-	if merged["x"] != "1" {
-		t.Errorf("expected x=1, got %q", merged["x"])
-	}
+	be.AssertThat(t, merged["x"], be.Eq("1"))
 
 	merged2 := b.Merge(a)
-	if merged2["x"] != "1" {
-		t.Errorf("expected x=1, got %q", merged2["x"])
-	}
+	be.AssertThat(t, merged2["x"], be.Eq("1"))
 }
 
 // ── Retention Tests ──────────────────────────────────────────────────────
@@ -1415,17 +1195,11 @@ func TestRetentionEnforcer_MaxAge(t *testing.T) {
 	})
 
 	deleted := enforcer.Enforce(context.Background(), "orders")
-	if deleted != 2 {
-		t.Errorf("expected 2 deleted, got %d", deleted)
-	}
+	be.AssertThat(t, deleted, be.Eq(int64(2)))
 
 	remaining := store.allRecords()
-	if len(remaining) != 1 {
-		t.Fatalf("expected 1 remaining record, got %d", len(remaining))
-	}
-	if remaining[0].ID != "new1" {
-		t.Errorf("expected remaining record 'new1', got %q", remaining[0].ID)
-	}
+	be.RequireThat(t, remaining, be.HaveLength(1))
+	be.AssertThat(t, remaining[0].ID, be.Eq("new1"))
 }
 
 func TestRetentionEnforcer_MaxRecords(t *testing.T) {
@@ -1449,14 +1223,10 @@ func TestRetentionEnforcer_MaxRecords(t *testing.T) {
 	})
 
 	deleted := enforcer.Enforce(context.Background(), "orders")
-	if deleted != 2 {
-		t.Errorf("expected 2 deleted, got %d", deleted)
-	}
+	be.AssertThat(t, deleted, be.Eq(int64(2)))
 
 	remaining := store.allRecords()
-	if len(remaining) != 3 {
-		t.Fatalf("expected 3 remaining records, got %d", len(remaining))
-	}
+	be.RequireThat(t, remaining, be.HaveLength(3))
 }
 
 func TestRetentionEnforcer_NoOp(t *testing.T) {
@@ -1474,9 +1244,7 @@ func TestRetentionEnforcer_NoOp(t *testing.T) {
 	})
 
 	deleted := enforcer.Enforce(context.Background(), "orders")
-	if deleted != 0 {
-		t.Errorf("expected 0 deleted (all within limits), got %d", deleted)
-	}
+	be.AssertThat(t, deleted, be.Eq(int64(0)))
 }
 
 // ── Rollup Tests ─────────────────────────────────────────────────────────
@@ -1505,32 +1273,18 @@ func TestRollupExecutor_BasicRollup(t *testing.T) {
 	})
 
 	deleted, created := executor.Execute(context.Background(), "orders")
-	if deleted != 3 {
-		t.Errorf("expected 3 deleted, got %d", deleted)
-	}
-	if created != 1 {
-		t.Errorf("expected 1 summary created, got %d", created)
-	}
+	be.AssertThat(t, deleted, be.Eq(int64(3)))
+	be.AssertThat(t, created, be.Eq(int64(1)))
 
 	remaining := store.allRecords()
-	if len(remaining) != 1 {
-		t.Fatalf("expected 1 remaining record, got %d", len(remaining))
-	}
+	be.RequireThat(t, remaining, be.HaveLength(1))
 
 	summary := remaining[0]
-	if summary.Value != 3 {
-		t.Errorf("expected summed value 3, got %f", summary.Value)
-	}
-	if summary.Labels.Val["_rollup"] != "true" {
-		t.Errorf("expected _rollup label, got %v", summary.Labels.Val)
-	}
-	if summary.Labels.Val["_rollup_count"] != "3" {
-		t.Errorf("expected _rollup_count=3, got %q", summary.Labels.Val["_rollup_count"])
-	}
+	be.AssertThat(t, summary.Value, be.Eq(float64(3)))
+	be.AssertThat(t, summary.Labels.Val["_rollup"], be.Eq("true"))
+	be.AssertThat(t, summary.Labels.Val["_rollup_count"], be.Eq("3"))
 	expectedBucket := metrics.ComputeBucket(baseTime, metrics.BucketHourly)
-	if summary.Bucket != expectedBucket {
-		t.Errorf("expected bucket %q, got %q", expectedBucket, summary.Bucket)
-	}
+	be.AssertThat(t, summary.Bucket, be.Eq(expectedBucket))
 }
 
 func TestRollupExecutor_PreservesRecentRecords(t *testing.T) {
@@ -1560,17 +1314,11 @@ func TestRollupExecutor_PreservesRecentRecords(t *testing.T) {
 	})
 
 	deleted, created := executor.Execute(context.Background(), "orders")
-	if deleted != 1 {
-		t.Errorf("expected 1 deleted (old only), got %d", deleted)
-	}
-	if created != 1 {
-		t.Errorf("expected 1 summary created, got %d", created)
-	}
+	be.AssertThat(t, deleted, be.Eq(int64(1)))
+	be.AssertThat(t, created, be.Eq(int64(1)))
 
 	remaining := store.allRecords()
-	if len(remaining) != 2 {
-		t.Fatalf("expected 2 remaining (1 new + 1 summary), got %d", len(remaining))
-	}
+	be.RequireThat(t, remaining, be.HaveLength(2))
 }
 
 func TestRollupExecutor_GroupsByMetricAndEntity(t *testing.T) {
@@ -1596,12 +1344,8 @@ func TestRollupExecutor_GroupsByMetricAndEntity(t *testing.T) {
 	})
 
 	deleted, created := executor.Execute(context.Background(), "orders")
-	if deleted != 2 {
-		t.Errorf("expected 2 deleted, got %d", deleted)
-	}
-	if created != 2 {
-		t.Errorf("expected 2 summaries (one per metric), got %d", created)
-	}
+	be.AssertThat(t, deleted, be.Eq(int64(2)))
+	be.AssertThat(t, created, be.Eq(int64(2)))
 }
 
 // ── Actor Tests ──────────────────────────────────────────────────────────
@@ -1611,14 +1355,10 @@ func TestActor_ContextRoundTrip(t *testing.T) {
 
 	// Default is SystemActor
 	actor := r3.GetActor(ctx)
-	if actor.Type != "system" {
-		t.Errorf("expected default actor type 'system', got %q", actor.Type)
-	}
+	be.AssertThat(t, actor.Type, be.Eq("system"))
 
 	// Set actor
 	ctx = r3.WithActor(ctx, r3.Actor{ID: "99", Type: "admin"})
 	actor = r3.GetActor(ctx)
-	if actor.ID != "99" || actor.Type != "admin" {
-		t.Errorf("expected actor {99, admin}, got {%s, %s}", actor.ID, actor.Type)
-	}
+	be.AssertThat(t, actor, be.HaveFields(map[string]any{"ID": "99", "Type": "admin"}))
 }

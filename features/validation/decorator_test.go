@@ -9,6 +9,7 @@ import (
 
 	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/features/validation"
+	"github.com/expectto/be"
 )
 
 // ── Test entity ──────────────────────────────────────────────────────────
@@ -159,18 +160,10 @@ func TestCreate_ValidEntity_PassesThrough(t *testing.T) {
 
 	ctx := context.Background()
 	pet, err := repo.Create(ctx, Pet{Name: "Buddy", Price: 100})
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
-	if pet.ID == 0 {
-		t.Fatal("expected non-zero ID")
-	}
-	if pet.Name != "Buddy" {
-		t.Errorf("expected Name='Buddy', got %q", pet.Name)
-	}
-	if inner.createCalls != 1 {
-		t.Errorf("expected 1 inner.Create call, got %d", inner.createCalls)
-	}
+	be.NoError(t, err)
+	be.RequireThat(t, pet.ID, be.NonZero())
+	be.AssertThat(t, pet.Name, be.Eq("Buddy"))
+	be.AssertThat(t, inner.createCalls, be.Eq(1))
 }
 
 // ── Tests: Create with invalid entity ────────────────────────────────────
@@ -181,15 +174,8 @@ func TestCreate_InvalidEntity_ReturnsValidationError(t *testing.T) {
 
 	ctx := context.Background()
 	_, err := repo.Create(ctx, Pet{Name: "", Price: 100})
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !errors.Is(err, validation.ErrValidation) {
-		t.Fatalf("expected ErrValidation, got %v", err)
-	}
-	if inner.createCalls != 0 {
-		t.Error("inner.Create should not have been called")
-	}
+	be.ErrorIs(t, err, validation.ErrValidation)
+	be.AssertThat(t, inner.createCalls, be.Eq(0))
 }
 
 // ── Tests: Update with valid entity ──────────────────────────────────────
@@ -203,15 +189,9 @@ func TestUpdate_ValidEntity_PassesThrough(t *testing.T) {
 
 	ctx := context.Background()
 	updated, err := repo.Update(ctx, Pet{ID: 1, Name: "Max", Status: "available", Price: 100})
-	if err != nil {
-		t.Fatalf("Update failed: %v", err)
-	}
-	if updated.Name != "Max" {
-		t.Errorf("expected Name='Max', got %q", updated.Name)
-	}
-	if inner.updateCalls != 1 {
-		t.Errorf("expected 1 inner.Update call, got %d", inner.updateCalls)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, updated.Name, be.Eq("Max"))
+	be.AssertThat(t, inner.updateCalls, be.Eq(1))
 }
 
 func TestUpdate_InvalidEntity_ReturnsValidationError(t *testing.T) {
@@ -223,12 +203,8 @@ func TestUpdate_InvalidEntity_ReturnsValidationError(t *testing.T) {
 
 	ctx := context.Background()
 	_, err := repo.Update(ctx, Pet{ID: 1, Name: "", Status: "available", Price: 100})
-	if !errors.Is(err, validation.ErrValidation) {
-		t.Fatalf("expected ErrValidation, got %v", err)
-	}
-	if inner.updateCalls != 0 {
-		t.Error("inner.Update should not have been called")
-	}
+	be.ErrorIs(t, err, validation.ErrValidation)
+	be.AssertThat(t, inner.updateCalls, be.Eq(0))
 }
 
 // ── Tests: Patch with valid entity ───────────────────────────────────────
@@ -243,15 +219,9 @@ func TestPatch_ValidEntity_PassesThrough(t *testing.T) {
 	ctx := context.Background()
 	fields := r3.Fields{r3.NewFieldSpec("name")}
 	patched, err := repo.Patch(ctx, Pet{ID: 1, Name: "Max"}, fields)
-	if err != nil {
-		t.Fatalf("Patch failed: %v", err)
-	}
-	if patched.Name != "Max" {
-		t.Errorf("expected Name='Max', got %q", patched.Name)
-	}
-	if inner.patchCalls != 1 {
-		t.Errorf("expected 1 inner.Patch call, got %d", inner.patchCalls)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, patched.Name, be.Eq("Max"))
+	be.AssertThat(t, inner.patchCalls, be.Eq(1))
 }
 
 func TestPatch_InvalidEntity_ReturnsValidationError(t *testing.T) {
@@ -264,12 +234,8 @@ func TestPatch_InvalidEntity_ReturnsValidationError(t *testing.T) {
 	ctx := context.Background()
 	fields := r3.Fields{r3.NewFieldSpec("name")}
 	_, err := repo.Patch(ctx, Pet{ID: 1, Name: ""}, fields)
-	if !errors.Is(err, validation.ErrValidation) {
-		t.Fatalf("expected ErrValidation, got %v", err)
-	}
-	if inner.patchCalls != 0 {
-		t.Error("inner.Patch should not have been called")
-	}
+	be.ErrorIs(t, err, validation.ErrValidation)
+	be.AssertThat(t, inner.patchCalls, be.Eq(0))
 }
 
 // TestPatch_MergedReflectsFullEntity verifies M8: a whole-entity validator sees
@@ -285,9 +251,7 @@ func TestPatch_MergedReflectsFullEntity(t *testing.T) {
 	mergedNameRequired := validation.ValidatorFunc[Pet, int64](
 		func(_ context.Context, req validation.Request[Pet, int64]) error {
 			// Validate the post-patch state, not the sparse input.
-			if req.Merged == nil {
-				t.Fatal("expected Merged to be populated for Patch with IDFunc")
-			}
+			be.RequireThat(t, req.Merged, be.NotNil(), "expected Merged to be populated for Patch with IDFunc")
 			seenMerged = req.Merged
 			if req.Merged.Name == "" {
 				return validation.NewError(req.Operation,
@@ -305,19 +269,11 @@ func TestPatch_MergedReflectsFullEntity(t *testing.T) {
 	// Patch only status; Name is absent from the sparse input.
 	fields := r3.Fields{r3.NewFieldSpec("status")}
 	_, err := repo.Patch(ctx, Pet{ID: 1, Status: "sold"}, fields)
-	if err != nil {
-		t.Fatalf("Patch should pass - merged entity keeps Name=Buddy: %v", err)
-	}
+	be.NoError(t, err, "Patch should pass - merged entity keeps Name=Buddy")
 
-	if seenMerged.Name != "Buddy" {
-		t.Errorf("Merged.Name = %q, want preserved %q", seenMerged.Name, "Buddy")
-	}
-	if seenMerged.Status != "sold" {
-		t.Errorf("Merged.Status = %q, want patched %q", seenMerged.Status, "sold")
-	}
-	if inner.patchCalls != 1 {
-		t.Errorf("expected 1 inner.Patch call, got %d", inner.patchCalls)
-	}
+	be.AssertThat(t, seenMerged.Name, be.Eq("Buddy"))
+	be.AssertThat(t, seenMerged.Status, be.Eq("sold"))
+	be.AssertThat(t, inner.patchCalls, be.Eq(1))
 }
 
 // ── Tests: Patch receives Fields ─────────────────────────────────────────
@@ -340,18 +296,10 @@ func TestPatch_ValidatorReceivesFields(t *testing.T) {
 	ctx := context.Background()
 	fields := r3.Fields{r3.NewFieldSpec("name"), r3.NewFieldSpec("status")}
 	_, err := repo.Patch(ctx, Pet{ID: 1, Name: "Max", Status: "sold"}, fields)
-	if err != nil {
-		t.Fatalf("Patch failed: %v", err)
-	}
-	if len(capturedFields) != 2 {
-		t.Fatalf("expected 2 fields, got %d", len(capturedFields))
-	}
-	if capturedFields[0].String() != "name" {
-		t.Errorf("expected first field='name', got %q", capturedFields[0].String())
-	}
-	if capturedFields[1].String() != "status" {
-		t.Errorf("expected second field='status', got %q", capturedFields[1].String())
-	}
+	be.NoError(t, err)
+	be.RequireThat(t, capturedFields, be.HaveLength(2))
+	be.AssertThat(t, capturedFields[0].String(), be.Eq("name"))
+	be.AssertThat(t, capturedFields[1].String(), be.Eq("status"))
 }
 
 // ── Tests: Create does not receive Fields ────────────────────────────────
@@ -373,15 +321,9 @@ func TestCreate_ValidatorReceivesNilFields(t *testing.T) {
 
 	ctx := context.Background()
 	_, err := repo.Create(ctx, Pet{Name: "Buddy"})
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
-	if capturedFields != nil {
-		t.Errorf("expected nil Fields for Create, got %v", capturedFields)
-	}
-	if capturedOp != validation.OpCreate {
-		t.Errorf("expected OpCreate, got %q", capturedOp)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, capturedFields, be.Nil())
+	be.AssertThat(t, capturedOp, be.Eq(validation.OpCreate))
 }
 
 // ── Tests: Get, List, Delete pass through ────────────────────────────────
@@ -404,12 +346,8 @@ func TestGet_PassesThroughWithoutValidation(t *testing.T) {
 
 	ctx := context.Background()
 	pet, err := repo.Get(ctx, 1)
-	if err != nil {
-		t.Fatalf("Get should pass through: %v", err)
-	}
-	if pet.Name != "Buddy" {
-		t.Errorf("expected Name='Buddy', got %q", pet.Name)
-	}
+	be.NoError(t, err, "Get should pass through")
+	be.AssertThat(t, pet.Name, be.Eq("Buddy"))
 }
 
 func TestList_PassesThroughWithoutValidation(t *testing.T) {
@@ -430,15 +368,9 @@ func TestList_PassesThroughWithoutValidation(t *testing.T) {
 
 	ctx := context.Background()
 	list, count, err := repo.List(ctx)
-	if err != nil {
-		t.Fatalf("List should pass through: %v", err)
-	}
-	if count != 2 {
-		t.Errorf("expected count=2, got %d", count)
-	}
-	if len(list) != 2 {
-		t.Errorf("expected 2 items, got %d", len(list))
-	}
+	be.NoError(t, err, "List should pass through")
+	be.AssertThat(t, count, be.Eq(int64(2)))
+	be.AssertThat(t, list, be.HaveLength(2))
 }
 
 func TestDelete_PassesThroughWithoutValidation(t *testing.T) {
@@ -457,15 +389,12 @@ func TestDelete_PassesThroughWithoutValidation(t *testing.T) {
 	repo := validation.WithValidation[Pet, int64](inner, alwaysFail)
 
 	ctx := context.Background()
-	if err := repo.Delete(ctx, 1); err != nil {
-		t.Fatalf("Delete should pass through: %v", err)
-	}
+	err := repo.Delete(ctx, 1)
+	be.NoError(t, err, "Delete should pass through")
 
 	// Verify entity was actually deleted.
-	_, err := inner.Get(context.Background(), 1)
-	if err == nil {
-		t.Fatal("expected entity to be deleted")
-	}
+	_, err = inner.Get(context.Background(), 1)
+	be.Error(t, err)
 }
 
 // ── Tests: WithIDFunc fetches existing entity ────────────────────────────
@@ -490,18 +419,10 @@ func TestUpdate_WithIDFunc_FetchesExisting(t *testing.T) {
 
 	ctx := context.Background()
 	_, err := repo.Update(ctx, Pet{ID: 1, Name: "Max", Status: "sold", Price: 200})
-	if err != nil {
-		t.Fatalf("Update failed: %v", err)
-	}
-	if capturedExisting == nil {
-		t.Fatal("expected Existing to be populated")
-	}
-	if capturedExisting.Name != "Buddy" {
-		t.Errorf("expected Existing.Name='Buddy', got %q", capturedExisting.Name)
-	}
-	if capturedExisting.Status != "available" {
-		t.Errorf("expected Existing.Status='available', got %q", capturedExisting.Status)
-	}
+	be.NoError(t, err)
+	be.RequireThat(t, capturedExisting, be.NotNil())
+	be.AssertThat(t, capturedExisting.Name, be.Eq("Buddy"))
+	be.AssertThat(t, capturedExisting.Status, be.Eq("available"))
 }
 
 func TestPatch_WithIDFunc_FetchesExisting(t *testing.T) {
@@ -525,15 +446,9 @@ func TestPatch_WithIDFunc_FetchesExisting(t *testing.T) {
 	ctx := context.Background()
 	fields := r3.Fields{r3.NewFieldSpec("status")}
 	_, err := repo.Patch(ctx, Pet{ID: 1, Status: "sold"}, fields)
-	if err != nil {
-		t.Fatalf("Patch failed: %v", err)
-	}
-	if capturedExisting == nil {
-		t.Fatal("expected Existing to be populated")
-	}
-	if capturedExisting.Status != "available" {
-		t.Errorf("expected Existing.Status='available', got %q", capturedExisting.Status)
-	}
+	be.NoError(t, err)
+	be.RequireThat(t, capturedExisting, be.NotNil())
+	be.AssertThat(t, capturedExisting.Status, be.Eq("available"))
 }
 
 func TestUpdate_WithoutIDFunc_ExistingIsNil(t *testing.T) {
@@ -554,12 +469,8 @@ func TestUpdate_WithoutIDFunc_ExistingIsNil(t *testing.T) {
 
 	ctx := context.Background()
 	_, err := repo.Update(ctx, Pet{ID: 1, Name: "Max"})
-	if err != nil {
-		t.Fatalf("Update failed: %v", err)
-	}
-	if capturedExisting != nil {
-		t.Error("expected Existing to be nil without IDFunc")
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, capturedExisting, be.Nil())
 }
 
 // ── Tests: State-transition validation ───────────────────────────────────
@@ -595,21 +506,13 @@ func TestUpdate_StateTransitionValidation(t *testing.T) {
 
 	// Try to change a sold pet back to available — should fail.
 	_, err := repo.Update(ctx, Pet{ID: 1, Name: "Buddy", Status: "available", Price: 100})
-	if !errors.Is(err, validation.ErrValidation) {
-		t.Fatalf("expected ErrValidation, got %v", err)
-	}
-	if inner.updateCalls != 0 {
-		t.Error("inner.Update should not have been called")
-	}
+	be.ErrorIs(t, err, validation.ErrValidation)
+	be.AssertThat(t, inner.updateCalls, be.Eq(0))
 
 	// Check the field error
 	var ve *validation.Error
-	if !errors.As(err, &ve) {
-		t.Fatalf("expected *ValidationError, got %T", err)
-	}
-	if !ve.HasField("status") {
-		t.Error("expected field error for 'status'")
-	}
+	be.RequireThat(t, errors.As(err, &ve), be.True())
+	be.AssertThat(t, ve.HasField("status"), be.True())
 }
 
 // ── Tests: NoValidation helper ───────────────────────────────────────────
@@ -622,22 +525,16 @@ func TestNoValidation_AllowsEverything(t *testing.T) {
 
 	// Create
 	pet, err := repo.Create(ctx, Pet{Name: ""}) // empty name should be fine with NoValidation
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
+	be.NoError(t, err)
 
 	// Update
 	pet.Name = "Updated"
 	_, err = repo.Update(ctx, pet)
-	if err != nil {
-		t.Fatalf("Update failed: %v", err)
-	}
+	be.NoError(t, err)
 
 	// Patch
 	_, err = repo.Patch(ctx, pet, r3.Fields{r3.NewFieldSpec("name")})
-	if err != nil {
-		t.Fatalf("Patch failed: %v", err)
-	}
+	be.NoError(t, err)
 }
 
 // ── Tests: Compose helper ────────────────────────────────────────────────
@@ -651,23 +548,13 @@ func TestCompose_CollectsAllErrors(t *testing.T) {
 
 	ctx := context.Background()
 	_, err := repo.Create(ctx, Pet{Name: "", Price: -10})
-	if !errors.Is(err, validation.ErrValidation) {
-		t.Fatalf("expected ErrValidation, got %v", err)
-	}
+	be.ErrorIs(t, err, validation.ErrValidation)
 
 	var ve *validation.Error
-	if !errors.As(err, &ve) {
-		t.Fatalf("expected *ValidationError, got %T", err)
-	}
-	if len(ve.Errors) != 2 {
-		t.Fatalf("expected 2 field errors, got %d", len(ve.Errors))
-	}
-	if !ve.HasField("name") {
-		t.Error("expected field error for 'name'")
-	}
-	if !ve.HasField("price") {
-		t.Error("expected field error for 'price'")
-	}
+	be.RequireThat(t, errors.As(err, &ve), be.True())
+	be.RequireThat(t, ve.Errors, be.HaveLength(2))
+	be.AssertThat(t, ve.HasField("name"), be.True())
+	be.AssertThat(t, ve.HasField("price"), be.True())
 }
 
 func TestCompose_NoErrors(t *testing.T) {
@@ -679,12 +566,8 @@ func TestCompose_NoErrors(t *testing.T) {
 
 	ctx := context.Background()
 	pet, err := repo.Create(ctx, Pet{Name: "Buddy", Price: 100})
-	if err != nil {
-		t.Fatalf("Create failed: %v", err)
-	}
-	if pet.Name != "Buddy" {
-		t.Errorf("expected Name='Buddy', got %q", pet.Name)
-	}
+	be.NoError(t, err)
+	be.AssertThat(t, pet.Name, be.Eq("Buddy"))
 }
 
 func TestCompose_Empty_AllowsEverything(t *testing.T) {
@@ -696,9 +579,7 @@ func TestCompose_Empty_AllowsEverything(t *testing.T) {
 
 	ctx := context.Background()
 	_, err := repo.Create(ctx, Pet{Name: ""})
-	if err != nil {
-		t.Fatalf("Create with empty Compose failed: %v", err)
-	}
+	be.NoError(t, err, "Create with empty Compose failed")
 }
 
 func TestCompose_ShortCircuitsOnNonValidationError(t *testing.T) {
@@ -718,16 +599,10 @@ func TestCompose_ShortCircuitsOnNonValidationError(t *testing.T) {
 
 	ctx := context.Background()
 	_, err := repo.Create(ctx, Pet{Name: "Buddy"})
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !errors.Is(err, fatalError) {
-		t.Fatalf("expected fatalError, got %v", err)
-	}
+	be.ErrorIs(t, err, fatalError)
 	// Should NOT be a validation error.
-	if errors.Is(err, validation.ErrValidation) {
-		t.Fatal("non-validation errors should not be wrapped as ErrValidation")
-	}
+	be.RequireThat(t, err, be.Not(be.MatchError(validation.ErrValidation)),
+		"non-validation errors should not be wrapped as ErrValidation")
 }
 
 // ── Tests: OperationValidators helper ────────────────────────────────────
@@ -750,21 +625,15 @@ func TestOperationValidators_RoutesCorrectly(t *testing.T) {
 
 	// Create without name should fail.
 	_, err := repo.Create(ctx, Pet{Name: ""})
-	if !errors.Is(err, validation.ErrValidation) {
-		t.Fatalf("Create: expected ErrValidation, got %v", err)
-	}
+	be.ErrorIs(t, err, validation.ErrValidation)
 
 	// Update without name should pass (OpUpdate not mapped).
 	_, err = repo.Update(ctx, Pet{ID: 1, Name: ""})
-	if err != nil {
-		t.Fatalf("Update should pass for unmapped operation: %v", err)
-	}
+	be.NoError(t, err, "Update should pass for unmapped operation")
 
 	// Patch should also pass.
 	_, err = repo.Patch(ctx, Pet{ID: 1, Name: ""}, r3.Fields{r3.NewFieldSpec("name")})
-	if err != nil {
-		t.Fatalf("Patch should pass for unmapped operation: %v", err)
-	}
+	be.NoError(t, err, "Patch should pass for unmapped operation")
 }
 
 // ── Tests: ValidationError ───────────────────────────────────────────────
@@ -774,9 +643,8 @@ func TestValidationError_Is(t *testing.T) {
 		validation.NewFieldError("name", "is required", "required"),
 	)
 
-	if !errors.Is(err, validation.ErrValidation) {
-		t.Fatal("expected ValidationError to satisfy errors.Is(err, ErrValidation)")
-	}
+	be.ErrorIs(t, err, validation.ErrValidation,
+		"expected ValidationError to satisfy errors.Is(err, ErrValidation)")
 }
 
 func TestValidationError_ErrorMessage(t *testing.T) {
@@ -787,18 +655,14 @@ func TestValidationError_ErrorMessage(t *testing.T) {
 
 	msg := err.Error()
 	expected := "r3/validation: validation failed on create: name: is required; price: must be positive"
-	if msg != expected {
-		t.Errorf("error message mismatch:\n  got:  %q\n  want: %q", msg, expected)
-	}
+	be.AssertThat(t, msg, be.Eq(expected))
 }
 
 func TestValidationError_ErrorMessage_NoFields(t *testing.T) {
 	err := validation.NewError(validation.OpUpdate)
 	msg := err.Error()
 	expected := "r3/validation: validation failed on update"
-	if msg != expected {
-		t.Errorf("error message mismatch:\n  got:  %q\n  want: %q", msg, expected)
-	}
+	be.AssertThat(t, msg, be.Eq(expected))
 }
 
 func TestValidationError_HasField(t *testing.T) {
@@ -807,27 +671,17 @@ func TestValidationError_HasField(t *testing.T) {
 		validation.NewFieldError("price", "must be positive", "min"),
 	)
 
-	if !err.HasField("name") {
-		t.Error("expected HasField('name') to be true")
-	}
-	if !err.HasField("price") {
-		t.Error("expected HasField('price') to be true")
-	}
-	if err.HasField("status") {
-		t.Error("expected HasField('status') to be false")
-	}
+	be.AssertThat(t, err.HasField("name"), be.True())
+	be.AssertThat(t, err.HasField("price"), be.True())
+	be.AssertThat(t, err.HasField("status"), be.False())
 }
 
 func TestFieldError_Error(t *testing.T) {
 	fe := validation.NewFieldError("name", "is required", "required")
-	if fe.Error() != "name: is required" {
-		t.Errorf("expected 'name: is required', got %q", fe.Error())
-	}
+	be.AssertThat(t, fe.Error(), be.Eq("name: is required"))
 
 	fe2 := validation.NewFieldError("", "general error", "general")
-	if fe2.Error() != "general error" {
-		t.Errorf("expected 'general error', got %q", fe2.Error())
-	}
+	be.AssertThat(t, fe2.Error(), be.Eq("general error"))
 }
 
 // ── Tests: ValidatorFunc adapter ─────────────────────────────────────────
@@ -842,12 +696,8 @@ func TestValidatorFunc(t *testing.T) {
 	)
 
 	err := v.Validate(context.Background(), validation.Request[Pet, int64]{})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !called {
-		t.Fatal("ValidatorFunc was not called")
-	}
+	be.NoError(t, err)
+	be.RequireThat(t, called, be.True())
 }
 
 // ── Tests: Inner() ───────────────────────────────────────────────────────
@@ -857,9 +707,7 @@ func TestInner(t *testing.T) {
 	repo := validation.WithValidation[Pet, int64](inner, validation.NoValidation[Pet, int64]())
 
 	got := repo.Inner()
-	if got != inner {
-		t.Error("Inner() should return the wrapped CRUD")
-	}
+	be.AssertThat(t, got, be.Identical(inner))
 }
 
 // ── Tests: Update/Patch with IDFunc and entity not found ─────────────────
@@ -875,13 +723,10 @@ func TestUpdate_WithIDFunc_EntityNotFound(t *testing.T) {
 
 	ctx := context.Background()
 	_, err := repo.Update(ctx, Pet{ID: 999, Name: "Ghost"})
-	if err == nil {
-		t.Fatal("expected error when entity not found")
-	}
+	be.Error(t, err)
 	// Should be a "not found" error from Get, not a validation error.
-	if errors.Is(err, validation.ErrValidation) {
-		t.Fatal("expected non-validation error for missing entity")
-	}
+	be.RequireThat(t, err, be.Not(be.MatchError(validation.ErrValidation)),
+		"expected non-validation error for missing entity")
 }
 
 func TestPatch_WithIDFunc_EntityNotFound(t *testing.T) {
@@ -894,12 +739,9 @@ func TestPatch_WithIDFunc_EntityNotFound(t *testing.T) {
 
 	ctx := context.Background()
 	_, err := repo.Patch(ctx, Pet{ID: 999, Name: "Ghost"}, r3.Fields{r3.NewFieldSpec("name")})
-	if err == nil {
-		t.Fatal("expected error when entity not found")
-	}
-	if errors.Is(err, validation.ErrValidation) {
-		t.Fatal("expected non-validation error for missing entity")
-	}
+	be.Error(t, err)
+	be.RequireThat(t, err, be.Not(be.MatchError(validation.ErrValidation)),
+		"expected non-validation error for missing entity")
 }
 
 // ── Tests: Operation values in ValidationRequest ─────────────────────────
@@ -930,18 +772,10 @@ func TestOperationValues(t *testing.T) {
 	// Patch
 	_, _ = repo.Patch(ctx, created, r3.Fields{r3.NewFieldSpec("name")})
 
-	if len(capturedOps) != 3 {
-		t.Fatalf("expected 3 operations, got %d", len(capturedOps))
-	}
-	if capturedOps[0] != validation.OpCreate {
-		t.Errorf("expected OpCreate, got %q", capturedOps[0])
-	}
-	if capturedOps[1] != validation.OpUpdate {
-		t.Errorf("expected OpUpdate, got %q", capturedOps[1])
-	}
-	if capturedOps[2] != validation.OpPatch {
-		t.Errorf("expected OpPatch, got %q", capturedOps[2])
-	}
+	be.RequireThat(t, capturedOps, be.HaveLength(3))
+	be.AssertThat(t, capturedOps[0], be.Eq(validation.OpCreate))
+	be.AssertThat(t, capturedOps[1], be.Eq(validation.OpUpdate))
+	be.AssertThat(t, capturedOps[2], be.Eq(validation.OpPatch))
 }
 
 // ── Tests: errors.As works with ValidationError ──────────────────────────
@@ -954,19 +788,10 @@ func TestErrorsAs_ValidationError(t *testing.T) {
 	_, err := repo.Create(ctx, Pet{Name: ""})
 
 	var ve *validation.Error
-	if !errors.As(err, &ve) {
-		t.Fatalf("errors.As should work with *ValidationError, got %T", err)
-	}
-	if ve.Operation != validation.OpCreate {
-		t.Errorf("expected Operation='create', got %q", ve.Operation)
-	}
-	if len(ve.Errors) != 1 {
-		t.Fatalf("expected 1 field error, got %d", len(ve.Errors))
-	}
-	if ve.Errors[0].Field != "name" {
-		t.Errorf("expected field 'name', got %q", ve.Errors[0].Field)
-	}
-	if ve.Errors[0].Code != "required" {
-		t.Errorf("expected code 'required', got %q", ve.Errors[0].Code)
-	}
+	be.RequireThat(t, errors.As(err, &ve), be.True(),
+		"errors.As should work with *ValidationError")
+	be.AssertThat(t, ve.Operation, be.Eq(validation.OpCreate))
+	be.RequireThat(t, ve.Errors, be.HaveLength(1))
+	be.AssertThat(t, ve.Errors[0].Field, be.Eq("name"))
+	be.AssertThat(t, ve.Errors[0].Code, be.Eq("required"))
 }

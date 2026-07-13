@@ -2,12 +2,12 @@ package permissions_test
 
 import (
 	"context"
-	"errors"
 	"testing"
 
 	"github.com/amberpixels/r3"
 	enginefile "github.com/amberpixels/r3/engine/file"
 	"github.com/amberpixels/r3/features/permissions"
+	"github.com/expectto/be"
 )
 
 // Sale is the aggregate-scoping fixture: tenant-keyed rows with an amount.
@@ -49,9 +49,7 @@ func newSaleRepo(t *testing.T) *enginefile.BaseCRUD[Sale, int] {
 		enginefile.IncrementIDGen[int](),
 		enginefile.WithBaseDir(t.TempDir()),
 	)
-	if err != nil {
-		t.Fatalf("new file repo: %v", err)
-	}
+	be.NoError(t, err, "new file repo")
 
 	ctx := context.Background()
 	for _, s := range []Sale{
@@ -61,9 +59,8 @@ func newSaleRepo(t *testing.T) *enginefile.BaseCRUD[Sale, int] {
 		{TenantID: 2, Region: "north", Amount: 100},
 		{TenantID: 2, Region: "south", Amount: 200},
 	} {
-		if _, err := repo.Create(ctx, s); err != nil {
-			t.Fatalf("seed: %v", err)
-		}
+		_, err := repo.Create(ctx, s)
+		be.NoError(t, err, "seed")
 	}
 	return repo
 }
@@ -83,28 +80,21 @@ func TestAggregate_ScopeFiltersApply(t *testing.T) {
 	// Tenant 1 sees only its 3 rows: north (10+20), south (5).
 	ctx := r3.WithActor(context.Background(), r3.Actor{ID: "u1", Type: "user", Claims: int64(1)})
 	rows, err := r3.AggregateOf(ctx, repo, q)
-	if err != nil {
-		t.Fatalf("scoped aggregate: %v", err)
-	}
-	if len(rows) != 2 {
-		t.Fatalf("expected 2 regions, got %d", len(rows))
-	}
-	if total, _ := rows[0].Int64("total"); total != 30 {
-		t.Errorf("tenant 1 north total = %d, want 30 (tenant 2's 100 must be invisible)", total)
-	}
-	if total, _ := rows[1].Int64("total"); total != 5 {
-		t.Errorf("tenant 1 south total = %d, want 5 (tenant 2's 200 must be invisible)", total)
-	}
+	be.NoError(t, err, "scoped aggregate")
+	be.RequireThat(t, rows, be.HaveLength(2), "expected 2 regions")
+	total, _ := rows[0].Int64("total")
+	be.AssertThat(t, total, be.Eq(int64(30)),
+		"tenant 1 north total should be 30 (tenant 2's 100 must be invisible)")
+	total, _ = rows[1].Int64("total")
+	be.AssertThat(t, total, be.Eq(int64(5)),
+		"tenant 1 south total should be 5 (tenant 2's 200 must be invisible)")
 
 	// An unscoped admin aggregates everything.
 	admin := r3.WithActor(context.Background(), r3.Actor{ID: "root", Type: "admin"})
 	rows, err = r3.AggregateOf(admin, repo, q)
-	if err != nil {
-		t.Fatalf("admin aggregate: %v", err)
-	}
-	if total, _ := rows[0].Int64("total"); total != 130 {
-		t.Errorf("admin north total = %d, want 130", total)
-	}
+	be.NoError(t, err, "admin aggregate")
+	total, _ = rows[0].Int64("total")
+	be.AssertThat(t, total, be.Eq(int64(130)), "admin north total should be 130")
 }
 
 func TestAggregate_ReadDenied(t *testing.T) {
@@ -117,9 +107,7 @@ func TestAggregate_ReadDenied(t *testing.T) {
 	_, err := r3.AggregateOf(ctx, repo, r3.Query{
 		Aggregates: r3.Aggregates{r3.AggCount("n")},
 	})
-	if !errors.Is(err, permissions.ErrAccessDenied) {
-		t.Fatalf("expected ErrAccessDenied, got %v", err)
-	}
+	be.ErrorIs(t, err, permissions.ErrAccessDenied)
 }
 
 // TestAggregate_InnerWithoutSupport verifies the decorator surfaces the typed
@@ -130,7 +118,5 @@ func TestAggregate_InnerWithoutSupport(t *testing.T) {
 
 	ctx := r3.WithActor(context.Background(), r3.Actor{ID: "u", Type: "user"})
 	_, err := r3.AggregateOf(ctx, repo, r3.Query{Aggregates: r3.Aggregates{r3.AggCount("n")}})
-	if !errors.Is(err, r3.ErrAggregateNotSupported) {
-		t.Fatalf("expected ErrAggregateNotSupported, got %v", err)
-	}
+	be.ErrorIs(t, err, r3.ErrAggregateNotSupported)
 }

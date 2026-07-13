@@ -62,6 +62,26 @@ increments:
 
 Each backend removes its `r3.RequireCodecSupport` construction guard when wired.
 
+### Test suite → expectto/be
+
+The tests are migrating from raw `t.Error`/`t.Fatal` and testify to
+[`expectto/be`](https://github.com/expectto/be) (matcher-based assertions). The raw
+and mixed-file passes are done; a few packages still import testify only for
+out-of-scope files. Remaining r3-side follow-up:
+
+- **Drop `betestify` (`be/x/testify`).** It is an older, separate module (rc.5,
+  behind the core's rc.6) and upstream **renamed `x/testify` → `x/mock`** while
+  moving the flat assertion API into core `be`. Migrate `betestify.Assert/Require`
+  → `be.AssertThat/RequireThat` (or `be.Expect(t, x).To(...)`) and drop the dep.
+- **Adopt the matchers that already exist**, replacing the clunky fallbacks the
+  migration introduced: `be.Not(be.Nil())` → `be.NotNil()`, `be.HaveLength(0)` →
+  `be.Empty()`, numeric `be.True(x >= n)` → `be_math.Gte(n)`, etc.
+
+This migration doubled as a dogfood/stress-test of `expectto/be`. The resulting DX
+and LLM-discoverability findings (what to improve in `be` itself) are written up in
+the **be** repo at `docs/plan-dx-and-llm-discoverability.md`; the r3-side follow-up
+above is its "Part D".
+
 ## From the p44 consumer feedback log (`R3_TODO.md`)
 
 The p44 repo's `R3_TODO.md` is the authoritative feedback log (see
