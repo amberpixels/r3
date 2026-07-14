@@ -18,7 +18,7 @@ type Options[T any, ID comparable] struct {
 	IDFunc IDFunc[T, ID]
 
 	// RecordType names the entity type in error messages. If empty, derived from
-	// T (e.g. Order -> "orders", CampaignAdset -> "campaign_adsets").
+	// T (e.g. Order -> "orders", OrderItem -> "order_items").
 	RecordType string
 }
 
@@ -48,7 +48,7 @@ func applyDefaults[T any, ID comparable](opts *Options[T, ID]) {
 	}
 }
 
-// typeName returns the unqualified struct name of T (e.g. "Order", "CampaignAdset").
+// typeName returns the unqualified struct name of T (e.g. "Order", "OrderItem").
 func typeName[T any]() string {
 	var zero T
 	t := reflect.TypeOf(zero)

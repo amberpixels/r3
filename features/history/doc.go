@@ -9,7 +9,7 @@
 // Key features:
 //   - Field-level diffs (what changed, old value, new value)
 //   - Opt-in full entity snapshots via configurable SnapshotRules
-//   - Tree/nested queries (e.g. Campaign + its Adsets + their Creatives)
+//   - Tree/nested queries (e.g. City + its Locations + their Events)
 //   - Revert to any historical version (purely diff-based reconstruction)
 //   - r3.Actor attribution as first-class, queryable ChangeRecord columns
 //   - Context-based metadata (source, request ID, etc.)

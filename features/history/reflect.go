@@ -5,7 +5,7 @@ import (
 	"reflect"
 )
 
-// typeName returns the unqualified struct name of T (e.g. "Order", "CampaignAdset").
+// typeName returns the unqualified struct name of T (e.g. "Order", "OrderItem").
 func typeName[T any]() string {
 	var zero T
 	t := reflect.TypeOf(zero)

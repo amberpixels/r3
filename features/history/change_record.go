@@ -126,8 +126,8 @@ type Metadata struct {
 // QueryForTree to retrieve changes for a record and all its descendants.
 //
 //	[]TreeScope{
-//	    {RecordType: "campaigns", RecordID: "5"},
-//	    {RecordType: "adsets", ParentType: "campaigns", ParentID: "5"},
+//	    {RecordType: "cities", RecordID: "5"},
+//	    {RecordType: "locations", ParentType: "cities", ParentID: "5"},
 //	}
 type TreeScope struct {
 	// RecordType is the entity type to match.

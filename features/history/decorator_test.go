@@ -823,38 +823,38 @@ func TestCRUD_ChangesOnlyNoSnapshots(t *testing.T) {
 }
 
 func TestCRUD_ParentRef(t *testing.T) {
-	type Adset struct {
-		ID         int64  `db:"id,pk"       json:"id"`
-		CampaignID int64  `db:"campaign_id" json:"campaign_id"`
-		Name       string `db:"name"        json:"name"`
+	type Location struct {
+		ID     int64  `db:"id,pk"   json:"id"`
+		CityID int64  `db:"city_id" json:"city_id"`
+		Name   string `db:"name"    json:"name"`
 	}
 
-	crud := &mockCRUD[Adset, int64]{
-		data:   make(map[int64]Adset),
+	crud := &mockCRUD[Location, int64]{
+		data:   make(map[int64]Location),
 		nextID: 1,
 	}
 	store := newMemoryChangeRecordCRUD()
 
-	repo := history.WithHistory[Adset, int64](crud, store,
-		history.WithIDFunc[Adset, int64](func(a Adset) int64 { return a.ID }),
-		history.WithRecordType[Adset, int64]("adsets"),
-		history.WithParentRef[Adset, int64]("campaigns", "CampaignID"),
+	repo := history.WithHistory[Location, int64](crud, store,
+		history.WithIDFunc[Location, int64](func(l Location) int64 { return l.ID }),
+		history.WithRecordType[Location, int64]("locations"),
+		history.WithParentRef[Location, int64]("cities", "CityID"),
 	)
 
 	ctx := context.Background()
-	adset, _ := repo.Create(ctx, Adset{CampaignID: 5, Name: "Test Adset"})
+	loc, _ := repo.Create(ctx, Location{CityID: 5, Name: "Test Location"})
 
-	records, _, _ := listForRecord(ctx, store, "adsets", strconv.FormatInt(adset.ID, 10))
+	records, _, _ := listForRecord(ctx, store, "locations", strconv.FormatInt(loc.ID, 10))
 	be.RequireThat(t, records, be.NotEmpty())
 
 	rec := records[0]
-	be.AssertThat(t, rec.ParentType, be.Eq("campaigns"))
+	be.AssertThat(t, rec.ParentType, be.Eq("cities"))
 	be.AssertThat(t, rec.ParentID, be.Eq("5"))
 
 	// Now test ForTree query
 	treeQuery := history.QueryForTree([]history.TreeScope{
-		{RecordType: "campaigns", RecordID: "5"},
-		{RecordType: "adsets", ParentType: "campaigns", ParentID: "5"},
+		{RecordType: "cities", RecordID: "5"},
+		{RecordType: "locations", ParentType: "cities", ParentID: "5"},
 	})
 	_, count, _ := store.List(ctx, treeQuery)
 	be.RequireThat(t, count, be.Eq(int64(1)))

@@ -29,18 +29,18 @@ type IDFunc[T any, ID comparable] func(entity T) ID
 // ParentRef links a child entity to its parent so every change record carries the
 // parent's type and ID, enabling ForTree() queries.
 type ParentRef struct {
-	// ParentType is the parent entity's RecordType (e.g. "campaigns").
+	// ParentType is the parent entity's RecordType (e.g. "cities").
 	ParentType string
 
 	// FKField is the child's Go struct field holding the parent ID (e.g.
-	// "CampaignID"), read via reflection to populate ParentID.
+	// "CityID"), read via reflection to populate ParentID.
 	FKField string
 }
 
 // Options configures a CRUD decorator.
 type Options[T any, ID comparable] struct {
 	// RecordType identifies this entity type in change records. If empty, derived
-	// from T (e.g. Order -> "orders", CampaignAdset -> "campaign_adsets").
+	// from T (e.g. Order -> "orders", OrderItem -> "order_items").
 	RecordType string
 
 	// MetadataFunc extracts surrounding-context metadata; it does not affect the

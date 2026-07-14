@@ -82,28 +82,28 @@ import (
 )
 
 // Define your model (standard GORM model)
-type City struct {
+type Pet struct {
     ID   int64  `gorm:"primaryKey"`
     Name string
 }
 
 // Create a repository
-cityRepo := r3gorm.NewGormCRUD[City, int64](db)
+petRepo := r3gorm.NewGormCRUD[Pet, int64](db)
 
 // Create
-city, err := cityRepo.Create(ctx, City{Name: "Berlin"})
+pet, err := petRepo.Create(ctx, Pet{Name: "Bella"})
 
 // Get by ID - missing records return r3.ErrNotFound on every backend
-city, err := cityRepo.Get(ctx, 42)
+pet, err := petRepo.Get(ctx, 42)
 if errors.Is(err, r3.ErrNotFound) {
     // respond 404, etc.
 }
 
 // List with filters, sorting, and pagination.
 // Short-form helpers (r3.Eq, r3.Gt, ...) keep simple filters terse.
-cities, total, err := cityRepo.List(ctx, r3.Query{
+pets, total, err := petRepo.List(ctx, r3.Query{
     Filters: r3.Filters{
-        r3.Eq("name", "Berlin"),
+        r3.Eq("name", "Bella"),
     },
     Sorts: r3.Sorts{
         r3.NewSortAscSpec(r3.NewFieldSpec("name")),
@@ -112,17 +112,17 @@ cities, total, err := cityRepo.List(ctx, r3.Query{
 })
 
 // Count matching records without materializing rows
-n, err := cityRepo.Count(ctx, r3.Query{Filters: r3.Filters{r3.Eq("name", "Berlin")}})
+n, err := petRepo.Count(ctx, r3.Query{Filters: r3.Filters{r3.Eq("name", "Bella")}})
 
 // Update
-city.Name = "Munich"
-city, err = cityRepo.Update(ctx, city)
+pet.Name = "Max"
+pet, err = petRepo.Update(ctx, pet)
 
 // Patch (partial update - only specified fields)
-city, err = cityRepo.Patch(ctx, city, r3.Fields{r3.NewFieldSpec("name")})
+pet, err = petRepo.Patch(ctx, pet, r3.Fields{r3.NewFieldSpec("name")})
 
 // Delete
-err = cityRepo.Delete(ctx, 42)
+err = petRepo.Delete(ctx, 42)
 ```
 
 ## Architecture
@@ -160,7 +160,7 @@ The interfaces and query model. This is the contract everything else implements.
 
 **Interfaces:**
 - `CRUD[T, ID]` - Full read+write repository (composes Querier + Commander)
-- `Querier[T, ID]` - Read-only: `Get`, `List`
+- `Querier[T, ID]` - Read-only: `Get`, `List`, `Count`
 - `Commander[T, ID]` - Write-only: `Create`, `Update`, `Patch`, `Delete`
 - `Transactor[T, ID]` - Opt-in transaction support: `BeginTx`
 
@@ -333,14 +333,14 @@ output), `Creatable`, and `Mutable`. Defaults are permissive - a plain scalar
 column gets all five - and tags only ever *tighten* them:
 
 ```go
-type Campaign struct {
-    ID        int64     `r3:"id,pk"`                          // read-only identity
-    Title     string    `r3:"title"`                          // all capabilities
-    Status    string    `r3:"status,enum:draft|active|paused"` // enum + allowed values
-    Slug      string    `r3:"slug,immutable"`                 // creatable once, then read-only
-    Spend     int       `r3:"spend,readonly"`                 // feed-synced; users can't write
-    Secret    string    `r3:"secret,no-filter,no-sort,no-output"` // hidden everywhere
-    CreatedAt time.Time `r3:"created_at"`                     // server-managed (read-only)
+type Pet struct {
+    ID        int64     `r3:"id,pk"`                              // read-only identity
+    Name      string    `r3:"name"`                               // all capabilities
+    Status    string    `r3:"status,enum:available|pending|sold"` // enum + allowed values
+    Slug      string    `r3:"slug,immutable"`                     // creatable once, then read-only
+    Visits    int       `r3:"visits,readonly"`                    // system-tracked; users can't write
+    VetNotes  string    `r3:"vet_notes,no-filter,no-sort,no-output"` // hidden everywhere
+    CreatedAt time.Time `r3:"created_at"`                         // server-managed (read-only)
 }
 ```
 
@@ -359,13 +359,13 @@ The SQL engines consume the schema automatically:
 
 Capabilities are the **public ceiling**: the `permissions` feature only narrows
 them per-actor/row, never widens. For an audited system/worker write of a
-user-immutable column (e.g. a nightly feed sync), open the explicit door - it
+user-immutable column (e.g. a nightly inventory sync), open the explicit door - it
 skips only the capability check, never the structural floor (the PK and computed
 attributes stay unwritable), and the write still passes through `history`/`metrics`:
 
 ```go
-r3.SystemWriter(repo).Update(ctx, feedRow)          // ergonomic wrapper
-repo.Update(r3.WithoutWriteGuard(ctx), feedRow)     // or the raw context marker
+r3.SystemWriter(repo).Update(ctx, syncedPet)        // ergonomic wrapper
+repo.Update(r3.WithoutWriteGuard(ctx), syncedPet)   // or the raw context marker
 ```
 
 A schema serializes to a stable, public-only JSON shape via
@@ -387,7 +387,7 @@ r3.Query{Pagination: r3.NewPaginationSpec(1, 250)}  // page 1, 250 per page
 all, total, err := repo.List(ctx, r3.Query{Pagination: r3.Unpaginated()})
 
 // 3. Everything by default, for this repo (global opt-out)
-repo := r3gorm.NewGormCRUD[City, int64](db,
+repo := r3gorm.NewGormCRUD[Pet, int64](db,
     r3.WithConfig(r3.Config{Defaults: r3.DefaultsConfig{Unpaginated: true}}),
 )
 // repo.List(ctx) now returns all rows; individual queries can still paginate.
@@ -418,22 +418,22 @@ rows, via the opt-in `Aggregator` capability. Declare the shape on the query
 (`GroupBy`, `Aggregates`, `Having`) and call it through `r3.AggregateOf`:
 
 ```go
-// Raid stats per location: how many, and when the latest one happened.
-rows, err := r3.AggregateOf(ctx, raidRepo, r3.Query{
-    Filters: r3.Filters{r3.Ne("location_id", nil)},
-    GroupBy: r3.GroupBy("location_id", "squad_id"),
+// Order stats per store: how many, and when the latest one was placed.
+rows, err := r3.AggregateOf(ctx, orderRepo, r3.Query{
+    Filters: r3.Filters{r3.Ne("store_id", nil)},
+    GroupBy: r3.GroupBy("store_id", "status"),
     Aggregates: r3.Aggregates{
-        r3.AggCount("raids"),
-        r3.AggMax("date", "last_raid"),
+        r3.AggCount("orders"),
+        r3.AggMax("placed_at", "last_order"),
     },
-    Having: r3.Filters{r3.Gt("raids", 1)},          // filters grouped rows by alias
-    Sorts:  r3.Sorts{r3.NewSortDescSpec(r3.NewFieldSpec("raids"))},
+    Having: r3.Filters{r3.Gt("orders", 1)},          // filters grouped rows by alias
+    Sorts:  r3.Sorts{r3.NewSortDescSpec(r3.NewFieldSpec("orders"))},
 })
 for _, row := range rows {
-    loc, _ := row.Int64("location_id")
-    n, _ := row.Int64("raids")
-    last, _ := row.Time("last_raid") // parses backends' textual timestamps too
-    fmt.Printf("location %d: %d raids, last on %s\n", loc, n, last.Format(time.DateOnly))
+    store, _ := row.Int64("store_id")
+    n, _ := row.Int64("orders")
+    last, _ := row.Time("last_order") // parses backends' textual timestamps too
+    fmt.Printf("store %d: %d orders, last on %s\n", store, n, last.Format(time.DateOnly))
 }
 ```
 
@@ -456,15 +456,15 @@ cannot be bypassed. A repo without the capability returns
 
 Entities relate to each other as **has-many**, **belongs-to**, or
 **many-to-many**. Declare a relation by struct tag
-(`r3:"rel:has-many,fk:city_id"`) or physically by table and column names - the
+(`r3:"rel:has-many,fk:store_id"`) or physically by table and column names - the
 latter lets an entity relate to a table it does not import as a Go type, which
 sidesteps domain import cycles:
 
 ```go
-// Photo relates to locations via a join table - with no Location field on Photo,
-// so package photo never imports package location.
-repo := r3gorm.NewGormCRUD[Photo, int64](db, r3.WithRelations(
-    r3.ManyToManyRelation("locations", "photo_locations", "photo_id", "location_id", "locations"),
+// Pet relates to tags via a join table - with no Tags field on Pet,
+// so package pet never imports package tag.
+repo := r3gorm.NewGormCRUD[Pet, int64](db, r3.WithRelations(
+    r3.ManyToManyRelation("tags", "pet_tags", "pet_id", "tag_id", "tags"),
 ))
 ```
 
@@ -472,17 +472,17 @@ Either way the relation drives three operations:
 
 ```go
 // Has - rows whose relation matches (EXISTS)
-repo.List(ctx, r3.Query{Filters: r3.Filters{r3.Has("locations", r3.Eq("city_id", 7))}})
+repo.List(ctx, r3.Query{Filters: r3.Filters{r3.Has("tags", r3.Eq("name", "vaccinated"))}})
 
 // HasNo - the anti-join (NOT EXISTS): rows with no matching related row,
 // correctly including rows whose foreign key is NULL
-repo.List(ctx, r3.Query{Filters: r3.Filters{r3.HasNo("Translations")}})
+repo.List(ctx, r3.Query{Filters: r3.Filters{r3.HasNo("orders")}})
 
 // AggregateThroughRelation - grouped aggregation over the related rows
 // (a has-many child table or an m2m join table)
-rows, _ := r3.AggregateThroughRelation(ctx, squadRepo, "members", r3.Query{
-    GroupBy:    r3.GroupBy("squad_id"),
-    Aggregates: r3.Aggregates{r3.AggCount("members")},
+rows, _ := r3.AggregateThroughRelation(ctx, storeRepo, "pets", r3.Query{
+    GroupBy:    r3.GroupBy("store_id"),
+    Aggregates: r3.Aggregates{r3.AggCount("pets")},
 })
 ```
 
@@ -516,11 +516,11 @@ Parse HTTP request parameters directly into r3 queries:
 ```go
 import r3url "github.com/amberpixels/r3/dialects/url"
 
-// GET /api/cities?fields=id,name&sort=name:asc&page=2&page_size=25&status=active
+// GET /api/pets?fields=id,name&sort=name:asc&page=2&page_size=25&status=available
 q, err := r3url.ParseQuery(r.URL.Query(),
     r3url.WithDjangoStyleFilters("status", "name"),
 )
-cities, total, err := cityRepo.List(ctx, q)
+pets, total, err := petRepo.List(ctx, q)
 ```
 
 ## Requirements
