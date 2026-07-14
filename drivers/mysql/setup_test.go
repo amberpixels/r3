@@ -54,7 +54,13 @@ func setupMySQLContainer() (testcontainers.Container, *sql.DB, error) {
 			"MYSQL_PASSWORD":      "test",
 			"MYSQL_DATABASE":      "testdb",
 		},
-		WaitingFor: wait.ForListeningPort("3306/tcp").WithStartupTimeout(60 * time.Second),
+		// MySQL's entrypoint restarts the server during init and Docker's port
+		// proxy accepts connections early, so wait for the final "ready" log
+		// line (the temp init server runs with networking disabled).
+		WaitingFor: wait.ForAll(
+			wait.ForLog("port: 3306  MySQL Community Server"),
+			wait.ForListeningPort("3306/tcp"),
+		).WithDeadline(120 * time.Second),
 	}
 
 	// Start the container

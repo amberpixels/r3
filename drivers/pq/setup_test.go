@@ -52,7 +52,13 @@ func setupPostgresContainer() (testcontainers.Container, *sql.DB, error) {
 			"POSTGRES_PASSWORD": "test",
 			"POSTGRES_DB":       "testdb",
 		},
-		WaitingFor: wait.ForListeningPort("5432/tcp").WithStartupTimeout(30 * time.Second),
+		// The Postgres entrypoint boots a throwaway server for initdb before the
+		// real one, and Docker's port proxy accepts connections before the DB is
+		// up, so wait for the second "ready" log line, not just the open port.
+		WaitingFor: wait.ForAll(
+			wait.ForLog("database system is ready to accept connections").WithOccurrence(2),
+			wait.ForListeningPort("5432/tcp"),
+		).WithDeadline(60 * time.Second),
 	}
 
 	// Start the container
