@@ -3,7 +3,7 @@ module github.com/amberpixels/r3
 go 1.26
 
 require (
-	github.com/amberpixels/k1 v0.1.8
+	github.com/amberpixels/k1 v0.2.0
 	github.com/d3rty/json v0.0.0-20260223214742-da23dcd77ba2
 	github.com/expectto/be v1.0.0-rc.8
 	github.com/go-pg/pg/v10 v10.15.1
@@ -32,7 +32,7 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/IGLOU-EU/go-wildcard v1.0.3 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/amberpixels/years v0.0.9
+	github.com/amberpixels/years v0.0.11
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect

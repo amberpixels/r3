@@ -12,10 +12,10 @@ github.com/Masterminds/semver/v3 v3.4.0 h1:Zog+i5UMtVoCU8oKka5P7i9q9HgrJeGzI9SA1
 github.com/Masterminds/semver/v3 v3.4.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
 github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
-github.com/amberpixels/k1 v0.1.8 h1:UlhuUF0+DysSORSYdNYUcz6gx9P5ebv6vmDINa/gzlM=
-github.com/amberpixels/k1 v0.1.8/go.mod h1:SL0gghdwRfYYxm+U9VbpDroH5hOIMNY4ncMz8nPgLsY=
-github.com/amberpixels/years v0.0.9 h1:sPL1ePmwt2DOsa0HNIR4yNkgQM+x60lBUADM8H1BR/o=
-github.com/amberpixels/years v0.0.9/go.mod h1:Zn1BpFbzHjlMf4kEvfN77aty+76N7WJggCK/S3cYSSQ=
+github.com/amberpixels/k1 v0.2.0 h1:nwYYHm9eM1X7A69XbYVuf76tNzFbgfi/pjMbcO2Fv5I=
+github.com/amberpixels/k1 v0.2.0/go.mod h1:JS8lGTKTSX8MQjWnYZQ6wjfBoU7B9iQeN1bnLhVpCpw=
+github.com/amberpixels/years v0.0.11 h1:dWenbYTaPt+ayb21PRGE8IgG26AN+ACJDFdt+wr49Ng=
+github.com/amberpixels/years v0.0.11/go.mod h1:Zn1BpFbzHjlMf4kEvfN77aty+76N7WJggCK/S3cYSSQ=
 github.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=
 github.com/cenkalti/backoff/v4 v4.3.0/go.mod h1:Y3VNntkOUPxTVeUxJ/G5vcM//AlwfmyYozVcomhLiZE=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=
