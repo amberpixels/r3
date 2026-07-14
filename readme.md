@@ -44,11 +44,12 @@ configRepo  r3.CRUD[Config, string]   // YAML files on disk
 - [Schema & Capabilities](#schema--capabilities)
 - [Pagination](#pagination)
 - [Aggregation](#aggregation)
+- [Upsert & Bulk Patch](#upsert--bulk-patch)
 - [Relationships](#relationships)
 - [Transactions](#transactions)
 - [URL Query Parsing](#url-query-parsing)
 - [Requirements](#requirements)
-- [AI disclosure](#ai-disclosure)
+- [AI Disclosure](#ai-disclosure)
 - [Feedback](#feedback)
 - [License](#license)
 
@@ -402,15 +403,6 @@ r3.Query{
 }
 ```
 
-You can also detect truncation from the returned total without changing anything:
-
-```go
-items, total, err := repo.List(ctx)
-if total > int64(len(items)) {
-    // there are more rows than were returned
-}
-```
-
 ## Aggregation
 
 Grouped `COUNT`/`COUNT DISTINCT`/`SUM`/`AVG`/`MIN`/`MAX` without materializing
@@ -451,6 +443,34 @@ results only ever cover rows the actor may see. `r3.AggregateOf` deliberately
 checks only the outermost repo (never unwrapping decorators), so that scoping
 cannot be bypassed. A repo without the capability returns
 `r3.ErrAggregateNotSupported`.
+
+## Upsert & Bulk Patch
+
+Two more opt-in write capabilities, reached through top-level helpers (like
+`r3.AggregateOf`) so feature decorators - permission scoping in particular -
+always apply:
+
+```go
+// Upsert - insert, or update in place on conflict. With no options it
+// conflicts on the primary key and overwrites every mutable column.
+pet, err := r3.UpsertOf(ctx, petRepo, pet,
+    r3.OnConflict("slug"),                        // custom conflict target
+    r3.UpdateOnConflict(r3.NewFieldSpec("name")), // overwrite only these columns
+)
+
+// PatchWhere - set fields (taken from the entity) on every row matching
+// the filters; returns the number of rows affected.
+n, err := r3.PatchWhereOf(ctx, petRepo,
+    r3.Filters{r3.Eq("status", "pending")},
+    Pet{Status: "available"},
+    r3.Fields{r3.NewFieldSpec("status")},
+)
+```
+
+A backend without the capability returns `r3.ErrUpsertNotSupported` /
+`r3.ErrBulkPatchNotSupported`: upsert is implemented by the GORM, raw SQL,
+Mongo, and Bun drivers; bulk patch by GORM, raw SQL, and Mongo. See
+[`docs/backend-parity.md`](docs/backend-parity.md).
 
 ## Relationships
 
@@ -493,7 +513,7 @@ column. It is reached via the `RelationAggregator` capability, forwarded by
 every decorator like `Aggregator`.
 
 **Backend support:** relation resolution (`Has`/`HasNo`/`AggregateThroughRelation`)
-is implemented by the GORM driver today; other backends reject or ignore it. See
+is implemented by the GORM and Mongo drivers today; other backends reject or ignore it. See
 [`docs/backend-parity.md`](docs/backend-parity.md) for the tracked gap list.
 
 ## Transactions
@@ -527,7 +547,7 @@ pets, total, err := petRepo.List(ctx, q)
 
 - Go 1.26+
 
-## AI disclosure
+## AI Disclosure
 
 R3's code is written with heavy AI assistance - and that's by design. But the AI
 is a tool here, not the author of record:
@@ -545,12 +565,9 @@ Responsibility for the code is human. 🤖🤝🧑
 
 ## Feedback
 
-R3 isn't accepting pull requests at this stage - but **questions, ideas, bug
-reports, and feedback are genuinely welcome**. Please [open an issue](https://github.com/amberpixels/r3/issues),
-and see [CONTRIBUTING.md](CONTRIBUTING.md) for the why and the details. It's
-MIT-licensed, so you're also free to fork and adapt it for your own work. For
-security issues, see [SECURITY.md](SECURITY.md).
+R3 is a solo, opinionated project - but if you stumbled upon it and have
+ideas, questions, or bug reports, an [issue](https://github.com/amberpixels/r3/issues) is always welcome :)
 
 ## License
 
-[MIT](LICENSE) © amberpixels
+[MIT](LICENSE) © [amberpixels](https://amberpixels.io)
