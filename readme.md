@@ -265,6 +265,8 @@ repo := permissions.WithPermissions(
 - **permissions** - Policy-based authorization. Gates every CRUD operation through a
   user-defined `Checker`. Supports entity-aware row-level checks and scope injection
   (automatic filter injection into List queries). Bring your own auth logic.
+  Also advertises verdicts (`Allow`/`AllowedOps`) so a frontend can render per-row
+  capability flags computed by the same policy that enforces - no client-side drift.
 
 - **history** - Change tracking / audit log. Records every mutation as a `ChangeRecord`
   with field-level diffs. Supports snapshots, revert-to-version, and tree queries.

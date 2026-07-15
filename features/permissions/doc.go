@@ -40,4 +40,20 @@
 //	    if actor.Type == "admin" { return nil, nil }
 //	    return r3.Filters{r3.F(r3.NewFieldSpec("owner_id"), actor.ID)}, nil
 //	}
+//
+// # Advertisement
+//
+// Beyond enforcing, the package can advertise verdicts: Allow, AllowedOps, and
+// AllowResource ask the same Checker/Scoper the decorator asks, without
+// performing the operation. Use them to publish per-row capabilities (a DTO
+// "can" block a frontend renders as flags) instead of re-implementing the
+// policy client-side:
+//
+//	ops := permissions.AllowedOps[Post, int64](ctx, policy, post,
+//	    permissions.OpUpdate, permissions.OpDelete)
+//
+// The helpers work on a bare Checker (no decorator needed - e.g. on rows from
+// an unwrapped repo); the decorator's Allow/AllowedOps methods additionally
+// populate AccessRequest.EntityID via WithIDFunc. See Allow for the exact
+// faithfulness contract.
 package permissions
