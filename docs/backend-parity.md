@@ -69,6 +69,11 @@ These are feature gaps (not backend-parity gaps) tracked in the p44 feedback log
   exclude soft-deleted rows.
 - **R3-012 (i18n overlay on preloads)** - unrelated to relation resolution;
   still open.
+- **M2M order column (`order:<col>`)** - GORM only. When a many-to-many relation
+  tag names an integer join-table column, the driver persists the relation
+  slice's order (`syncM2M` writes each element's index, `preloadM2M` orders by
+  it) so drag-and-drop-style orderings survive the round-trip. The other backends
+  ignore the column and preload M2M rows in unspecified order.
 
 ## Already at parity (for reference)
 

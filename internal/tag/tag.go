@@ -19,6 +19,10 @@
 //	r3:"rel:has-many,fk:city_id"
 //	r3:"rel:belongs-to,fk:city_id"
 //	r3:"rel:has-many,fk:city_id,table:translations"
+//	r3:"rel:many-to-many,join:city_tags,fk:city_id,ref:tag_id,order:sort_order"
+//
+// order: names an integer column on the M2M join table that persists the
+// slice order: sync writes each element's index into it, preload orders by it.
 //
 // Capability flags (additive — they tighten the permissive defaults, never widen):
 //
@@ -165,6 +169,7 @@ func isKnownKeyword(s string) bool {
 		strings.HasPrefix(s, "fk:") ||
 		strings.HasPrefix(s, "ref:") ||
 		strings.HasPrefix(s, "join:") ||
+		strings.HasPrefix(s, "order:") ||
 		strings.HasPrefix(s, "table:") ||
 		strings.HasPrefix(s, "enum:") ||
 		strings.HasPrefix(s, "codec:")
@@ -228,7 +233,11 @@ type RelationTag struct {
 	RefColumn string // right FK column for M2M join table
 	TableName string // explicit table name override (optional)
 	JoinTable string // join table name for M2M relations
-	Owned     bool   // if true, children are lifecycle-bound to parent (delete orphans on update)
+	// OrderColumn is an integer column on the M2M join table that persists the
+	// relation slice's order: sync writes each element's index into it, preload
+	// orders by it. Empty means order is not persisted.
+	OrderColumn string
+	Owned       bool // if true, children are lifecycle-bound to parent (delete orphans on update)
 }
 
 // ParseRelationTag parses the `r3` struct tag on a relation field.
@@ -263,6 +272,8 @@ func ParseRelationTag(field reflect.StructField) (RelationTag, bool) {
 			tag.RefColumn = strings.TrimPrefix(part, "ref:")
 		case strings.HasPrefix(part, "join:"):
 			tag.JoinTable = strings.TrimPrefix(part, "join:")
+		case strings.HasPrefix(part, "order:"):
+			tag.OrderColumn = strings.TrimPrefix(part, "order:")
 		case strings.HasPrefix(part, "table:"):
 			tag.TableName = strings.TrimPrefix(part, "table:")
 		}

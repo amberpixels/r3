@@ -73,11 +73,15 @@ func preloadM2M[T any](db *gorm.DB, entities []T, meta enginesql.StructMeta, rel
 
 	// Query join table: SELECT fk, ref FROM join_table WHERE fk IN (?).
 	// Scan into maps so keys of any type (int, string/UUID, ...) are preserved.
+	// With an OrderColumn the rows come back in the persisted slice order (see
+	// syncM2M); the parent→children mapping below preserves row order.
+	query := "SELECT " + rel.FKColumn + " as fk, " + rel.RefColumn + " as ref FROM " +
+		rel.JoinTable + " WHERE " + rel.FKColumn + " IN (?)"
+	if rel.OrderColumn != "" {
+		query += " ORDER BY " + rel.OrderColumn
+	}
 	var rows []map[string]any
-	if err := db.Raw(
-		"SELECT "+rel.FKColumn+" as fk, "+rel.RefColumn+" as ref FROM "+rel.JoinTable+" WHERE "+rel.FKColumn+" IN (?)",
-		parentIDs,
-	).Scan(&rows).Error; err != nil {
+	if err := db.Raw(query, parentIDs).Scan(&rows).Error; err != nil {
 		return err
 	}
 

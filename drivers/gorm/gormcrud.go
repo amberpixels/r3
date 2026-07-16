@@ -421,7 +421,9 @@ func (r *GormCRUD[T, ID]) syncAssociations(ctx context.Context, entityPtr *T) er
 	return nil
 }
 
-// syncM2M replaces all join table rows for a many-to-many relation using direct SQL.
+// syncM2M replaces all join table rows for a many-to-many relation using direct
+// SQL. With an OrderColumn, each row also records its slice index, so the
+// relation's order survives the round-trip (preloadM2M orders by it).
 func syncM2M[T any](db *gorm.DB, rel enginesql.RelationMeta, pkVal any, entityPtr *T) error {
 	if err := db.Exec(
 		"DELETE FROM "+rel.JoinTable+" WHERE "+rel.FKColumn+" = ?", pkVal,
@@ -429,13 +431,20 @@ func syncM2M[T any](db *gorm.DB, rel enginesql.RelationMeta, pkVal any, entityPt
 		return err
 	}
 
+	insert := "INSERT INTO " + rel.JoinTable + " (" + rel.FKColumn + ", " + rel.RefColumn + ") VALUES (?, ?)"
+	if rel.OrderColumn != "" {
+		insert = "INSERT INTO " + rel.JoinTable +
+			" (" + rel.FKColumn + ", " + rel.RefColumn + ", " + rel.OrderColumn + ") VALUES (?, ?, ?)"
+	}
+
 	slice := reflect.ValueOf(entityPtr).Elem().Field(rel.FieldIndex)
 	for i := range slice.Len() {
 		childPK := rel.TargetMeta.PKValue(slice.Index(i).Interface())
-		if err := db.Exec(
-			"INSERT INTO "+rel.JoinTable+" ("+rel.FKColumn+", "+rel.RefColumn+") VALUES (?, ?)",
-			pkVal, childPK,
-		).Error; err != nil {
+		args := []any{pkVal, childPK}
+		if rel.OrderColumn != "" {
+			args = append(args, i)
+		}
+		if err := db.Exec(insert, args...).Error; err != nil {
 			return err
 		}
 	}

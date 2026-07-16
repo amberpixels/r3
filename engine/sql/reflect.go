@@ -35,9 +35,13 @@ type RelationMeta struct {
 	FKColumn   string       // FK column (on the "many" side, or left FK for M2M)
 	RefColumn  string       // right FK column in join table (M2M only)
 	JoinTable  string       // join table name (M2M only)
-	Owned      bool         // children are lifecycle-bound to parent (has-many only)
-	TargetMeta StructMeta   // metadata for the related entity type
-	TargetType reflect.Type // target element type (not slice/ptr)
+	// OrderColumn is an integer join-table column persisting the slice order
+	// (M2M only): sync writes each element's index, preload orders by it.
+	// Empty means order is not persisted.
+	OrderColumn string
+	Owned       bool         // children are lifecycle-bound to parent (has-many only)
+	TargetMeta  StructMeta   // metadata for the related entity type
+	TargetType  reflect.Type // target element type (not slice/ptr)
 }
 
 // StructMeta is the reflected metadata for a struct type T, used by BaseCRUD and
@@ -153,15 +157,16 @@ func buildRelationMeta(field reflect.StructField, fieldIndex int) (RelationMeta,
 	}
 
 	return RelationMeta{
-		FieldName:  field.Name,
-		FieldIndex: fieldIndex,
-		Kind:       tag.Kind,
-		FKColumn:   tag.FKColumn,
-		RefColumn:  tag.RefColumn,
-		JoinTable:  tag.JoinTable,
-		Owned:      tag.Owned,
-		TargetMeta: targetMeta,
-		TargetType: targetType,
+		FieldName:   field.Name,
+		FieldIndex:  fieldIndex,
+		Kind:        tag.Kind,
+		FKColumn:    tag.FKColumn,
+		RefColumn:   tag.RefColumn,
+		JoinTable:   tag.JoinTable,
+		OrderColumn: tag.OrderColumn,
+		Owned:       tag.Owned,
+		TargetMeta:  targetMeta,
+		TargetType:  targetType,
 	}, true
 }
 
