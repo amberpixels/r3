@@ -168,7 +168,7 @@ The interfaces and query model. This is the contract everything else implements.
 **Query model** - a single composable `Query` struct:
 - `Filters` - Field-operator-value conditions with recursive AND/OR groups
 - `Sorts` - Multi-column sort with direction and NULLS FIRST/LAST
-- `PaginationSpec` - Offset-based (page number + page size)
+- `PaginationSpec` - Page number + size, or a raw `(offset, limit)`
 - `CursorSpec` - Keyset/cursor-based (forward/backward with opaque tokens)
 - `Fields` - Column selection (SELECT specific fields)
 - `Preloads` - Eager loading of related entities
@@ -394,6 +394,15 @@ repo := r3gorm.NewGormCRUD[Pet, int64](db,
     r3.WithConfig(r3.Config{Defaults: r3.DefaultsConfig{Unpaginated: true}}),
 )
 // repo.List(ctx) now returns all rows; individual queries can still paginate.
+```
+
+Consumers that think in raw row offsets (REST `?offset=`, infinite-scroll
+loaders) can skip the page-number math and pass an offset directly. Unlike a page
+number, an offset can start at a row that is not a multiple of the limit - it is
+carried to the driver verbatim, so no rounding silently duplicates or skips rows:
+
+```go
+r3.Query{Pagination: r3.NewOffsetPagination(100, 30)}  // exactly rows 100-129
 ```
 
 Cursor-based pagination is the alternative to offset (requires at least one sort):

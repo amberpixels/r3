@@ -42,6 +42,9 @@ type ParamNames struct {
 	PageNum string
 	// PageSize is the parameter name for the page size. Default: "page_size".
 	PageSize string
+	// Offset is the parameter name for a raw 0-based row offset, an alternative
+	// to PageNum (paired with PageSize as the limit). Default: "offset".
+	Offset string
 
 	// CursorAfter is the parameter name for forward cursor token. Default: "after".
 	CursorAfter string
@@ -60,6 +63,7 @@ func DefaultParamNames() ParamNames {
 		Sort:         "sort",
 		PageNum:      "page",
 		PageSize:     "page_size",
+		Offset:       "offset",
 		CursorAfter:  "after",
 		CursorBefore: "before",
 		CursorLimit:  "limit",
@@ -174,6 +178,7 @@ func (c *Config) reservedParamNames() map[string]struct{} {
 		c.ParamNames.Sort:         {},
 		c.ParamNames.PageNum:      {},
 		c.ParamNames.PageSize:     {},
+		c.ParamNames.Offset:       {},
 		c.ParamNames.CursorAfter:  {},
 		c.ParamNames.CursorBefore: {},
 		c.ParamNames.CursorLimit:  {},

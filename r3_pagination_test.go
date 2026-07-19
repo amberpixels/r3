@@ -377,3 +377,119 @@ func TestPaginationSpec_ToLimitOffset(t *testing.T) {
 		})
 	}
 }
+
+func TestNewOffsetPagination(t *testing.T) {
+	t.Run("offset and limit", func(t *testing.T) {
+		result := r3.NewOffsetPagination(100, 30)
+		be.AssertThat(t, result, be_struct.HavingField[r3.PaginationSpec]("Offset", maybe.Some(100)))
+		be.AssertThat(t, result, be_struct.HavingField[r3.PaginationSpec]("PageSize", maybe.Some(30)))
+		// Offset is an alternative to PageNum, so PageNum stays unset.
+		be.AssertThat(t, result, be_struct.HavingField[r3.PaginationSpec]("PageNum", maybe.None[int]()))
+	})
+
+	t.Run("offset only defaults the size", func(t *testing.T) {
+		result := r3.NewOffsetPagination(40)
+		be.AssertThat(t, result, be_struct.HavingField[r3.PaginationSpec]("Offset", maybe.Some(40)))
+		be.AssertThat(t, result, be_struct.HavingField[r3.PaginationSpec]("PageSize", maybe.None[int]()))
+		be.AssertThat(t, result.GetPageSize(), be.Eq(r3.PageSizeDefault))
+	})
+}
+
+func TestPaginationSpec_GetOffset(t *testing.T) {
+	tests := []struct {
+		name       string
+		pageSpec   *r3.PaginationSpec
+		wantOffset int
+		wantOK     bool
+	}{
+		{"offset set", &r3.PaginationSpec{Offset: maybe.Some(100)}, 100, true},
+		{"offset zero", &r3.PaginationSpec{Offset: maybe.Some(0)}, 0, true},
+		{"offset negative clamps to 0", &r3.PaginationSpec{Offset: maybe.Some(-5)}, 0, true},
+		{"offset unset", &r3.PaginationSpec{PageNum: maybe.Some(2)}, 0, false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			offset, ok := tt.pageSpec.GetOffset()
+			be.AssertThat(t, offset, be.Eq(tt.wantOffset))
+			be.AssertThat(t, ok, be.Eq(tt.wantOK))
+		})
+	}
+}
+
+// TestPaginationSpec_ToLimitOffset_Offset covers the raw-offset path: the offset
+// reaches the driver verbatim (no page rounding), so a starting row that is not a
+// multiple of the limit - the whole point of the feature - is expressible.
+func TestPaginationSpec_ToLimitOffset_Offset(t *testing.T) {
+	tests := []struct {
+		name           string
+		pageSpec       *r3.PaginationSpec
+		expectedLimit  int
+		expectedOffset int
+	}{
+		{
+			name:           "misaligned offset survives (100, 30)",
+			pageSpec:       r3.NewOffsetPagination(100, 30),
+			expectedLimit:  30,
+			expectedOffset: 100, // NOT rounded to a page boundary (90)
+		},
+		{
+			name:           "offset takes precedence over page number",
+			pageSpec:       &r3.PaginationSpec{Offset: maybe.Some(15), PageNum: maybe.Some(9), PageSize: maybe.Some(5)},
+			expectedLimit:  5,
+			expectedOffset: 15,
+		},
+		{
+			name:           "offset only defaults the limit",
+			pageSpec:       r3.NewOffsetPagination(7),
+			expectedLimit:  r3.PageSizeDefault,
+			expectedOffset: 7,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			limit, offset := tt.pageSpec.ToLimitOffset()
+			be.AssertThat(t, limit, be.Eq(tt.expectedLimit))
+			be.AssertThat(t, offset, be.Eq(tt.expectedOffset))
+		})
+	}
+}
+
+// TestPaginationSpec_MergeWith_PositionExclusive: PageNum and Offset are mutually
+// exclusive position encodings, so an override of one clears the other - a stale
+// base position must never shadow the newer intent.
+func TestPaginationSpec_MergeWith_PositionExclusive(t *testing.T) {
+	t.Run("offset override clears base page", func(t *testing.T) {
+		base := &r3.PaginationSpec{PageNum: maybe.Some(3), PageSize: maybe.Some(25)}
+		result := base.MergeWith(r3.NewOffsetPagination(100))
+		be.AssertThat(t, result, be_struct.HavingField[r3.PaginationSpec]("Offset", maybe.Some(100)))
+		be.AssertThat(t, result, be_struct.HavingField[r3.PaginationSpec]("PageNum", maybe.None[int]()))
+		// PageSize is independent and is preserved from the base.
+		be.AssertThat(t, result, be_struct.HavingField[r3.PaginationSpec]("PageSize", maybe.Some(25)))
+	})
+
+	t.Run("page override clears base offset", func(t *testing.T) {
+		base := r3.NewOffsetPagination(100, 30)
+		result := base.MergeWith(r3.NewPaginationSpec(2))
+		be.AssertThat(t, result, be_struct.HavingField[r3.PaginationSpec]("PageNum", maybe.Some(2)))
+		be.AssertThat(t, result, be_struct.HavingField[r3.PaginationSpec]("Offset", maybe.None[int]()))
+		be.AssertThat(t, result, be_struct.HavingField[r3.PaginationSpec]("PageSize", maybe.Some(30)))
+	})
+}
+
+func TestPaginationSpec_Offset_StringCloneIsPaginated(t *testing.T) {
+	t.Run("String with size", func(t *testing.T) {
+		be.AssertThat(t, r3.NewOffsetPagination(100, 30).String(), be.Eq("offset=100,size=30"))
+	})
+	t.Run("String offset only", func(t *testing.T) {
+		be.AssertThat(t, (&r3.PaginationSpec{Offset: maybe.Some(40)}).String(), be.Eq("offset=40"))
+	})
+	t.Run("Clone preserves offset", func(t *testing.T) {
+		be.AssertThat(t, r3.NewOffsetPagination(100, 30).Clone(),
+			be_struct.HavingField[r3.PaginationSpec]("Offset", maybe.Some(100)))
+	})
+	t.Run("IsPaginated on offset-only spec", func(t *testing.T) {
+		be.AssertThat(t, (&r3.PaginationSpec{Offset: maybe.Some(5)}).IsPaginated(), be.True())
+	})
+}
