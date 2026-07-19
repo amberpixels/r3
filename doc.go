@@ -85,7 +85,8 @@
 //
 //   - r3 (this package): interfaces and the immutable query model. Zero deps.
 //   - dialects/: pure, stateless converters between r3 types and a format — data-store
-//     (sql, bson) and serialization (json, yaml, toml, url, schema). No I/O.
+//     (sql, bson), serialization (json, yaml, toml, url, schema), and the when bridge
+//     that compiles human time vocabulary into recurring time-pattern filters. No I/O.
 //   - engine/: complete CRUD per storage category (sql, mongo, file); reflection,
 //     query building, execution.
 //   - drivers/: ready-to-use constructors for a specific library.

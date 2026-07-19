@@ -150,9 +150,29 @@ func matchOperator(fieldVal any, op r3.FilterOperatorSpec, filterVal any) (bool,
 		return !matchLike(fieldVal, filterVal, false), nil
 	case r3.OperatorILike:
 		return matchLike(fieldVal, filterVal, true), nil
+	case r3.OperatorWeekdayIn:
+		return matchTimePattern(fieldVal, filterVal, r3.EvalWeekdayIn)
+	case r3.OperatorTimeOfDayBetween:
+		return matchTimePattern(fieldVal, filterVal, r3.EvalTimeOfDayBetween)
 	default:
 		return false, fmt.Errorf("permissions: unsupported scope filter operator %v", op)
 	}
+}
+
+// matchTimePattern applies a recurring-time operator to a scope field value. A
+// NULL time value never matches (SQL semantics), mirroring the file engine.
+func matchTimePattern(fieldVal, filterVal any, eval func(time.Time, any) (bool, error)) (bool, error) {
+	if fieldVal == nil {
+		return false, nil
+	}
+	if rv := reflect.ValueOf(fieldVal); rv.Kind() == reflect.Pointer && rv.IsNil() {
+		return false, nil
+	}
+	t, ok := toTime(fieldVal)
+	if !ok {
+		return false, fmt.Errorf("permissions: time-pattern scope requires a time field, got %T", fieldVal)
+	}
+	return eval(t, filterVal)
 }
 
 func compareEqual(a, b any) bool {

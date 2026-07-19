@@ -6,23 +6,25 @@ package r3
 type FilterOperatorSpec int8
 
 const (
-	OperatorUnspecified  FilterOperatorSpec = iota
-	OperatorEq                              // =
-	OperatorNe                              // !=
-	OperatorExists                          // exists
-	OperatorGt                              // >
-	OperatorGte                             // >=
-	OperatorLt                              // <
-	OperatorLte                             // <=
-	OperatorBetween                         // between_inc meaning []
-	OperatorBetweenEx                       // between_exc meaning ()
-	OperatorBetweenExInc                    // between_exc_inc meaning (]
-	OperatorBetweenIncEx                    // between_inc_exc meaning [)
-	OperatorIn                              // in
-	OperatorNotIn                           // not in
-	OperatorLike                            // like
-	OperatorNotLike                         // not like
-	OperatorILike                           // ilike (like + case insensitive)
+	OperatorUnspecified      FilterOperatorSpec = iota
+	OperatorEq                                  // =
+	OperatorNe                                  // !=
+	OperatorExists                              // exists
+	OperatorGt                                  // >
+	OperatorGte                                 // >=
+	OperatorLt                                  // <
+	OperatorLte                                 // <=
+	OperatorBetween                             // between_inc meaning []
+	OperatorBetweenEx                           // between_exc meaning ()
+	OperatorBetweenExInc                        // between_exc_inc meaning (]
+	OperatorBetweenIncEx                        // between_inc_exc meaning [)
+	OperatorIn                                  // in
+	OperatorNotIn                               // not in
+	OperatorLike                                // like
+	OperatorNotLike                             // not like
+	OperatorILike                               // ilike (like + case insensitive)
+	OperatorWeekdayIn                           // weekday_in: weekday-of(field) ∈ value (see r3_filter_timepattern.go)
+	OperatorTimeOfDayBetween                    // tod_between: minute-of-day-of(field) ∈ [lo, hi)
 )
 
 // String returns a debug label for the operator.
@@ -65,6 +67,10 @@ func (op *FilterOperatorSpec) String() string {
 		return "in"
 	case OperatorNotIn:
 		return "not in"
+	case OperatorWeekdayIn:
+		return "weekday_in"
+	case OperatorTimeOfDayBetween:
+		return "tod_between"
 	case OperatorUnspecified:
 		return strUnspecified
 	default:

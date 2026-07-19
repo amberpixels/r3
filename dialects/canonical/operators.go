@@ -25,6 +25,8 @@ var operatorByName = map[string]r3.FilterOperatorSpec{
 	"like":            r3.OperatorLike,
 	"notlike":         r3.OperatorNotLike,
 	"ilike":           r3.OperatorILike,
+	"weekday_in":      r3.OperatorWeekdayIn,
+	"tod_between":     r3.OperatorTimeOfDayBetween,
 }
 
 // nameByOperator is the reverse of operatorByName.

@@ -63,11 +63,19 @@ func defaultOps(t DataType) []FilterOperatorSpec {
 			OperatorEq, OperatorNe, OperatorIn, OperatorNotIn,
 			OperatorLike, OperatorNotLike, OperatorILike, OperatorExists,
 		}
-	case TypeInt, TypeFloat, TypeTime:
+	case TypeInt, TypeFloat:
 		return []FilterOperatorSpec{
 			OperatorEq, OperatorNe, OperatorIn, OperatorNotIn, OperatorExists,
 			OperatorGt, OperatorGte, OperatorLt, OperatorLte,
 			OperatorBetween, OperatorBetweenEx, OperatorBetweenExInc, OperatorBetweenIncEx,
+		}
+	case TypeTime:
+		// Time additionally supports the recurring wall-clock pattern operators.
+		return []FilterOperatorSpec{
+			OperatorEq, OperatorNe, OperatorIn, OperatorNotIn, OperatorExists,
+			OperatorGt, OperatorGte, OperatorLt, OperatorLte,
+			OperatorBetween, OperatorBetweenEx, OperatorBetweenExInc, OperatorBetweenIncEx,
+			OperatorWeekdayIn, OperatorTimeOfDayBetween,
 		}
 	case TypeBool:
 		return []FilterOperatorSpec{OperatorEq, OperatorNe}

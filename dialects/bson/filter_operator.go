@@ -19,6 +19,15 @@ const (
 	BSONOperatorNot     BSONOperator = "$not"
 	BSONOperatorAnd     BSONOperator = "$and"
 	BSONOperatorOr      BSONOperator = "$or"
+
+	// Aggregation-expression operators used by $expr to lower the time-component
+	// filter operators (weekday_in, tod_between), which have no plain-query form.
+	BSONOperatorExpr      BSONOperator = "$expr"
+	BSONOperatorDayOfWeek BSONOperator = "$dayOfWeek"
+	BSONOperatorHour      BSONOperator = "$hour"
+	BSONOperatorMinute    BSONOperator = "$minute"
+	BSONOperatorAdd       BSONOperator = "$add"
+	BSONOperatorMultiply  BSONOperator = "$multiply"
 )
 
 // String so we implement fmt.Stringer.

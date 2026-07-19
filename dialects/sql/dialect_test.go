@@ -512,6 +512,8 @@ func TestOperatorToSQL(t *testing.T) {
 		{name: "OperatorNotIn", input: r3.OperatorNotIn, expected: r3sql.SQLClauseOperatorNotIn},
 		{name: "OperatorBetween - not implemented", input: r3.OperatorBetween, expectError: true},
 		{name: "OperatorExists - not implemented", input: r3.OperatorExists, expectError: true},
+		{name: "OperatorWeekdayIn - not supported yet", input: r3.OperatorWeekdayIn, expectError: true},
+		{name: "OperatorTimeOfDayBetween - not supported yet", input: r3.OperatorTimeOfDayBetween, expectError: true},
 		{name: "OperatorUnspecified", input: r3.OperatorUnspecified, expectError: true},
 	}
 

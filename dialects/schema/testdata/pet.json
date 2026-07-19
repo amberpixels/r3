@@ -172,7 +172,9 @@
         "between",
         "between_exc",
         "between_exc_inc",
-        "between_inc_exc"
+        "between_inc_exc",
+        "weekday_in",
+        "tod_between"
       ],
       "computed": false
     },

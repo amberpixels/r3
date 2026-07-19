@@ -59,6 +59,15 @@ func OperatorToSQL(op r3.FilterOperatorSpec) (SQLClauseOperator, error) {
 		// Between becomes a compound condition, handled in FilterToSQL.
 		return "", errors.New("between operators must be handled via FilterToSQL, not OperatorToSQL")
 
+	case r3.OperatorWeekdayIn, r3.OperatorTimeOfDayBetween:
+		// Weekday/minute-of-day extraction is flavor-specific (PG EXTRACT(DOW),
+		// MySQL DAYOFWEEK, SQLite strftime) and this dialect is flavor-neutral,
+		// so there is no correct SQL to emit yet. Fail loudly rather than drop
+		// the predicate and silently return unfiltered rows. Lowering lands with
+		// the SQL flavor hook (see docs/plan-when-filters.md). Mongo and the file
+		// engine execute these operators today.
+		return "", fmt.Errorf("operator %s unsupported by the SQL dialect yet (docs/plan-when-filters.md)", &op)
+
 	case r3.OperatorUnspecified:
 		fallthrough
 	default:

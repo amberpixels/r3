@@ -189,6 +189,8 @@ Stateless, bidirectional converters between r3 types and format-specific represe
 - `dialects/yaml` - Configuration files
 - `dialects/toml` - Configuration files
 - `dialects/url` - URL query parameters (`?sort=name:asc&page=2&status=active`)
+- `dialects/when` - human time vocabulary (`"weekends"`, `"mornings"`) into
+  recurring time-pattern filters, bridging [years](https://github.com/amberpixels/years)
 
 Engines and drivers consume dialects internally; most application code never
 imports them directly.
@@ -325,7 +327,36 @@ r3.Eq("deleted_at", nil)  // IS NULL
 ```
 
 **Available operators:** `Eq`, `Ne`, `Gt`, `Gte`, `Lt`, `Lte`, `In`, `NotIn`,
-`Like`, `NotLike`, `ILike`, `Between`, `BetweenEx`, `BetweenExInc`, `BetweenIncEx`, `Exists`.
+`Like`, `NotLike`, `ILike`, `Between`, `BetweenEx`, `BetweenExInc`, `BetweenIncEx`, `Exists`,
+`WeekdayIn`, `TimeOfDayBetween`.
+
+### Recurring time patterns
+
+Two operators match a time field against a *recurring* weekly wall-clock pattern -
+something no `Between`/`In` combination can express, because a recurring window
+over a timestamp column is an infinite union of ranges:
+
+```go
+r3.WeekdayIn("started_at", time.Saturday, time.Sunday)  // weekend rows
+r3.TimeOfDayBetween("started_at", 22*60, 5*60)          // 22:00-05:00 (wraps midnight)
+```
+
+Both evaluate the field's **stored wall-clock value as-is** - no engine performs
+timezone conversion. Apps that need per-row locality store a local wall-clock
+column and filter on that. Store UTC (or a normalized local wall-clock) for
+identical results across backends: the in-memory engines read the `time.Time`'s
+own location while Mongo reads the stored date as UTC. The keyword vocabulary
+that turns `"weekends"` or `"mornings"` into these operators lives in the
+[`dialects/when`](dialects/when) bridge to
+[years](https://github.com/amberpixels/years), never in the core:
+
+```go
+filters, err := r3when.Parse("started_at", "weekends,mornings")  // OR of the two
+```
+
+Backend support: the file engine and Mongo execute these operators today (Mongo
+lowers them to an indexless `$expr`); the SQL dialect returns a loud error until
+per-flavor weekday/hour extraction lands (see `docs/plan-when-filters.md`).
 
 ## Schema & Capabilities
 
@@ -552,6 +583,18 @@ q, err := r3url.ParseQuery(r.URL.Query(),
     r3url.WithDjangoStyleFilters("status", "name"),
 )
 pets, total, err := petRepo.List(ctx, q)
+```
+
+Opt in to `?when=` recurring time-pattern filters (see
+[Recurring time patterns](#recurring-time-patterns)) by pinning the target time
+column. An unknown keyword is a client error, surfaced with the list of valid
+terms:
+
+```go
+// GET /api/sessions?when=weekends
+q, err := r3url.ParseQuery(r.URL.Query(),
+    r3url.WithWhenFilter("started_at"),
+)
 ```
 
 ## Requirements

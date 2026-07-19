@@ -143,9 +143,30 @@ func evaluateOperator(fieldVal any, op r3.FilterOperatorSpec, filterVal any) (bo
 	case r3.OperatorILike:
 		return matchLike(fieldVal, filterVal, true)
 
+	case r3.OperatorWeekdayIn:
+		return evalTimePattern(fieldVal, filterVal, r3.EvalWeekdayIn)
+
+	case r3.OperatorTimeOfDayBetween:
+		return evalTimePattern(fieldVal, filterVal, r3.EvalTimeOfDayBetween)
+
 	default:
 		return false, fmt.Errorf("unsupported filter operator: %d", op)
 	}
+}
+
+// evalTimePattern applies a recurring-time operator (weekday_in, tod_between) to
+// a field value. A NULL time field never matches - the same as SQL, where
+// weekday(NULL)/hour(NULL) is NULL - rather than failing the whole query; a
+// present value that is not a time is a genuine misuse and errors.
+func evalTimePattern(fieldVal, filterVal any, eval func(time.Time, any) (bool, error)) (bool, error) {
+	if isNullValue(fieldVal) {
+		return false, nil
+	}
+	t, ok := toTime(fieldVal)
+	if !ok {
+		return false, fmt.Errorf("time-pattern operator requires a time field, got %T", fieldVal)
+	}
+	return eval(t, filterVal)
 }
 
 // compareEqual checks equality with type coercion for common numeric mismatches.

@@ -17,46 +17,50 @@ type JSONFilterOperator int8
 
 // JSON filter operator constants.
 const (
-	OperatorUnspecified  JSONFilterOperator = iota
-	OperatorEq                              // eq, ==
-	OperatorNe                              // ne, !=
-	OperatorExists                          // exists
-	OperatorGt                              // gt, >
-	OperatorGte                             // gte, >=
-	OperatorLt                              // lt, <
-	OperatorLte                             // lte, <=
-	OperatorBetween                         // between (inclusive both)
-	OperatorBetweenEx                       // between_exc (exclusive both)
-	OperatorBetweenExInc                    // between_exc_inc
-	OperatorBetweenIncEx                    // between_inc_exc
-	OperatorIn                              // in
-	OperatorNotIn                           // nin
-	OperatorLike                            // like, *=
-	OperatorNotLike                         // notlike, !*=
-	OperatorILike                           // ilike, **=
+	OperatorUnspecified      JSONFilterOperator = iota
+	OperatorEq                                  // eq, ==
+	OperatorNe                                  // ne, !=
+	OperatorExists                              // exists
+	OperatorGt                                  // gt, >
+	OperatorGte                                 // gte, >=
+	OperatorLt                                  // lt, <
+	OperatorLte                                 // lte, <=
+	OperatorBetween                             // between (inclusive both)
+	OperatorBetweenEx                           // between_exc (exclusive both)
+	OperatorBetweenExInc                        // between_exc_inc
+	OperatorBetweenIncEx                        // between_inc_exc
+	OperatorIn                                  // in
+	OperatorNotIn                               // nin
+	OperatorLike                                // like, *=
+	OperatorNotLike                             // notlike, !*=
+	OperatorILike                               // ilike, **=
+	OperatorWeekdayIn                           // weekday_in
+	OperatorTimeOfDayBetween                    // tod_between
 )
 
 // Enum value maps for JSONFilterOperator.
 var (
 	// FilterOperatorNames maps operator constants to their canonical string names.
 	FilterOperatorNames = map[JSONFilterOperator]string{
-		OperatorUnspecified:  "",
-		OperatorEq:           "eq",
-		OperatorNe:           "ne",
-		OperatorExists:       "exists",
-		OperatorGt:           "gt",
-		OperatorGte:          "gte",
-		OperatorLt:           "lt",
-		OperatorLte:          "lte",
-		OperatorBetween:      "between",
-		OperatorBetweenEx:    "between_exc",
-		OperatorBetweenExInc: "between_exc_inc",
-		OperatorBetweenIncEx: "between_inc_exc",
-		OperatorIn:           "in",
-		OperatorNotIn:        "nin",
-		OperatorLike:         "like",
-		OperatorNotLike:      "notlike",
-		OperatorILike:        "ilike",
+		OperatorUnspecified:      "",
+		OperatorEq:               "eq",
+		OperatorNe:               "ne",
+		OperatorExists:           "exists",
+		OperatorGt:               "gt",
+		OperatorGte:              "gte",
+		OperatorLt:               "lt",
+		OperatorLte:              "lte",
+		OperatorBetween:          "between",
+		OperatorBetweenEx:        "between_exc",
+		OperatorBetweenExInc:     "between_exc_inc",
+		OperatorBetweenIncEx:     "between_inc_exc",
+		OperatorIn:               "in",
+		OperatorNotIn:            "nin",
+		OperatorLike:             "like",
+		OperatorNotLike:          "notlike",
+		OperatorILike:            "ilike",
+		OperatorWeekdayIn:        "weekday_in",
+		OperatorTimeOfDayBetween: "tod_between",
 	}
 	// FilterOperatorValues maps string representations (including aliases) to operator constants.
 	FilterOperatorValues = map[string]JSONFilterOperator{
@@ -87,6 +91,8 @@ var (
 		"!*=":             OperatorNotLike,
 		"ilike":           OperatorILike,
 		"**=":             OperatorILike,
+		"weekday_in":      OperatorWeekdayIn,
+		"tod_between":     OperatorTimeOfDayBetween,
 	}
 )
 

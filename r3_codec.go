@@ -309,7 +309,10 @@ func codecEncodableOp(op FilterOperatorSpec) bool {
 		OperatorIn, OperatorNotIn,
 		OperatorBetween, OperatorBetweenEx, OperatorBetweenExInc, OperatorBetweenIncEx:
 		return true
-	case OperatorUnspecified, OperatorExists, OperatorLike, OperatorNotLike, OperatorILike:
+	case OperatorUnspecified, OperatorExists, OperatorLike, OperatorNotLike, OperatorILike,
+		OperatorWeekdayIn, OperatorTimeOfDayBetween:
+		// Time-component operators compare an extracted weekday/minute, not a
+		// value in the field's stored domain, so a field codec never applies.
 		return false
 	default:
 		return false

@@ -18,19 +18,24 @@ type unifiedQuery struct {
 	Pagination *r3json.JSONPagination `json:"pagination,omitempty"`
 }
 
-// parseUnified parses the unified ?query={...} parameter into an r3.Query.
+// parseUnified parses the unified ?query={...} parameter into an r3.Query. An
+// opted-in ?when= filter is applied on top, so it is not silently dropped when a
+// request carries both params.
 func parseUnified(values url.Values, cfg Config) (r3.Query, error) {
-	raw := values.Get(cfg.ParamNames.Query)
-	if raw == "" {
-		return r3.NewQuery(), nil
+	q := r3.NewQuery()
+
+	if raw := values.Get(cfg.ParamNames.Query); raw != "" {
+		var uq unifiedQuery
+		if err := json.Unmarshal([]byte(raw), &uq); err != nil {
+			return r3.Query{}, newError(fmt.Errorf("failed to parse unified query JSON: %w", err))
+		}
+		var err error
+		if q, err = convertUnifiedToQuery(uq); err != nil {
+			return r3.Query{}, err
+		}
 	}
 
-	var uq unifiedQuery
-	if err := json.Unmarshal([]byte(raw), &uq); err != nil {
-		return r3.Query{}, newError(fmt.Errorf("failed to parse unified query JSON: %w", err))
-	}
-
-	return convertUnifiedToQuery(uq)
+	return applyWhenFilter(values, cfg, q)
 }
 
 // convertUnifiedToQuery converts the parsed JSON structure into an r3.Query.

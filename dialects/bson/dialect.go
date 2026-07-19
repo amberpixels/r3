@@ -45,6 +45,10 @@ func OperatorToBSON(op r3.FilterOperatorSpec) (BSONOperator, error) {
 		// Between is a compound condition, lowered directly in FilterToBSON.
 		return "", errors.New("between operators must be handled via FilterToBSON, not OperatorToBSON")
 
+	case r3.OperatorWeekdayIn, r3.OperatorTimeOfDayBetween:
+		// Time-component operators lower to $expr, handled in FilterToBSON.
+		return "", errors.New("time-component operators must be handled via FilterToBSON, not OperatorToBSON")
+
 	case r3.OperatorUnspecified:
 		fallthrough
 	default:
@@ -113,6 +117,10 @@ func FilterToBSON(f *r3.FilterSpec) (bson.D, error) {
 
 		if isBetweenOperator(f.Operator) {
 			return betweenToBSON(fieldName, f.Operator, f.Value)
+		}
+
+		if f.Operator == r3.OperatorWeekdayIn || f.Operator == r3.OperatorTimeOfDayBetween {
+			return timePatternToBSON(fieldName, f.Operator, f.Value)
 		}
 
 		bsonOp, err := OperatorToBSON(f.Operator)
@@ -288,4 +296,60 @@ func betweenToBSON(fieldName string, op r3.FilterOperatorSpec, value any) (bson.
 		{Key: string(lowOp), Value: low},
 		{Key: string(highOp), Value: high},
 	}}}, nil
+}
+
+// timePatternToBSON lowers a time-component operator (weekday_in, tod_between) to
+// an $expr document. These compare a component extracted from the field's date
+// (its weekday or minute-of-day), which has no plain-query form, so $expr with
+// the aggregation date operators is the only expression. The stored BSON date is
+// read as UTC (no timezone argument), matching the operators' wall-clock-as-is
+// contract. $expr cannot use an index; see docs/plan-when-filters.md.
+func timePatternToBSON(fieldName string, op r3.FilterOperatorSpec, value any) (bson.D, error) {
+	fieldRef := "$" + fieldName
+
+	//nolint:exhaustive // only the two time-component operators reach here (guarded by the caller)
+	switch op {
+	case r3.OperatorWeekdayIn:
+		days, err := r3.WeekdaysValue(value)
+		if err != nil {
+			return nil, err
+		}
+		// $dayOfWeek numbers Sunday..Saturday as 1..7; Go weekdays are 0..6.
+		mongoDays := make(bson.A, 0, len(days))
+		for _, d := range days {
+			mongoDays = append(mongoDays, int(d)+1)
+		}
+		dow := bson.D{{Key: string(BSONOperatorDayOfWeek), Value: fieldRef}}
+		return exprDoc(bson.D{{Key: string(BSONOperatorIn), Value: bson.A{dow, mongoDays}}}), nil
+
+	case r3.OperatorTimeOfDayBetween:
+		lo, hi, err := r3.TimeOfDayBounds(value)
+		if err != nil {
+			return nil, err
+		}
+		// minuteOfDay = $hour*60 + $minute.
+		minuteOfDay := bson.D{{Key: string(BSONOperatorAdd), Value: bson.A{
+			bson.D{{Key: string(BSONOperatorMultiply), Value: bson.A{
+				bson.D{{Key: string(BSONOperatorHour), Value: fieldRef}},
+				60,
+			}}},
+			bson.D{{Key: string(BSONOperatorMinute), Value: fieldRef}},
+		}}}
+		lowerBound := bson.D{{Key: string(BSONOperatorGte), Value: bson.A{minuteOfDay, lo}}}
+		upperBound := bson.D{{Key: string(BSONOperatorLt), Value: bson.A{minuteOfDay, hi}}}
+		// lo <= hi is a single interval (AND); lo > hi wraps midnight (OR).
+		joiner := BSONOperatorAnd
+		if lo > hi {
+			joiner = BSONOperatorOr
+		}
+		return exprDoc(bson.D{{Key: string(joiner), Value: bson.A{lowerBound, upperBound}}}), nil
+
+	default:
+		return nil, fmt.Errorf("timePatternToBSON: unexpected operator %v", op)
+	}
+}
+
+// exprDoc wraps an aggregation expression in a top-level {$expr: ...} document.
+func exprDoc(expr bson.D) bson.D {
+	return bson.D{{Key: string(BSONOperatorExpr), Value: expr}}
 }

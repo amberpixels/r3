@@ -52,6 +52,10 @@ type ParamNames struct {
 	CursorBefore string
 	// CursorLimit is the parameter name for cursor page size. Default: "limit".
 	CursorLimit string
+
+	// When is the parameter name for recurring time-pattern filters
+	// (?when=weekends). Default: "when".
+	When string
 }
 
 // DefaultParamNames returns parameter names with sensible defaults.
@@ -67,6 +71,7 @@ func DefaultParamNames() ParamNames {
 		CursorAfter:  "after",
 		CursorBefore: "before",
 		CursorLimit:  "limit",
+		When:         "when",
 	}
 }
 
@@ -88,6 +93,13 @@ type FilterConfig struct {
 	// all fields (validated for identifier safety) - set it as a security safeguard so
 	// arbitrary query params aren't interpreted as filters.
 	DjangoFields []string
+
+	// AllowWhen enables the ?when= recurring time-pattern filter. Default: false.
+	AllowWhen bool
+
+	// WhenField is the time column the ?when= filter targets. Required when
+	// AllowWhen is set; validated for identifier safety.
+	WhenField string
 }
 
 // Config controls how the URL dialect parses and formats query parameters.
@@ -169,6 +181,17 @@ func WithDjangoSeparator(sep string) Option {
 	}
 }
 
+// WithWhenFilter enables the ?when= recurring time-pattern filter, targeting the
+// given time column (e.g. "started_at"). The keyword ("weekends", "mornings") is
+// resolved through the years vocabulary by the when dialect; an unknown keyword
+// is a client error, so it surfaces as a parse error rather than being ignored.
+func WithWhenFilter(field string) Option {
+	return func(c *Config) {
+		c.Filter.AllowWhen = true
+		c.Filter.WhenField = field
+	}
+}
+
 // reservedParamNames returns the dialect's own param names, excluded from Django-style filters.
 func (c *Config) reservedParamNames() map[string]struct{} {
 	return map[string]struct{}{
@@ -182,5 +205,6 @@ func (c *Config) reservedParamNames() map[string]struct{} {
 		c.ParamNames.CursorAfter:  {},
 		c.ParamNames.CursorBefore: {},
 		c.ParamNames.CursorLimit:  {},
+		c.ParamNames.When:         {},
 	}
 }

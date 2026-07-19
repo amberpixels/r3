@@ -31,6 +31,8 @@ func TestParseFilterOperator(t *testing.T) {
 		{"like", r3.OperatorLike, false},
 		{"notlike", r3.OperatorNotLike, false},
 		{"ilike", r3.OperatorILike, false},
+		{"weekday_in", r3.OperatorWeekdayIn, false},
+		{"tod_between", r3.OperatorTimeOfDayBetween, false},
 		// Invalid inputs
 		{"", r3.OperatorUnspecified, true},
 		{"unknown", r3.OperatorUnspecified, true},
@@ -73,6 +75,8 @@ func TestFormatFilterOperator(t *testing.T) {
 		{r3.OperatorLike, "like"},
 		{r3.OperatorNotLike, "notlike"},
 		{r3.OperatorILike, "ilike"},
+		{r3.OperatorWeekdayIn, "weekday_in"},
+		{r3.OperatorTimeOfDayBetween, "tod_between"},
 		{r3.OperatorUnspecified, ""},
 	}
 

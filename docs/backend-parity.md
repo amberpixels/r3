@@ -27,6 +27,7 @@ it).
 | Relation aggregation - `r3.AggregateThroughRelation` | ✅ | ❌ `ErrRelationAggregateNotSupported` | ❌ | ✅ | ❌ |
 | Value codecs - `r3:"codec:…"` reads/writes + filter args | ✅ | ❌ `RequireCodecSupport` panics at construction | ❌ panics | ✅ | ❌ panics |
 | Value codecs - aggregate `min`/`max` decode on a codec'd field | ✅ | ❌ | ❌ | ✅ | ❌ |
+| Time-pattern filters - `r3.WeekdayIn` / `r3.TimeOfDayBetween` | ❌ errors at SQL translation | ❌ | ❌ | ✅ `$expr` | ✅ |
 
 Value codecs are the transparent Go-value ⇄ stored-value transform (flagship
 `time.Time` ⇄ unix int). Design + rollout status live in
@@ -36,6 +37,15 @@ storing the un-encoded value, so a declared codec can never corrupt data on an
 unsupported backend. Filter/cursor argument encoding is already shared in
 `engine/sql.PrepareMergedListQuerySchema`, so porting to the raw SQL drivers is
 mostly wiring the scan/bind path.
+
+Time-pattern filters (`WeekdayIn`, `TimeOfDayBetween`) lower to weekday /
+minute-of-day extraction, which has no flavor-neutral SQL form (PG
+`EXTRACT(DOW …)`, MySQL `DAYOFWEEK`, SQLite `strftime`). `dialects/sql` is
+flavor-neutral today, so every SQL-backed driver **errors loudly** at
+translation rather than silently returning unfiltered rows; Mongo lowers them to
+an indexless `$expr` and the file engine evaluates them in memory. Closing the
+SQL gap needs a flavor hook in the SQL dialect - a self-contained additive
+follow-up sequenced in [`plan-when-filters.md`](./plan-when-filters.md).
 
 GORM and Mongo today: relationship resolution is a **pre-query key set lowering**
 (a `Has` becomes an `IN`, a `HasNo` a `NOT IN`) plus a child/join aggregate.

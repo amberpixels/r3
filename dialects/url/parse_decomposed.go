@@ -4,6 +4,7 @@ import (
 	"net/url"
 
 	"github.com/amberpixels/r3"
+	r3when "github.com/amberpixels/r3/dialects/when"
 )
 
 // parseDecomposed reads each r3 component from its own URL parameter into an r3.Query.
@@ -67,5 +68,30 @@ func parseDecomposed(values url.Values, cfg Config) (r3.Query, error) {
 		q.Pagination = pagination
 	}
 
+	return applyWhenFilter(values, cfg, q)
+}
+
+// applyWhenFilter merges the ?when= recurring time-pattern filter into q when the
+// dialect has opted in via [WithWhenFilter]. It runs in every parsing mode so an
+// opted-in caller gets the filter whether the request is decomposed or unified -
+// otherwise ModeAuto would silently drop ?when= whenever a ?query= is also
+// present. Unlike a Django suffix, this param only exists because the app opted
+// in, so an unknown keyword is a client error: the years message (listing valid
+// terms) is passed through verbatim.
+func applyWhenFilter(values url.Values, cfg Config, q r3.Query) (r3.Query, error) {
+	if !cfg.Filter.AllowWhen {
+		return q, nil
+	}
+	raw := values.Get(cfg.ParamNames.When)
+	if raw == "" {
+		return q, nil
+	}
+	whenFilters, err := r3when.Parse(cfg.Filter.WhenField, raw)
+	if err != nil {
+		return r3.Query{}, err
+	}
+	if len(whenFilters) > 0 {
+		q.Filters = q.Filters.MergeWith(whenFilters)
+	}
 	return q, nil
 }
