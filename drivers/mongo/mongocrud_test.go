@@ -31,6 +31,14 @@ type SoftDoc struct {
 	DeletedAt time.Time     `bson:"deleted_at" r3:"soft_delete"`
 }
 
+// Note exercises an app-assigned string primary key — the features/history
+// ChangeRecord pattern, where a UUID is set on the entity before Create. The
+// engine must store that _id as-is instead of letting Mongo generate one.
+type Note struct {
+	ID   string `bson:"_id"`
+	Body string `bson:"body"`
+}
+
 func TestMongoRepository(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
@@ -236,5 +244,24 @@ func TestMongoRepository(t *testing.T) {
 		// H2: soft-delete / restore of a missing id returns ErrNotFound.
 		require.ErrorIs(t, softRepo.Delete(ctx, bson.NewObjectID()), r3.ErrNotFound)
 		require.ErrorIs(t, softRepo.Restore(ctx, bson.NewObjectID()), r3.ErrNotFound)
+	})
+
+	t.Run("Create honors pre-assigned string _id", func(t *testing.T) {
+		noteRepo := r3mongo.NewMongoCRUD[Note, string](db.Collection("notes"))
+
+		created, err := noteRepo.Create(ctx, Note{ID: "note-6f1d0c42", Body: "hello"})
+		require.NoError(t, err)
+		assert.Equal(t, "note-6f1d0c42", created.ID, "pre-assigned _id must survive Create")
+
+		got, err := noteRepo.Get(ctx, "note-6f1d0c42")
+		require.NoError(t, err)
+		assert.Equal(t, "hello", got.Body)
+
+		// A second pre-assigned id must not collide with the first.
+		_, err = noteRepo.Create(ctx, Note{ID: "note-a3b9e815", Body: "world"})
+		require.NoError(t, err)
+		_, total, err := noteRepo.List(ctx, r3.Query{})
+		require.NoError(t, err)
+		assert.Equal(t, int64(2), total)
 	})
 }

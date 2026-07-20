@@ -68,9 +68,13 @@ func NewBaseCRUDFromDB[T any, ID comparable](db *mongo.Database, opts ...r3.Opti
 	}
 }
 
-// Create inserts a document and returns it with the driver-generated _id.
+// Create inserts a document and returns it with its _id. A pre-assigned
+// non-zero _id (e.g. an app-generated UUID string PK, as used by
+// features/history) is stored as-is; a zero _id is excluded from the insert so
+// MongoDB generates one, which is then written back onto the entity.
 func (r *BaseCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
-	doc := r.Meta.ToBSONDoc(entity, false) // exclude _id, let MongoDB generate it
+	hasID := !r.idIsZero(entity)
+	doc := r.Meta.ToBSONDoc(entity, hasID)
 	if err := r.Meta.encodeWriteDoc(doc); err != nil {
 		return entity, err
 	}
@@ -80,7 +84,9 @@ func (r *BaseCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 		return entity, fmt.Errorf("mongo insert: %w", err)
 	}
 
-	r.Meta.SetIDValue(&entity, result.InsertedID)
+	if !hasID {
+		r.Meta.SetIDValue(&entity, result.InsertedID)
+	}
 
 	return entity, nil
 }
