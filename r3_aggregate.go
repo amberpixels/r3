@@ -271,11 +271,12 @@ func parseTime(s string) (time.Time, bool) {
 
 // Aggregator is the opt-in grouped-aggregation capability (see [AggregateOf]
 // and the package doc). Of the merged Query, Aggregate honors Filters,
-// IncludeTrashed, GroupBy, Aggregates, Having, Sorts (over group fields and
-// aggregate aliases only - other sorts, e.g. inherited defaults, are dropped),
-// and Pagination (limits grouped rows); Fields, Preloads, and Cursor are
-// ignored. Empty GroupBy with non-empty Aggregates yields a single whole-set
-// row; empty Aggregates is ErrInvalidAggregate.
+// IncludeTrashed, GroupBy, Buckets, Aggregates, Having, Sorts (over group
+// fields, bucket aliases, and aggregate aliases only - other sorts, e.g.
+// inherited defaults, are dropped), and Pagination (limits grouped rows);
+// Fields, Preloads, and Cursor are ignored. Empty GroupBy and Buckets with
+// non-empty Aggregates yields a single whole-set row; empty Aggregates is
+// ErrInvalidAggregate.
 //
 // Reach it via [AggregateOf], never by asserting an inner repo - unwrapping the
 // decorator chain would silently bypass permission scoping.
@@ -293,9 +294,14 @@ func (q Query) AggregateSorts() Sorts {
 	if len(q.Sorts) == 0 {
 		return nil
 	}
-	allowed := make(map[string]struct{}, len(q.GroupBy)+len(q.Aggregates))
+	allowed := make(map[string]struct{}, len(q.GroupBy)+len(q.Buckets)+len(q.Aggregates))
 	for _, g := range q.GroupBy {
 		allowed[g.String()] = struct{}{}
+	}
+	for _, b := range q.Buckets {
+		if b != nil {
+			allowed[b.Alias] = struct{}{}
+		}
 	}
 	for _, a := range q.Aggregates {
 		if a != nil {

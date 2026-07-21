@@ -144,9 +144,11 @@ func (r *BunCRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, er
 // Aggregate computes grouped aggregates over the records matching the query.
 // See r3.Aggregator for the query semantics.
 func (r *BunCRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.AggregateRow, error) {
-	// Bun repos carry no r3.Schema; a zero schema still validates the
-	// aggregate structure.
-	prep, err := enginesql.PrepareAggregateQuery(&r.DefaultsManager, r3.Schema{}, qarg...)
+	// Bun repos carry no r3.Schema; a zero schema still validates the aggregate
+	// structure. A zero Flavor has no date-truncation hook, so time-bucket group
+	// keys degrade loudly (r3.ErrBucketNotSupported) until bun's dialect is mapped
+	// to a Flavor; plain aggregates are unaffected.
+	prep, err := enginesql.PrepareAggregateQuery(&r.DefaultsManager, r3.Schema{}, enginesql.Flavor{}, qarg...)
 	if err != nil {
 		return nil, err
 	}

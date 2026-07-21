@@ -59,6 +59,14 @@
 //	    Aggregates: r3.Aggregates{r3.AggCount("raids"), r3.AggMax("date", "last_raid")},
 //	})
 //
+// [Query.Buckets] adds closed-form time-bucket group keys ([Bucket] with a
+// [BucketUnit]: hour/day/week/month/year) for time-series grouping ("counts per
+// day"). A bucket truncates the field's stored wall-clock as-is (no timezone
+// conversion; ISO-Monday weeks) and returns under its alias, the aggregation-side
+// analog of [WeekdayIn]/[TimeOfDayBetween]. The file, Mongo, and SQL engines
+// lower it (SQL via a per-flavor date-trunc hook); a backend without the hook
+// returns [ErrBucketNotSupported].
+//
 // # Relationships
 //
 // Relations (has-many, belongs-to, many-to-many) are declared either by struct

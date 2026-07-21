@@ -3,6 +3,8 @@ package enginesql
 import (
 	"fmt"
 	"strings"
+
+	"github.com/amberpixels/r3"
 )
 
 // PlaceholderStyle controls how SQL parameter placeholders are generated.
@@ -43,6 +45,70 @@ type Flavor struct {
 	// would-be-inserted row). False = MySQL `ON DUPLICATE KEY UPDATE col =
 	// VALUES(col)` (target is any unique key, so cols are ignored).
 	UsesOnConflictClause bool
+
+	// BucketExpr renders a flavor-specific truncation of col (an already
+	// ANSI-quoted time column reference) to a calendar unit, for a time-bucket
+	// GROUP BY key. nil means the flavor has no bucket support, so a bucket query
+	// errors loudly (see [Flavor.DateTruncExpr]) instead of silently returning
+	// un-bucketed rows. Set on the predefined flavors; ISO-Monday weeks.
+	BucketExpr func(col string, unit r3.BucketUnit) (string, error)
+}
+
+// DateTruncExpr renders the flavor's truncation of col to unit, or a loud
+// [r3.ErrBucketNotSupported] when the flavor has no bucket support wired.
+func (f Flavor) DateTruncExpr(col string, unit r3.BucketUnit) (string, error) {
+	if f.BucketExpr == nil {
+		return "", fmt.Errorf("%w: SQL flavor has no date-truncation hook", r3.ErrBucketNotSupported)
+	}
+	return f.BucketExpr(col, unit)
+}
+
+// postgresBucketExpr truncates via date_trunc; date_trunc('week') already starts
+// on Monday (ISO-8601).
+func postgresBucketExpr(col string, unit r3.BucketUnit) (string, error) {
+	if !unit.Valid() {
+		return "", fmt.Errorf("%w: unknown bucket unit %d", r3.ErrInvalidBucket, unit)
+	}
+	return fmt.Sprintf("date_trunc('%s', %s)", unit.String(), col), nil
+}
+
+// sqliteBucketExpr truncates via strftime/date, returning TEXT (the AggregateRow
+// accessors parse it). The week form shifts back to Monday: %w is 0=Sunday..
+// 6=Saturday, so days-since-Monday is (%w + 6) % 7.
+func sqliteBucketExpr(col string, unit r3.BucketUnit) (string, error) {
+	switch unit {
+	case r3.BucketHour:
+		return "strftime('%Y-%m-%d %H:00:00', " + col + ")", nil
+	case r3.BucketDay:
+		return "date(" + col + ")", nil
+	case r3.BucketWeek:
+		return "date(" + col + ", '-' || ((strftime('%w', " + col + ") + 6) % 7) || ' days')", nil
+	case r3.BucketMonth:
+		return "strftime('%Y-%m-01', " + col + ")", nil
+	case r3.BucketYear:
+		return "strftime('%Y-01-01', " + col + ")", nil
+	default:
+		return "", fmt.Errorf("%w: unknown bucket unit %d", r3.ErrInvalidBucket, unit)
+	}
+}
+
+// mysqlBucketExpr truncates via DATE/DATE_FORMAT. WEEKDAY is 0=Monday, so
+// subtracting WEEKDAY(col) days lands on the ISO-Monday week start.
+func mysqlBucketExpr(col string, unit r3.BucketUnit) (string, error) {
+	switch unit {
+	case r3.BucketHour:
+		return "DATE_FORMAT(" + col + ", '%Y-%m-%d %H:00:00')", nil
+	case r3.BucketDay:
+		return "DATE(" + col + ")", nil
+	case r3.BucketWeek:
+		return "DATE(DATE_SUB(" + col + ", INTERVAL WEEKDAY(" + col + ") DAY))", nil
+	case r3.BucketMonth:
+		return "DATE_FORMAT(" + col + ", '%Y-%m-01')", nil
+	case r3.BucketYear:
+		return "DATE_FORMAT(" + col + ", '%Y-01-01')", nil
+	default:
+		return "", fmt.Errorf("%w: unknown bucket unit %d", r3.ErrInvalidBucket, unit)
+	}
 }
 
 // Pre-defined flavors for common databases.
@@ -52,18 +118,21 @@ var (
 		SupportsRETURNING:    true,
 		TimestampFunc:        "NOW()",
 		UsesOnConflictClause: true,
+		BucketExpr:           postgresBucketExpr,
 	}
 	FlavorSQLite = Flavor{
 		Placeholder:          PlaceholderQuestion,
 		SupportsRETURNING:    true,
 		TimestampFunc:        "datetime('now')",
 		UsesOnConflictClause: true,
+		BucketExpr:           sqliteBucketExpr,
 	}
 	FlavorMySQL = Flavor{
 		Placeholder:       PlaceholderQuestion,
 		SupportsRETURNING: false,
 		TimestampFunc:     "CURRENT_TIMESTAMP",
 		IdentifierQuote:   "`",
+		BucketExpr:        mysqlBucketExpr,
 	}
 )
 

@@ -486,6 +486,41 @@ checks only the outermost repo (never unwrapping decorators), so that scoping
 cannot be bypassed. A repo without the capability returns
 `r3.ErrAggregateNotSupported`.
 
+### Time bucketing
+
+Grouping by a raw timestamp yields one group per distinct instant - useless for a
+chart. A **time-bucket group key** truncates a time field to a fixed calendar
+unit (`hour`, `day`, `week`, `month`, `year`) so "counts per day" pushes down to
+the backend:
+
+```go
+// SELECT date(created_at) AS day, COUNT(*) AS n ... GROUP BY date(created_at)
+rows, _ := r3.AggregateOf(ctx, orderRepo, r3.Query{
+    Buckets:    r3.Buckets{r3.Bucket("created_at", r3.BucketDay, "day")},
+    Aggregates: r3.Aggregates{r3.AggCount("n")},
+    Sorts:      r3.Sorts{r3.NewSortAscSpec(r3.NewFieldSpec("day"))},
+})
+for _, row := range rows {
+    day, _ := row.Time("day") // truncated timestamp, under the bucket's alias
+    n, _ := row.Int64("n")
+    fmt.Printf("%s: %d\n", day.Format(time.DateOnly), n)
+}
+```
+
+Buckets live in `Query.Buckets` beside `GroupBy` (they participate in the same
+GROUP BY), and each returns under its declared alias - so `AggregateRow.Time`,
+`Sorts`, and `Having` reference it like any other column. A bucket is a
+closed-form primitive, the aggregation-side analog of the `WeekdayIn` /
+`TimeOfDayBetween` filters: it truncates the field's **stored wall-clock value
+as-is** (no timezone conversion; store UTC for identical results across
+backends), and week buckets start on **ISO-8601 Monday** on every backend.
+
+**Backend support:** the file engine (in-memory truncation), Mongo (`$dateTrunc`),
+and the SQL backends via a per-flavor hook - every raw SQL driver, GORM, and
+go-pg. A backend without the hook (bun today) returns `r3.ErrBucketNotSupported`
+rather than silently un-bucketed rows. See
+[`docs/backend-parity.md`](docs/backend-parity.md).
+
 ## Upsert & Bulk Patch
 
 Two more opt-in write capabilities, reached through top-level helpers (like

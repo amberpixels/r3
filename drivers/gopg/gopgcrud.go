@@ -146,7 +146,9 @@ func (r *GoPgCRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, e
 func (r *GoPgCRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.AggregateRow, error) {
 	// go-pg repos carry no r3.Schema; a zero schema still validates the
 	// aggregate structure.
-	prep, err := enginesql.PrepareAggregateQuery(&r.DefaultsManager, r3.Schema{}, qarg...)
+	// go-pg is Postgres-only, so time-bucket group keys lower via the Postgres
+	// flavor.
+	prep, err := enginesql.PrepareAggregateQuery(&r.DefaultsManager, r3.Schema{}, enginesql.FlavorPostgres, qarg...)
 	if err != nil {
 		return nil, err
 	}

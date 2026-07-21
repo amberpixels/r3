@@ -39,6 +39,18 @@ var ErrCodecNotSupported = errors.New("r3: value codec not supported by this bac
 // alias, or SUM/AVG over an attribute the schema knows to be non-numeric.
 var ErrInvalidAggregate = errors.New("r3: invalid aggregate query")
 
+// ErrInvalidBucket is returned when a time-bucket group key ([BucketSpec]) is
+// invalid: a missing/invalid field, an unknown unit, an alias colliding with a
+// group field or aggregate, a source field the schema knows to be non-temporal,
+// or a codec'd field (bucketing a value stored in a non-temporal form, e.g.
+// codec:unixtime, is not yet supported - see docs/plan-aggregate-buckets.md).
+var ErrInvalidBucket = errors.New("r3: invalid time-bucket group key")
+
+// ErrBucketNotSupported is returned when a backend cannot lower a time-bucket
+// group key (e.g. a SQL flavor with no date-truncation hook wired). It is a loud
+// failure by design: a backend never silently returns un-bucketed rows.
+var ErrBucketNotSupported = errors.New("r3: time-bucket group key not supported by this backend")
+
 // Schema validation errors. Schema.ValidateQuery wraps the offending field name
 // (fmt.Errorf("%w: %q", err, name)) so a consumer can surface a 400-class message
 // instead of leaking a backend driver error (a 500) once SQL is built.

@@ -19,12 +19,15 @@ type Query struct {
 	Sorts    Sorts    // []*SortSpec
 	Preloads Preloads // []*PreloadSpec
 
-	// GroupBy, Aggregates, and Having describe an aggregation honored only by
-	// Aggregate (see [Aggregator]); Get/List/Count ignore them, as Count ignores
-	// pagination. GroupBy names the grouping fields (empty = one whole-set row),
-	// Aggregates the computed values (required for Aggregate), and Having filters
-	// grouped rows by aggregate alias or group field.
+	// GroupBy, Buckets, Aggregates, and Having describe an aggregation honored
+	// only by Aggregate (see [Aggregator]); Get/List/Count ignore them, as Count
+	// ignores pagination. GroupBy names the plain grouping fields (empty = one
+	// whole-set row when Buckets is also empty), Buckets adds derived time-bucket
+	// group keys (see [BucketSpec]), Aggregates the computed values (required for
+	// Aggregate), and Having filters grouped rows by aggregate alias, group field,
+	// or bucket alias.
 	GroupBy    Fields
+	Buckets    Buckets
 	Aggregates Aggregates
 	Having     Filters
 
@@ -56,11 +59,12 @@ func (q Query) MergeWith(other Query) Query {
 		result.Sorts = other.Sorts.Clone()
 	}
 
-	// The aggregation shape (GroupBy + Aggregates + Having) OVERRIDES as a unit: it
-	// defines what the result rows ARE, so stacking a default under a requested
-	// shape would corrupt both.
-	if len(other.GroupBy) > 0 || len(other.Aggregates) > 0 || len(other.Having) > 0 {
+	// The aggregation shape (GroupBy + Buckets + Aggregates + Having) OVERRIDES as
+	// a unit: it defines what the result rows ARE, so stacking a default under a
+	// requested shape would corrupt both.
+	if len(other.GroupBy) > 0 || len(other.Buckets) > 0 || len(other.Aggregates) > 0 || len(other.Having) > 0 {
 		result.GroupBy = other.GroupBy.Clone()
+		result.Buckets = other.Buckets.Clone()
 		result.Aggregates = other.Aggregates.Clone()
 		result.Having = other.Having.Clone()
 	}
@@ -105,6 +109,7 @@ func (q Query) Clone() Query {
 	clone.Sorts = q.Sorts.Clone()
 	clone.Preloads = q.Preloads.Clone()
 	clone.GroupBy = q.GroupBy.Clone()
+	clone.Buckets = q.Buckets.Clone()
 	clone.Aggregates = q.Aggregates.Clone()
 	clone.Having = q.Having.Clone()
 	clone.IncludeTrashed = q.IncludeTrashed

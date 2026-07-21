@@ -27,8 +27,15 @@ type PreparedAggregateQuery struct {
 	// backends), then aggregate expressions with their aliases.
 	SelectList []string
 
-	// GroupBy is the quoted group-by column list (empty = whole-set row).
+	// GroupBy is the group-by expression list (empty = whole-set row): quoted
+	// plain columns followed by rendered time-bucket expressions.
 	GroupBy []string
+
+	// BucketExprs holds just the rendered time-bucket group expressions, aligned
+	// with Query.Buckets. It is a subset of GroupBy, surfaced separately so an ORM
+	// driver (which groups by raw field names to let the ORM quote them) can add
+	// the bucket expressions without re-deriving them.
+	BucketExprs []string
 
 	// Having is the HAVING clause with args (zero when no Having filters). Aliases
 	// are already lowered to their aggregate expressions - Postgres disallows
@@ -40,15 +47,17 @@ type PreparedAggregateQuery struct {
 // (a zero r3.Schema does structural-only validation), and converts to SQL-ready
 // aggregate components.
 func PrepareAggregateQuery(
-	dm *DefaultsManager, schema r3.Schema, qarg ...r3.Query,
+	dm *DefaultsManager, schema r3.Schema, flavor Flavor, qarg ...r3.Query,
 ) (PreparedAggregateQuery, error) {
-	return PrepareMergedAggregateQuery(schema, dm.MergeListQuery(qarg...))
+	return PrepareMergedAggregateQuery(schema, dm.MergeListQuery(qarg...), flavor)
 }
 
 // PrepareMergedAggregateQuery builds the SQL aggregate components for an
 // already-merged query, exposed separately (like PrepareMergedListQuery) so a
-// driver can transform it first (e.g. lower relationship filters).
-func PrepareMergedAggregateQuery(schema r3.Schema, q r3.Query) (PreparedAggregateQuery, error) {
+// driver can transform it first (e.g. lower relationship filters). flavor renders
+// time-bucket group keys; a flavor without bucket support returns
+// [r3.ErrBucketNotSupported] only when the query actually declares buckets.
+func PrepareMergedAggregateQuery(schema r3.Schema, q r3.Query, flavor Flavor) (PreparedAggregateQuery, error) {
 	var p PreparedAggregateQuery
 
 	if err := schema.ValidateAggregateQuery(q); err != nil {
@@ -81,6 +90,24 @@ func PrepareMergedAggregateQuery(schema r3.Schema, q r3.Query) (PreparedAggregat
 		name := g.String()
 		exprByName[name] = groupCols[i]
 		p.SelectList = append(p.SelectList, groupCols[i]+" AS "+r3sql.QuoteIdentifier(name))
+	}
+	// Time-bucket group keys: a flavor-specific truncation of the (safely quoted)
+	// source column, aliased and repeated in GROUP BY. Rendered here (not in the
+	// flavor-neutral dialect) because truncation SQL is flavor-specific.
+	p.BucketExprs = make([]string, 0, len(q.Buckets))
+	for _, b := range q.Buckets {
+		col, err := r3sql.SafeColumnExpr(b.Field)
+		if err != nil {
+			return p, err
+		}
+		expr, err := flavor.DateTruncExpr(col, b.Unit)
+		if err != nil {
+			return p, err
+		}
+		p.GroupBy = append(p.GroupBy, expr)
+		p.BucketExprs = append(p.BucketExprs, expr)
+		exprByName[b.Alias] = expr
+		p.SelectList = append(p.SelectList, expr+" AS "+r3sql.QuoteIdentifier(b.Alias))
 	}
 	for _, a := range q.Aggregates {
 		item, err := r3sql.AggregateToSQL(a)
@@ -141,7 +168,7 @@ func ScanAggregateRows(rows *sql.Rows) ([]r3.AggregateRow, error) {
 // Aggregate computes grouped aggregates over the matching records. See
 // r3.Aggregator for the semantics.
 func (r *BaseCRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.AggregateRow, error) {
-	prep, err := PrepareAggregateQuery(&r.DefaultsManager, r.Schema, qarg...)
+	prep, err := PrepareAggregateQuery(&r.DefaultsManager, r.Schema, r.Flavor, qarg...)
 	if err != nil {
 		return nil, err
 	}

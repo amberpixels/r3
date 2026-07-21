@@ -75,7 +75,7 @@ func aggregateGroupNames(q r3.Query) ([]string, error) {
 func runGroupPipeline(
 	ctx context.Context, coll *mongo.Collection, prefix bson.A, groupNames []string, q r3.Query,
 ) ([]r3.AggregateRow, error) {
-	group, project, err := buildGroupAndProject(groupNames, q.Aggregates)
+	group, project, err := buildGroupAndProject(groupNames, q.Buckets, q.Aggregates)
 	if err != nil {
 		return nil, err
 	}
@@ -137,15 +137,18 @@ const sumOp = "$sum"
 const matchOp = "$match"
 
 // buildGroupAndProject translates the aggregate specs into the $group document
-// (group keys under _id.g<i>, aggregates under their aliases) and the $project
-// that flattens group keys back to field names and turns COUNT(DISTINCT ...) sets
-// into sizes.
-func buildGroupAndProject(groupNames []string, aggs r3.Aggregates) (bson.D, bson.D, error) {
+// (plain group keys under _id.g<i>, time-bucket keys under _id.b<i>, aggregates
+// under their aliases) and the $project that flattens group/bucket keys back to
+// field/alias names and turns COUNT(DISTINCT ...) sets into sizes.
+func buildGroupAndProject(groupNames []string, buckets r3.Buckets, aggs r3.Aggregates) (bson.D, bson.D, error) {
 	var groupID any
-	if len(groupNames) > 0 {
+	if len(groupNames) > 0 || len(buckets) > 0 {
 		id := bson.D{}
 		for i, name := range groupNames {
 			id = append(id, bson.E{Key: fmt.Sprintf("g%d", i), Value: "$" + name})
+		}
+		for i, b := range buckets {
+			id = append(id, bson.E{Key: fmt.Sprintf("b%d", i), Value: bucketDateTrunc(b)})
 		}
 		groupID = id
 	}
@@ -154,6 +157,9 @@ func buildGroupAndProject(groupNames []string, aggs r3.Aggregates) (bson.D, bson
 	project := bson.D{{Key: bsonIDField, Value: 0}}
 	for i, name := range groupNames {
 		project = append(project, bson.E{Key: name, Value: fmt.Sprintf("$_id.g%d", i)})
+	}
+	for i, b := range buckets {
+		project = append(project, bson.E{Key: b.Alias, Value: fmt.Sprintf("$_id.b%d", i)})
 	}
 
 	for _, a := range aggs {
@@ -196,6 +202,28 @@ func buildGroupAndProject(groupNames []string, aggs r3.Aggregates) (bson.D, bson
 		}
 	}
 	return group, project, nil
+}
+
+// $dateTrunc keys, shared with the white-box lowering goldens.
+const (
+	dateTruncOp      = "$dateTrunc"
+	dateTruncDateKey = "date"
+	dateTruncUnitKey = "unit"
+)
+
+// bucketDateTrunc renders a time-bucket group key as a $dateTrunc expression on
+// the stored date, with no timezone argument (BSON dates are UTC, i.e. exactly as
+// stored - matching the r3 wall-clock contract). Week buckets pin startOfWeek to
+// Monday (ISO-8601), the same start the file and SQL engines use.
+func bucketDateTrunc(b *r3.BucketSpec) bson.D {
+	trunc := bson.D{
+		{Key: dateTruncDateKey, Value: "$" + b.Field.String()},
+		{Key: dateTruncUnitKey, Value: b.Unit.String()},
+	}
+	if b.Unit == r3.BucketWeek {
+		trunc = append(trunc, bson.E{Key: "startOfWeek", Value: "monday"})
+	}
+	return bson.D{{Key: dateTruncOp, Value: trunc}}
 }
 
 // normalizeBSONValue converts BSON-native scalars to the Go types the

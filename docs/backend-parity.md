@@ -28,6 +28,7 @@ it).
 | Value codecs - `r3:"codec:…"` reads/writes + filter args | ✅ | ❌ `RequireCodecSupport` panics at construction | ❌ panics | ✅ | ❌ panics |
 | Value codecs - aggregate `min`/`max` decode on a codec'd field | ✅ | ❌ | ❌ | ✅ | ❌ |
 | Time-pattern filters - `r3.WeekdayIn` / `r3.TimeOfDayBetween` | ❌ errors at SQL translation | ❌ | ❌ | ✅ `$expr` | ✅ |
+| Aggregation - time-bucket GROUP BY key (`r3.Bucket`) | ✅ | ✅ | gopg ✅ · bun ❌ loud | ✅ `$dateTrunc` | ✅ |
 
 Value codecs are the transparent Go-value ⇄ stored-value transform (flagship
 `time.Time` ⇄ unix int). Design + rollout status live in
@@ -46,6 +47,19 @@ translation rather than silently returning unfiltered rows; Mongo lowers them to
 an indexless `$expr` and the file engine evaluates them in memory. Closing the
 SQL gap needs a flavor hook in the SQL dialect - a self-contained additive
 follow-up sequenced in [`plan-when-filters.md`](./plan-when-filters.md).
+
+Time-bucket group keys (`r3.Bucket`, `docs/plan-aggregate-buckets.md`) lower to
+the same kind of flavor-specific date truncation, so the hook lives on
+`engine/sql.Flavor.DateTruncExpr` (Postgres `date_trunc`, SQLite
+`strftime`/`date`, MySQL `DATE`/`DATE_FORMAT`, all ISO-Monday weeks). The SQL
+engine renders buckets where the flavor is known: every raw SQL driver, GORM
+(dialect → flavor), and go-pg (Postgres) support them; **bun degrades loudly**
+(`r3.ErrBucketNotSupported`) until its dialect is mapped to a flavor, and a GORM
+repo on an unrecognized dialect does the same rather than emitting wrong SQL.
+The same `Flavor` seam is where the pending `WeekdayIn`/`TimeOfDayBetween` SQL
+lowering will add its sibling hooks. Open follow-ups: bun dialect→flavor
+mapping, and bucketing a codec'd field (a value stored in a non-temporal form,
+e.g. `codec:unixtime`) is rejected in validation pending codec-aware bucketing.
 
 GORM and Mongo today: relationship resolution is a **pre-query key set lowering**
 (a `Has` becomes an `IN`, a `HasNo` a `NOT IN`) plus a child/join aggregate.

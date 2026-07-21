@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/amberpixels/r3"
 )
@@ -76,22 +77,24 @@ func (r *BaseCRUD[T, ID]) Aggregate(_ context.Context, qarg ...r3.Query) ([]r3.A
 	return rows, nil
 }
 
-// groupAndFold buckets entities by the group-field tuple (first-seen order,
-// so the result is deterministic even unsorted) and folds each declared
-// aggregate over every bucket. An empty GroupBy yields one whole-set bucket.
+// groupAndFold buckets entities by the group-key tuple (plain group fields plus
+// any time-bucket keys, in first-seen order so the result is deterministic even
+// unsorted) and folds each declared aggregate over every cell. Empty GroupBy and
+// Buckets yields one whole-set cell.
 func groupAndFold[T any](entities []T, q r3.Query, meta *StructMeta) ([]r3.AggregateRow, error) {
 	groupNames := r3.FieldsToStrings(q.GroupBy)
 
-	type bucket struct {
-		keys    []any
-		members []T
+	type cell struct {
+		keys       []any // plain group-field values, aligned with groupNames
+		bucketVals []any // truncated bucket values, aligned with q.Buckets
+		members    []T
 	}
 	var order []string
-	buckets := make(map[string]*bucket)
+	cells := make(map[string]*cell)
 
 	for _, e := range entities {
 		keys := make([]any, len(groupNames))
-		keyParts := make([]string, len(groupNames))
+		keyParts := make([]string, 0, len(groupNames)+len(q.Buckets))
 		for i, name := range groupNames {
 			v, ok := meta.GetFieldValue(e, name)
 			if !ok {
@@ -99,34 +102,50 @@ func groupAndFold[T any](entities []T, q r3.Query, meta *StructMeta) ([]r3.Aggre
 			}
 			v = derefValue(v)
 			keys[i] = v
-			keyParts[i] = fmt.Sprintf("%v", v)
+			keyParts = append(keyParts, fmt.Sprintf("%v", v))
+		}
+		bucketVals := make([]any, len(q.Buckets))
+		for i, b := range q.Buckets {
+			v, ok := meta.GetFieldValue(e, b.Field.String())
+			if !ok {
+				return nil, fmt.Errorf("unknown field %q in bucket %q", b.Field.String(), b.Alias)
+			}
+			tv, err := bucketValue(derefValue(v), b.Unit)
+			if err != nil {
+				return nil, fmt.Errorf("bucket %q: %w", b.Alias, err)
+			}
+			bucketVals[i] = tv
+			keyParts = append(keyParts, fmt.Sprintf("%v", tv))
 		}
 		key := strings.Join(keyParts, "\x00")
-		b, ok := buckets[key]
+		c, ok := cells[key]
 		if !ok {
-			b = &bucket{keys: keys}
-			buckets[key] = b
+			c = &cell{keys: keys, bucketVals: bucketVals}
+			cells[key] = c
 			order = append(order, key)
 		}
-		b.members = append(b.members, e)
+		c.members = append(c.members, e)
 	}
 
-	// A whole-set aggregate (no GroupBy) over zero rows still yields one row,
+	// A whole-set aggregate (no group keys) over zero rows still yields one row,
 	// matching SQL: SELECT COUNT(*) without GROUP BY always returns a row.
-	if len(groupNames) == 0 && len(buckets) == 0 {
-		buckets[""] = &bucket{}
+	if len(groupNames) == 0 && len(q.Buckets) == 0 && len(cells) == 0 {
+		cells[""] = &cell{}
 		order = append(order, "")
 	}
 
 	rows := make([]r3.AggregateRow, 0, len(order))
 	for _, key := range order {
-		b := buckets[key]
-		row := make(r3.AggregateRow, len(groupNames)+len(q.Aggregates))
+		c := cells[key]
+		row := make(r3.AggregateRow, len(groupNames)+len(q.Buckets)+len(q.Aggregates))
 		for i, name := range groupNames {
-			row[name] = b.keys[i]
+			row[name] = c.keys[i]
+		}
+		for i, b := range q.Buckets {
+			row[b.Alias] = c.bucketVals[i]
 		}
 		for _, a := range q.Aggregates {
-			v, err := foldAggregate(b.members, a, meta)
+			v, err := foldAggregate(c.members, a, meta)
 			if err != nil {
 				return nil, err
 			}
@@ -135,6 +154,19 @@ func groupAndFold[T any](entities []T, q r3.Query, meta *StructMeta) ([]r3.Aggre
 		rows = append(rows, row)
 	}
 	return rows, nil
+}
+
+// bucketValue truncates a field value to a time-bucket unit. A nil value buckets
+// to nil (SQL date_trunc(NULL) = NULL); a non-time value is an error.
+func bucketValue(v any, unit r3.BucketUnit) (any, error) {
+	if v == nil {
+		return nil, nil //nolint:nilnil // SQL NULL: a null timestamp has no bucket
+	}
+	t, ok := v.(time.Time)
+	if !ok {
+		return nil, fmt.Errorf("%w: expected a time value, got %T", r3.ErrInvalidBucket, v)
+	}
+	return r3.TruncateToBucket(t, unit), nil
 }
 
 // foldAggregate computes one aggregate over a bucket's members. NULL semantics

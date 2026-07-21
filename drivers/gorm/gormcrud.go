@@ -201,7 +201,7 @@ func (r *GormCRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3
 		}
 		merged.Filters = lowered
 	}
-	prep, err := enginesql.PrepareMergedAggregateQuery(r.schema, merged)
+	prep, err := enginesql.PrepareMergedAggregateQuery(r.schema, merged, gormFlavor(r.db))
 	if err != nil {
 		return nil, err
 	}
@@ -225,6 +225,11 @@ func (r *GormCRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3
 	// works by accident of gorm's raw-string comma heuristic).
 	for _, g := range prep.Query.GroupBy {
 		query = query.Group(g.String())
+	}
+	// Time-bucket group keys are already rendered as flavor-specific expressions
+	// (already quoted), so group by them verbatim.
+	for _, expr := range prep.BucketExprs {
+		query = query.Group(expr)
 	}
 	if prep.Having.Clause != "" {
 		query = query.Having(prep.Having.Clause, prep.Having.Args...)
@@ -254,6 +259,23 @@ func (r *GormCRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3
 		return nil, err
 	}
 	return scanned, nil
+}
+
+// gormFlavor maps gorm's dialector name to the engine/sql Flavor whose
+// date-truncation hook renders time-bucket group keys. An unrecognized dialect
+// yields a zero Flavor (no bucket support), so a bucket query degrades loudly
+// (r3.ErrBucketNotSupported) rather than emitting wrong SQL.
+func gormFlavor(db *gorm.DB) enginesql.Flavor {
+	switch db.Dialector.Name() {
+	case "postgres":
+		return enginesql.FlavorPostgres
+	case "sqlite":
+		return enginesql.FlavorSQLite
+	case "mysql":
+		return enginesql.FlavorMySQL
+	default:
+		return enginesql.Flavor{}
+	}
 }
 
 func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, error) {

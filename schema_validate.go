@@ -108,6 +108,26 @@ func (s Schema) ValidateAggregateQuery(q Query) error {
 			return err
 		}
 	}
+	for _, b := range q.Buckets {
+		name := b.Field.String()
+		if err := s.validateField(name, Filterable, ErrFieldNotFilterable); err != nil {
+			return err
+		}
+		if attr, ok := s.Lookup(name); ok {
+			// A bucket truncates a temporal value; reject only when the schema
+			// KNOWS the type is non-temporal (an untyped, hand-built attribute
+			// stays permissive).
+			if attr.Type != "" && attr.Type != TypeTime {
+				return fmt.Errorf("%w: bucket over non-time field %q (%s)", ErrInvalidBucket, name, attr.Type)
+			}
+			// Bucketing a codec'd field would truncate its stored form (e.g. a unix
+			// int), not the instant. Reject until per-backend codec-aware bucketing
+			// lands (docs/plan-aggregate-buckets.md).
+			if attr.Codec != nil {
+				return fmt.Errorf("%w: bucket over codec'd field %q is not supported", ErrInvalidBucket, name)
+			}
+		}
+	}
 	for _, a := range q.Aggregates {
 		if a == nil || a.Field == nil {
 			continue
@@ -143,10 +163,36 @@ func validateAggregateShape(q Query) error {
 		groups[g.String()] = struct{}{}
 	}
 
-	names := make(map[string]struct{}, len(q.Aggregates)+len(groups))
+	names := make(map[string]struct{}, len(q.Aggregates)+len(q.Buckets)+len(groups))
 	for g := range groups {
 		names[g] = struct{}{}
 	}
+
+	// Time-bucket group keys contribute a derived group column under their alias,
+	// so validate their shape and reserve the alias before aggregates (an alias
+	// must be unique across group fields, bucket aliases, and aggregate aliases).
+	for _, b := range q.Buckets {
+		if b == nil {
+			return fmt.Errorf("%w: nil bucket spec", ErrInvalidBucket)
+		}
+		if b.Field.String() == "" {
+			return fmt.Errorf("%w: bucket requires a field (alias %q)", ErrInvalidBucket, b.Alias)
+		}
+		if err := ValidateIdentifier(b.Field.String()); err != nil {
+			return fmt.Errorf("%w: invalid bucket field %q", ErrInvalidBucket, b.Field.String())
+		}
+		if !b.Unit.Valid() {
+			return fmt.Errorf("%w: unknown bucket unit for field %q", ErrInvalidBucket, b.Field.String())
+		}
+		if !isValidIdentifierSegment(b.Alias) {
+			return fmt.Errorf("%w: invalid bucket alias %q", ErrInvalidBucket, b.Alias)
+		}
+		if _, dup := names[b.Alias]; dup {
+			return fmt.Errorf("%w: duplicate bucket alias %q", ErrInvalidBucket, b.Alias)
+		}
+		names[b.Alias] = struct{}{}
+	}
+
 	for _, a := range q.Aggregates {
 		if a == nil {
 			return fmt.Errorf("%w: nil aggregate spec", ErrInvalidAggregate)

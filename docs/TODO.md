@@ -9,7 +9,9 @@ here, check whether it belongs in one of those instead:
 - **A feature with an active design/rollout doc** → its `plan-*.md`
   (e.g. [`plan-field-codecs.md`](./plan-field-codecs.md),
   [`plan-upsert-and-bulk-update.md`](./plan-upsert-and-bulk-update.md),
-  [`plan-mongo-parity.md`](./plan-mongo-parity.md) for the Mongo catch-up work).
+  [`plan-aggregate-buckets.md`](./plan-aggregate-buckets.md) for the time-bucket
+  GROUP BY key (issue #3), [`plan-mongo-parity.md`](./plan-mongo-parity.md) for
+  the Mongo catch-up work).
 - **Consumer-driven feature requests** → the p44 feedback log (`R3_TODO.md` in
   the p44 repo), the authoritative source for consumer priorities.
 
