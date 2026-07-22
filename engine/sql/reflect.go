@@ -306,6 +306,32 @@ func (m *StructMeta) FieldValuesForColumns(entity any, columns []string) []any {
 	return vals
 }
 
+// CopyColumnFields overwrites dstPtr's column-backed fields with src's, leaving
+// every other field (relations, association pointers, `-`-tagged fields)
+// untouched.
+//
+// Drivers use it to fold a freshly re-read row into the entity they are about to
+// return: the columns then carry DB truth (values the write omitted, DB-stamped
+// timestamps, defaults, triggers) while associations stay as the caller supplied
+// them. A re-read does not load associations, and a nil relation means "not
+// loaded" throughout r3 - so copying the row wholesale would silently drop them.
+func (m *StructMeta) CopyColumnFields(dstPtr any, src any) {
+	dst := reflect.ValueOf(dstPtr)
+	if dst.Kind() != reflect.Pointer {
+		return
+	}
+	dst = dst.Elem()
+
+	s := reflect.ValueOf(src)
+	if s.Kind() == reflect.Pointer {
+		s = s.Elem()
+	}
+
+	for _, idx := range m.Fields {
+		dst.Field(idx).Set(s.Field(idx))
+	}
+}
+
 // ValidatePatchColumns is the structural floor for Patch: it rejects an empty
 // set, or any unknown, primary-key, or soft-delete column. On success it returns
 // columns unchanged.

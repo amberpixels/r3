@@ -237,11 +237,44 @@ func (r *GoPgCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 	return entity, nil
 }
 
+// Update writes the entity and returns the row as persisted.
 func (r *GoPgCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	_, err := r.db.ModelContext(ctx, &entity).WherePK().Update()
 	if err != nil {
 		return entity, err
 	}
+	return r.refreshPersisted(ctx, entity)
+}
+
+// refreshPersisted re-reads the row and folds its column values into entity, so
+// a write returns DB-side state (triggers, updated_at, defaults) rather than the
+// caller's input. Only column-backed fields are overwritten, so relations the
+// caller populated survive - the re-read does not load them, and a nil relation
+// means "not loaded" throughout r3.
+//
+// It reads the physical row directly rather than going through Get, whose
+// default query may select a subset of fields (which would fold zeros over the
+// rest), pull relations this discards anyway, or hide a soft-deleted row the
+// write just touched.
+func (r *GoPgCRUD[T, ID]) refreshPersisted(ctx context.Context, entity T) (T, error) {
+	meta := enginesql.GetStructMeta[T]()
+
+	fresh := new(T)
+	read := r.db.ModelContext(ctx, fresh).
+		Where("? = ?", pg.Ident(meta.PKColumn), meta.PKValue(entity))
+	if meta.SoftDeleteColumn != "" {
+		// go-pg rejects this modifier outright on models that don't declare
+		// soft-delete, so it is opt-in per model.
+		read = read.AllWithDeleted()
+	}
+	if err := read.Select(); err != nil {
+		if errors.Is(err, pg.ErrNoRows) {
+			return entity, r3.ErrNotFound
+		}
+		return entity, err
+	}
+
+	meta.CopyColumnFields(&entity, *fresh)
 	return entity, nil
 }
 

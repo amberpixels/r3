@@ -24,7 +24,10 @@ type Commander[T any, ID comparable] interface {
 	// Create inserts a new record.
 	Create(context.Context, T) (T, error)
 
-	// Update modifies an existing record.
+	// Update modifies an existing record and returns it as persisted. Columns the
+	// backend does not write (immutable ones like created_at) come back with
+	// their stored values, not the caller's; relation fields are returned as
+	// passed in, since a read-back does not load them.
 	Update(context.Context, T) (T, error)
 
 	// Patch partially updates the row (PK must be set), writing only the columns

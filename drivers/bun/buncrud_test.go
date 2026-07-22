@@ -289,6 +289,24 @@ func TestBunRepository(t *testing.T) {
 		assert.Equal(t, 99, updated.Popularity, "location popularity not updated")
 	})
 
+	// H11: Update returns the persisted row, so its value comes from a read-back
+	// rather than the caller's input.
+	t.Run("Update returns the persisted row", func(t *testing.T) {
+		loc := locations[1]
+		loc.Popularity = 77
+		// An association the read-back does not load: it must survive the merge,
+		// since a nil relation means "not loaded" everywhere else in r3.
+		loc.City = &City{ID: loc.CityID}
+
+		updated, err := locRepo.Update(ctx, loc)
+		require.NoError(t, err, "update failed")
+
+		assert.Equal(t, 77, updated.Popularity, "written column must reflect the new value")
+		assert.Equal(t, loc.Name, updated.Name, "untouched column must come back from the DB")
+		require.NotNil(t, updated.City, "caller-supplied association must survive the read-back")
+		assert.Equal(t, loc.CityID, updated.City.ID)
+	})
+
 	t.Run("Upsert inserts then updates on conflict", func(t *testing.T) {
 		// Insert branch: a fresh row upserts as an insert (RETURNING fills the PK).
 		seed, err := cityRepo.Create(ctx, City{Name: "UpsertCity", CountryName: "Origland", Popularity: 1})

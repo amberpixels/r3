@@ -33,6 +33,17 @@ move it into the relevant plan/parity doc if that becomes its home).
   mostly consuming `prep.IsCursorPaginated` / `prep.CursorClause` /
   `prep.CursorLimit` / `prep.OrderBySorts()` the way `engine/sql` does.
 
+### Write return values
+
+- **ORM `Create` returns the caller's input, not the persisted row.** The
+  same class of bug as H11 (`tasks.md`), which fixed it for `Update` on every
+  backend. `drivers/gorm` `Omit`s non-`Creatable` columns on insert and then
+  returns the input unchanged, so a DB default or a dropped readonly column comes
+  back zeroed - and `features/history` records that zero in the create diff.
+  `bun`/`gopg` return the input too. `engine/sql` `Create` is already correct: it
+  scans `RETURNING`. The fix is one `refreshPersisted` call per driver (the
+  helper H11 added), at the cost of one extra SELECT per `Create`.
+
 ### Field value codecs (`r3:"codec:…"`)
 
 Full status in [`plan-field-codecs.md`](./plan-field-codecs.md); parity rows in

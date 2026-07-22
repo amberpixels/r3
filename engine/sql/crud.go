@@ -409,42 +409,23 @@ func (r *BaseCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 	return entity, nil
 }
 
-// Update modifies the record identified by its primary key.
+// Update modifies the record identified by its primary key and returns the row
+// as persisted.
 //
 // Only Mutable columns are written, so a full Update cannot clobber created_at or
 // resurrect a soft-deleted row; a model with no mutable columns makes it a
-// verified no-op. Bypass the write guard for audited system/worker writes (see
+// verified no-op. The returned entity carries the stored value of every column
+// the write skipped, so a caller-built partial model does not report those as
+// zeroed. Bypass the write guard for audited system/worker writes (see
 // r3.WithoutWriteGuard).
 func (r *BaseCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	cols := r.updateColumns(ctx, &entity)
 	if len(cols) == 0 {
-		// Nothing to write: confirm the row exists to honor the not-found
-		// contract, then return unchanged.
-		if err := r.requireExists(ctx, r.Meta.PKValue(entity)); err != nil {
-			return entity, err
-		}
-		return entity, nil
+		// Nothing to write: read the row back, which both honors the not-found
+		// contract and returns persisted state like the writing path does.
+		return r.selectByPK(ctx, entity)
 	}
-
-	vals := r.Meta.FieldValuesForColumns(entity, cols)
-	pkVal := r.Meta.PKValue(entity)
-
-	query := fmt.Sprintf(
-		"UPDATE %s SET %s WHERE %s",
-		r.Meta.TableName,
-		r.Flavor.SetExprs(cols, 1),
-		r.Flavor.WhereEq(r.Meta.PKColumn, len(cols)+1),
-	)
-
-	args := append(vals, pkVal) //nolint: gocritic // intentional append to new slice
-	res, err := r.Executor.ExecContext(ctx, query, args...)
-	if err != nil {
-		return entity, err
-	}
-	if err := r.requireUpdatedRow(ctx, res, pkVal); err != nil {
-		return entity, err
-	}
-	return entity, nil
+	return r.updateReturning(ctx, entity, cols)
 }
 
 // Patch updates only the columns named by fields; entity must have its PK set.
@@ -462,12 +443,35 @@ func (r *BaseCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields)
 	// A partial update still bumps updated_at (server time), like a full Update.
 	cols = append(cols, r.stampManagedTimestamps(ctx, &entity, cols, r3.WriteOpMutate)...)
 
-	if !r.Flavor.SupportsRETURNING {
-		return r.patchWithoutRETURNING(ctx, entity, cols)
-	}
+	return r.updateReturning(ctx, entity, cols)
+}
 
+// updateReturning writes cols and reads the row back into entity, the shared
+// return path for Update and Patch. RETURNING does both in one statement where
+// the flavor supports it (Postgres, SQLite); MySQL follows the UPDATE with a
+// SELECT. Scanning lands on the column-backed fields only, so relations the
+// caller populated are left alone.
+func (r *BaseCRUD[T, ID]) updateReturning(ctx context.Context, entity T, cols []string) (T, error) {
 	vals := r.Meta.FieldValuesForColumns(entity, cols)
 	pkVal := r.Meta.PKValue(entity)
+
+	if !r.Flavor.SupportsRETURNING {
+		query := fmt.Sprintf(
+			"UPDATE %s SET %s WHERE %s",
+			r.Meta.TableName,
+			r.Flavor.SetExprs(cols, 1),
+			r.Flavor.WhereEq(r.Meta.PKColumn, len(cols)+1),
+		)
+
+		args := append(vals, pkVal) //nolint: gocritic // intentional append to new slice
+		if _, err := r.Executor.ExecContext(ctx, query, args...); err != nil {
+			return entity, err
+		}
+		// The read-back doubles as the not-found signal, which is the reliable one
+		// on MySQL: RowsAffected counts changed (not matched) rows there and can't
+		// tell a no-op update from a miss.
+		return r.selectByPK(ctx, entity)
+	}
 
 	query := fmt.Sprintf(
 		"UPDATE %s SET %s WHERE %s RETURNING %s",
@@ -479,8 +483,7 @@ func (r *BaseCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields)
 
 	args := append(vals, pkVal) //nolint: gocritic // intentional append to new slice
 	dests := r.Meta.ScanDest(&entity)
-	err = r.Executor.QueryRowContext(ctx, query, args...).Scan(dests...)
-	if err != nil {
+	if err := r.Executor.QueryRowContext(ctx, query, args...).Scan(dests...); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
 			// No row matched the PK: normalize to the sentinel, like Get.
 			return entity, r3.ErrNotFound
@@ -490,25 +493,13 @@ func (r *BaseCRUD[T, ID]) Patch(ctx context.Context, entity T, fields r3.Fields)
 	return entity, nil
 }
 
-// patchWithoutRETURNING is Patch for backends without RETURNING (MySQL).
-func (r *BaseCRUD[T, ID]) patchWithoutRETURNING(ctx context.Context, entity T, cols []string) (T, error) {
-	vals := r.Meta.FieldValuesForColumns(entity, cols)
+// selectByPK reads the row identified by entity's PK back into entity's column
+// fields, normalizing a missing row to r3.ErrNotFound. It reads the physical row
+// regardless of soft-delete state, matching the UPDATE it follows.
+func (r *BaseCRUD[T, ID]) selectByPK(ctx context.Context, entity T) (T, error) {
 	pkVal := r.Meta.PKValue(entity)
 
-	updateQuery := fmt.Sprintf(
-		"UPDATE %s SET %s WHERE %s",
-		r.Meta.TableName,
-		r.Flavor.SetExprs(cols, 1),
-		r.Flavor.WhereEq(r.Meta.PKColumn, len(cols)+1),
-	)
-
-	args := append(vals, pkVal) //nolint: gocritic // intentional append to new slice
-	_, err := r.Executor.ExecContext(ctx, updateQuery, args...)
-	if err != nil {
-		return entity, err
-	}
-
-	selectQuery := fmt.Sprintf(
+	query := fmt.Sprintf(
 		"SELECT %s FROM %s WHERE %s",
 		ColumnsString(r.Meta.Columns),
 		r.Meta.TableName,
@@ -516,12 +507,8 @@ func (r *BaseCRUD[T, ID]) patchWithoutRETURNING(ctx context.Context, entity T, c
 	)
 
 	dests := r.Meta.ScanDest(&entity)
-	err = r.Executor.QueryRowContext(ctx, selectQuery, pkVal).Scan(dests...)
-	if err != nil {
+	if err := r.Executor.QueryRowContext(ctx, query, pkVal).Scan(dests...); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			// UPDATE matched nothing: report the sentinel. The re-fetch is a
-			// reliable not-found signal even on MySQL, where RowsAffected counts
-			// changed (not matched) rows and can't tell a no-op from a miss.
 			return entity, r3.ErrNotFound
 		}
 		return entity, err
@@ -625,19 +612,6 @@ func (r *BaseCRUD[T, ID]) requireUpdatedRow(ctx context.Context, res sql.Result,
 		return nil
 	}
 
-	exists, err := r.existsByPK(ctx, pkVal)
-	if err != nil {
-		return err
-	}
-	if !exists {
-		return r3.ErrNotFound
-	}
-	return nil
-}
-
-// requireExists returns r3.ErrNotFound when no row has the given PK. Used by
-// Update's no-mutable-columns no-op so it still honors the not-found contract.
-func (r *BaseCRUD[T, ID]) requireExists(ctx context.Context, pkVal any) error {
 	exists, err := r.existsByPK(ctx, pkVal)
 	if err != nil {
 		return err

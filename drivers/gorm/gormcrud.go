@@ -326,6 +326,7 @@ func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 	return entity, nil
 }
 
+// Update writes the entity and returns the row as persisted.
 func (r *GormCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	db := r.db.WithContext(ctx)
 	// Omit non-mutable columns (created_at, readonly, soft-delete) so a full Update
@@ -342,6 +343,32 @@ func (r *GormCRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
 	if err := r.syncAssociations(ctx, &entity); err != nil {
 		return entity, err
 	}
+	return r.refreshPersisted(ctx, entity)
+}
+
+// refreshPersisted re-reads the row and folds its column values into entity, so
+// a write returns true persisted state: the columns Omit dropped keep their
+// stored values (a caller-built partial model no longer reports a zeroed
+// created_at), and DB-stamped or trigger-set columns come back as written.
+//
+// Only column-backed fields are overwritten - the caller's associations survive,
+// since the re-read does not load them and a nil relation means "not loaded".
+//
+// It reads every column of the physical row directly rather than going through
+// Get: the default Get query may select a subset of fields (which would fold
+// zeros over the rest), preload relations this discards anyway, or hide a
+// soft-deleted row the write just touched.
+func (r *GormCRUD[T, ID]) refreshPersisted(ctx context.Context, entity T) (T, error) {
+	fresh := new(T)
+	if err := r.db.WithContext(ctx).Unscoped().
+		Where(clause.Eq{Column: r.meta.PKColumn, Value: r.meta.PKValue(entity)}).
+		First(fresh).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return entity, r3.ErrNotFound
+		}
+		return entity, err
+	}
+	r.meta.CopyColumnFields(&entity, *fresh)
 	return entity, nil
 }
 

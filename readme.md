@@ -389,7 +389,9 @@ The SQL engines consume the schema automatically:
   or resurrect a soft-deleted row. The `created_at`/`updated_at` timestamps are
   *system-managed*: the engine stamps them with server time (read-only to callers,
   written by the system), so `created_at` is set on create and `updated_at` bumps
-  on every write.
+  on every write. Shaping never leaks into the return value: `Update` and `Patch`
+  hand back the row **as persisted**, so a column the write skipped comes back
+  with its stored value rather than whatever the caller passed in.
 
 Capabilities are the **public ceiling**: the `permissions` feature only narrows
 them per-actor/row, never widens. For an audited system/worker write of a

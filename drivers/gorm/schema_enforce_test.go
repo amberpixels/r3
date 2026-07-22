@@ -135,6 +135,104 @@ func TestGormSchema_SystemWriter_WritesReadonlyColumn(t *testing.T) {
 	require.Equal(t, 1234, got.Population, "SystemWriter must write the readonly column")
 }
 
+// H11: Update must return the persisted row, not the caller's input. GORM omits
+// the immutable columns from the write - correct, the row keeps them - but then
+// returned the input unchanged, so a partial model (a request DTO with no
+// created_at) came back with a zero created_at while the DB held the real one.
+// The history feature diffs that return value and recorded a phantom change.
+func TestGormSchema_Update_ReturnsPersistedState(t *testing.T) {
+	repo := setupWidgets(t)
+	ctx := context.Background()
+
+	created, err := repo.Create(ctx, widget{Title: "a", Slug: "a"})
+	require.NoError(t, err)
+
+	stored, err := repo.Get(ctx, created.ID)
+	require.NoError(t, err)
+
+	// A partial model, the way a request DTO arrives: no created_at, plus values
+	// for columns the write is going to omit.
+	updated, err := repo.Update(ctx, widget{
+		ID:         created.ID,
+		Title:      "b",
+		Slug:       "hacked",
+		Population: 999,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, "b", updated.Title, "the written column must reflect the new value")
+	require.False(t, updated.CreatedAt.IsZero(), "created_at must come back from the DB, not from the zero input")
+	require.WithinDuration(t, stored.CreatedAt, updated.CreatedAt, time.Millisecond,
+		"created_at must be the stored value")
+	require.Equal(t, "a", updated.Slug, "an immutable column the write omitted must reflect the stored value")
+	require.Equal(t, 0, updated.Population, "a readonly column the write omitted must reflect the stored value")
+	require.False(t, updated.UpdatedAt.IsZero(), "updated_at must come back stamped")
+}
+
+// The post-write refresh reads the row directly, not through the repo's default
+// Get query: a default that selects a subset of fields would otherwise fold
+// zeros over every column it leaves out.
+func TestGormSchema_Update_IgnoresDefaultGetQuery(t *testing.T) {
+	repo := setupWidgets(t)
+	ctx := context.Background()
+
+	created, err := repo.Create(ctx, widget{Title: "a", Slug: "a"})
+	require.NoError(t, err)
+
+	repo.SetDefaultGetQuery(r3.Query{Fields: r3.Fields{r3.NewFieldSpec("title")}})
+
+	updated, err := repo.Update(ctx, widget{ID: created.ID, Title: "b", Slug: "a"})
+	require.NoError(t, err)
+
+	require.Equal(t, "b", updated.Title)
+	require.False(t, updated.CreatedAt.IsZero(), "a narrow default Get query must not zero the refreshed columns")
+	require.Equal(t, "a", updated.Slug, "a narrow default Get query must not zero the refreshed columns")
+}
+
+// gizmo pairs a belongs-to pointer with column fields: the post-write refresh
+// must not drop it. history diffs pointer-to-struct fields (only slices and maps
+// are skipped), so returning a nil association would swap one phantom diff for
+// another.
+type gizmo struct {
+	ID        int64  `r3:"id,pk"`
+	Name      string `r3:"name"`
+	OwnerID   int64  `r3:"owner_id"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+
+	Owner *gizmoOwner `gorm:"foreignKey:OwnerID"`
+}
+
+type gizmoOwner struct {
+	ID   int64  `r3:"id,pk"`
+	Name string `r3:"name"`
+}
+
+func TestGormSchema_Update_PreservesAssociations(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&gizmoOwner{}, &gizmo{}))
+
+	owners := r3gorm.NewGormCRUD[gizmoOwner, int64](db)
+	repo := r3gorm.NewGormCRUD[gizmo, int64](db)
+	ctx := context.Background()
+
+	owner, err := owners.Create(ctx, gizmoOwner{Name: "acme"})
+	require.NoError(t, err)
+
+	g, err := repo.Create(ctx, gizmo{Name: "a", OwnerID: owner.ID})
+	require.NoError(t, err)
+
+	g.Name = "b"
+	g.Owner = &gizmoOwner{ID: owner.ID, Name: "acme"}
+	updated, err := repo.Update(ctx, g)
+	require.NoError(t, err)
+
+	require.Equal(t, "b", updated.Name)
+	require.NotNil(t, updated.Owner, "an association the caller supplied must survive the post-write refresh")
+	require.Equal(t, "acme", updated.Owner.Name)
+}
+
 func TestGormSchema_SystemWriter_StillRespectsStructuralFloor(t *testing.T) {
 	repo := setupWidgets(t)
 	ctx := context.Background()

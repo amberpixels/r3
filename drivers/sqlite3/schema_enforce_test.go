@@ -129,6 +129,41 @@ func TestSchema_Patch_BumpsUpdatedAt(t *testing.T) {
 	require.True(t, afterPatch.UpdatedAt.After(afterCreate.UpdatedAt), "updated_at must bump on Patch")
 }
 
+// H11: Update returns the row as persisted. The engine writes only the mutable
+// columns - correct - but used to hand back the caller's input, so a partial
+// model reported zeroes for every column the write skipped.
+func TestSchema_Update_ReturnsPersistedState(t *testing.T) {
+	repo := setupWidgets(t)
+	ctx := context.Background()
+
+	created, err := repo.Create(ctx, widget{Title: "a", Slug: "a"})
+	require.NoError(t, err)
+
+	// A partial model, the way a request DTO arrives: no created_at, plus values
+	// for columns the write will not touch.
+	updated, err := repo.Update(ctx, widget{
+		ID:         created.ID,
+		Title:      "b",
+		Slug:       "hacked",
+		Population: 999,
+	})
+	require.NoError(t, err)
+
+	require.Equal(t, "b", updated.Title, "the written column must reflect the new value")
+	require.Equal(t, created.CreatedAt, updated.CreatedAt, "created_at must come back stored, not zeroed")
+	require.Equal(t, "a", updated.Slug, "an immutable column must come back stored")
+	require.Equal(t, 0, updated.Population, "a readonly column must come back stored")
+	require.False(t, updated.UpdatedAt.IsZero(), "updated_at must come back stamped")
+}
+
+func TestSchema_Update_NotFound(t *testing.T) {
+	repo := setupWidgets(t)
+	ctx := context.Background()
+
+	_, err := repo.Update(ctx, widget{ID: 4242, Title: "ghost", Slug: "ghost"})
+	require.ErrorIs(t, err, r3.ErrNotFound, "Update on a missing row must report the sentinel")
+}
+
 func TestSchema_Update_DoesNotResurrectSoftDeleted(t *testing.T) {
 	repo := setupWidgets(t)
 	ctx := context.Background()
