@@ -11,7 +11,7 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/lib/pq v1.12.3
-	github.com/mattn/go-sqlite3 v1.14.47
+	github.com/mattn/go-sqlite3 v1.14.48
 	github.com/moby/moby/client v0.5.0
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/pressly/goose v2.7.0+incompatible
