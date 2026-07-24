@@ -5,9 +5,10 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/amberpixels/r3"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
+
+	"github.com/amberpixels/r3"
 )
 
 // RunPreloads loads the requested relations for entities (a pointer to a slice,

@@ -4,9 +4,10 @@ import (
 	"fmt"
 	"reflect"
 
+	"gorm.io/gorm"
+
 	"github.com/amberpixels/r3"
 	enginesql "github.com/amberpixels/r3/engine/sql"
-	"gorm.io/gorm"
 )
 
 // pkKey stringifies a primary/foreign key so keys of any comparable type group

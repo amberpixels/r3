@@ -4,10 +4,11 @@ package enginemongo
 import (
 	"testing"
 
-	"github.com/amberpixels/r3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/v2/bson"
+
+	"github.com/amberpixels/r3"
 )
 
 // White-box goldens for the $dateTrunc lowering of time-bucket group keys. The

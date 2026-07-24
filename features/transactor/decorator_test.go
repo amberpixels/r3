@@ -8,9 +8,10 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/expectto/be"
+
 	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/features/transactor"
-	"github.com/expectto/be"
 )
 
 // ── Test entity ──────────────────────────────────────────────────────────

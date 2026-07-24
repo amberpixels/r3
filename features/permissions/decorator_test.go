@@ -6,10 +6,11 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/amberpixels/r3"
-	"github.com/amberpixels/r3/features/permissions"
 	"github.com/expectto/be"
 	"github.com/expectto/be/be_string"
+
+	"github.com/amberpixels/r3"
+	"github.com/amberpixels/r3/features/permissions"
 )
 
 // ── Test entity ──────────────────────────────────────────────────────────
@@ -616,7 +617,7 @@ func TestOperationCheckers_MappedOps(t *testing.T) {
 	repo := permissions.WithPermissions[Post, int64](
 		inner,
 		permissions.OperationCheckers[Post, int64](
-			//nolint:exhaustive // intentionally partial map; unmapped ops are denied by default
+
 			map[permissions.Operation]permissions.Checker[Post, int64]{
 				permissions.OpRead: permissions.AllowAll[Post, int64](),
 			},
@@ -643,7 +644,7 @@ func TestOperationCheckers_WithFallback(t *testing.T) {
 	repo := permissions.WithPermissions[Post, int64](
 		inner,
 		permissions.OperationCheckers[Post, int64](
-			//nolint:exhaustive // intentionally partial map; unmapped ops use fallback
+
 			map[permissions.Operation]permissions.Checker[Post, int64]{
 				permissions.OpRead: permissions.AllowAll[Post, int64](),
 			},
@@ -865,13 +866,14 @@ func (relScoper) Scope(_ context.Context, _ r3.Actor) (r3.Filters, error) {
 // to the embedded memoryCRUD.
 type fixedScopeInner struct {
 	*memoryCRUD
+
 	inScopeIDs []int64
 }
 
 func (f *fixedScopeInner) List(_ context.Context, _ ...r3.Query) ([]Post, int64, error) {
 	var out []Post
 	for _, id := range f.inScopeIDs {
-		if p, ok := f.memoryCRUD.data[id]; ok {
+		if p, ok := f.data[id]; ok {
 			out = append(out, p)
 		}
 	}

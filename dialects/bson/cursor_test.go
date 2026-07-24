@@ -3,11 +3,12 @@ package r3bson_test
 import (
 	"testing"
 
-	"github.com/amberpixels/r3"
-	r3bson "github.com/amberpixels/r3/dialects/bson"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/v2/bson"
+
+	"github.com/amberpixels/r3"
+	r3bson "github.com/amberpixels/r3/dialects/bson"
 )
 
 func TestCursorToBSON_SingleColumnDesc(t *testing.T) {

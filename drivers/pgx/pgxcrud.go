@@ -32,4 +32,4 @@ func NewPgxQuerier[T any, ID comparable](db *sql.DB, opts ...r3.Option) r3.Queri
 func (r *PgxCRUD[T, ID]) Raw() *enginesql.BaseRaw[T, ID] { return r.BaseCRUD.Raw }
 
 // DB returns the underlying *sql.DB for advanced usage.
-func (r *PgxCRUD[T, ID]) DB() *sql.DB { return r.BaseCRUD.SQLDB() }
+func (r *PgxCRUD[T, ID]) DB() *sql.DB { return r.SQLDB() }

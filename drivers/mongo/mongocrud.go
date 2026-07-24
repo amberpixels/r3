@@ -1,9 +1,10 @@
 package r3mongo
 
 import (
+	"go.mongodb.org/mongo-driver/v2/mongo"
+
 	"github.com/amberpixels/r3"
 	enginemongo "github.com/amberpixels/r3/engine/mongo"
-	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 // MongoCRUD is a MongoDB repository; enginemongo.BaseCRUD supplies the r3.CRUD impl.

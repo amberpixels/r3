@@ -11,10 +11,11 @@ import (
 	"time"
 
 	"github.com/amberpixels/k1/maybe"
-	"github.com/amberpixels/r3"
-	enginefile "github.com/amberpixels/r3/engine/file"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/amberpixels/r3"
+	enginefile "github.com/amberpixels/r3/engine/file"
 )
 
 // City is a test entity.
@@ -836,9 +837,11 @@ func TestNewQuerier_ReadOnly(t *testing.T) {
 // Compile-time interface checks
 // --------------------------------------------------------------------------
 
-var _ r3.CRUD[City, int] = (*enginefile.BaseCRUD[City, int])(nil)
-var _ r3.Querier[City, int] = (*enginefile.BaseCRUD[City, int])(nil)
-var _ r3.Commander[City, int] = (*enginefile.BaseCRUD[City, int])(nil)
+var (
+	_ r3.CRUD[City, int]      = (*enginefile.BaseCRUD[City, int])(nil)
+	_ r3.Querier[City, int]   = (*enginefile.BaseCRUD[City, int])(nil)
+	_ r3.Commander[City, int] = (*enginefile.BaseCRUD[City, int])(nil)
+)
 
 // codecCity declares a value codec the file engine does not apply yet.
 type codecCity struct {

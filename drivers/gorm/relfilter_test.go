@@ -4,11 +4,12 @@ import (
 	"context"
 	"testing"
 
-	"github.com/amberpixels/r3"
-	r3gorm "github.com/amberpixels/r3/drivers/gorm"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+
+	"github.com/amberpixels/r3"
+	r3gorm "github.com/amberpixels/r3/drivers/gorm"
 )
 
 // Test models exercising all three relation kinds the lowering supports.

@@ -5,12 +5,13 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/amberpixels/r3"
-	r3gorm "github.com/amberpixels/r3/drivers/gorm"
-	"github.com/amberpixels/r3/features/permissions"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+
+	"github.com/amberpixels/r3"
+	r3gorm "github.com/amberpixels/r3/drivers/gorm"
+	"github.com/amberpixels/r3/features/permissions"
 )
 
 // R3-011: aggregation through a relation (COUNT/etc over a join or child table).

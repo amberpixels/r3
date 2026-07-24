@@ -4,10 +4,10 @@ import (
 	"encoding/json"
 	"testing"
 
-	r3json "github.com/amberpixels/r3/dialects/json"
-
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	r3json "github.com/amberpixels/r3/dialects/json"
 )
 
 func TestJSONField_String(t *testing.T) {

@@ -46,6 +46,8 @@ type PreparedAggregateQuery struct {
 // PrepareAggregateQuery merges defaults with args, validates against the schema
 // (a zero r3.Schema does structural-only validation), and converts to SQL-ready
 // aggregate components.
+//
+//nolint:lostfield // thin wrapper: delegates to PrepareMergedAggregateQuery, which populates every PreparedAggregateQuery field
 func PrepareAggregateQuery(
 	dm *DefaultsManager, schema r3.Schema, flavor Flavor, qarg ...r3.Query,
 ) (PreparedAggregateQuery, error) {
@@ -57,6 +59,8 @@ func PrepareAggregateQuery(
 // driver can transform it first (e.g. lower relationship filters). flavor renders
 // time-bucket group keys; a flavor without bucket support returns
 // [r3.ErrBucketNotSupported] only when the query actually declares buckets.
+//
+//nolint:lostfield // every PreparedAggregateQuery field is assigned imperatively below; early error returns intentionally yield a partial value with a non-nil error
 func PrepareMergedAggregateQuery(schema r3.Schema, q r3.Query, flavor Flavor) (PreparedAggregateQuery, error) {
 	var p PreparedAggregateQuery
 

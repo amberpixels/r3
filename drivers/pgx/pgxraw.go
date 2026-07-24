@@ -39,4 +39,4 @@ func (r *PgxRaw[T, ID]) Exec(ctx context.Context, query string, args ...any) (sq
 }
 
 // DB returns the underlying *sql.DB for fully custom usage.
-func (r *PgxRaw[T, ID]) DB() *sql.DB { return r.BaseRaw.Executor.(*sql.DB) } //nolint:errcheck // type is guaranteed by constructor
+func (r *PgxRaw[T, ID]) DB() *sql.DB { return r.Executor.(*sql.DB) } //nolint:errcheck // type is guaranteed by constructor

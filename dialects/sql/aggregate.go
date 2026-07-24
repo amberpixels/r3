@@ -134,7 +134,7 @@ func havingFilterToSQL(f *r3.FilterSpec, exprByName map[string]string) (SQLClaus
 	}
 
 	if f.Value == nil {
-		switch f.Operator { //nolint:exhaustive // only Eq/Ne make sense for nil
+		switch f.Operator {
 		case r3.OperatorEq:
 			return SQLClause{Clause: expr + " " + sqlIsNull}, nil
 		case r3.OperatorNe:

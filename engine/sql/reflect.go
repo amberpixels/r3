@@ -237,7 +237,7 @@ func (m *StructMeta) PKValue(entity any) any {
 }
 
 // SetPKValue sets the primary key value on an entity (via pointer).
-func (m *StructMeta) SetPKValue(entityPtr any, val any) {
+func (m *StructMeta) SetPKValue(entityPtr, val any) {
 	v := reflect.ValueOf(entityPtr).Elem()
 	if m.PKField >= 0 && m.PKField < len(m.Fields) {
 		pkField := v.Field(m.Fields[m.PKField])
@@ -315,7 +315,7 @@ func (m *StructMeta) FieldValuesForColumns(entity any, columns []string) []any {
 // timestamps, defaults, triggers) while associations stay as the caller supplied
 // them. A re-read does not load associations, and a nil relation means "not
 // loaded" throughout r3 - so copying the row wholesale would silently drop them.
-func (m *StructMeta) CopyColumnFields(dstPtr any, src any) {
+func (m *StructMeta) CopyColumnFields(dstPtr, src any) {
 	dst := reflect.ValueOf(dstPtr)
 	if dst.Kind() != reflect.Pointer {
 		return

@@ -7,9 +7,10 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/uptrace/bun"
+
 	"github.com/amberpixels/r3"
 	enginesql "github.com/amberpixels/r3/engine/sql"
-	"github.com/uptrace/bun"
 )
 
 var _ r3.Upserter[any, any] = &BunCRUD[any, any]{}

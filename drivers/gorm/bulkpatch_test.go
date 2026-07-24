@@ -5,11 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amberpixels/r3"
-	r3gorm "github.com/amberpixels/r3/drivers/gorm"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	"github.com/amberpixels/r3"
+	r3gorm "github.com/amberpixels/r3/drivers/gorm"
 )
 
 // job models the boot-recovery sweep use case: "mark every row still `running`

@@ -4,11 +4,11 @@ import (
 	"encoding/json"
 	"testing"
 
-	r3json "github.com/amberpixels/r3/dialects/json"
-
-	"github.com/amberpixels/r3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/amberpixels/r3"
+	r3json "github.com/amberpixels/r3/dialects/json"
 )
 
 func TestJSONFilter_String(t *testing.T) {

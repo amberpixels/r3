@@ -4,10 +4,11 @@ import (
 	"context"
 	"testing"
 
+	"github.com/expectto/be"
+
 	"github.com/amberpixels/r3"
 	enginefile "github.com/amberpixels/r3/engine/file"
 	"github.com/amberpixels/r3/features/permissions"
-	"github.com/expectto/be"
 )
 
 // Sale is the aggregate-scoping fixture: tenant-keyed rows with an amount.

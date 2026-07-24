@@ -7,9 +7,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/expectto/be"
+
 	"github.com/amberpixels/r3"
 	r3schema "github.com/amberpixels/r3/dialects/schema"
-	"github.com/expectto/be"
 )
 
 // Pet is a representative model covering scalars, enum, immutable/readonly

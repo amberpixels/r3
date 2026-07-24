@@ -3,18 +3,22 @@ package r3gopg
 import (
 	"context"
 
-	"github.com/amberpixels/r3"
 	"github.com/go-pg/pg/v10"
+
+	"github.com/amberpixels/r3"
 )
 
 // gopgTxCRUD is a transactional go-pg CRUD that wraps a *pg.Tx.
 type gopgTxCRUD[T any, ID comparable] struct {
 	*GoPgCRUD[T, ID]
+
 	tx *pg.Tx
 }
 
-var _ r3.Transactor[any, any] = &GoPgCRUD[any, any]{}
-var _ r3.TxCRUD[any, any] = &gopgTxCRUD[any, any]{}
+var (
+	_ r3.Transactor[any, any] = &GoPgCRUD[any, any]{}
+	_ r3.TxCRUD[any, any]     = &gopgTxCRUD[any, any]{}
+)
 
 func (t *gopgTxCRUD[T, ID]) Commit() error   { return t.tx.Commit() }
 func (t *gopgTxCRUD[T, ID]) Rollback() error { return t.tx.Rollback() }

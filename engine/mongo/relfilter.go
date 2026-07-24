@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 
+	"go.mongodb.org/mongo-driver/v2/mongo"
+
 	"github.com/amberpixels/r3"
 	r3bson "github.com/amberpixels/r3/dialects/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
 // This file resolves relationship ("has") filters the same backend-agnostic way

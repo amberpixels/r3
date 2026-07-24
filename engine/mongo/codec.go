@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/amberpixels/r3"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
+
+	"github.com/amberpixels/r3"
 )
 
 // HasCodecs reports whether the type declares any value codec.

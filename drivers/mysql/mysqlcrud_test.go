@@ -4,11 +4,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amberpixels/r3"
-	r3mysql "github.com/amberpixels/r3/drivers/mysql"
 	"github.com/pressly/goose"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/amberpixels/r3"
+	r3mysql "github.com/amberpixels/r3/drivers/mysql"
 )
 
 // --- MySQL-specific test models ---

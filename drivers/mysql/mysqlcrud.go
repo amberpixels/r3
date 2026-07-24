@@ -33,4 +33,4 @@ func NewMysqlQuerier[T any, ID comparable](db *sql.DB, opts ...r3.Option) r3.Que
 func (r *MysqlCRUD[T, ID]) Raw() *enginesql.BaseRaw[T, ID] { return r.BaseCRUD.Raw }
 
 // DB returns the underlying *sql.DB for advanced usage.
-func (r *MysqlCRUD[T, ID]) DB() *sql.DB { return r.BaseCRUD.SQLDB() }
+func (r *MysqlCRUD[T, ID]) DB() *sql.DB { return r.SQLDB() }

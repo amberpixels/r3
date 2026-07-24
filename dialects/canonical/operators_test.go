@@ -3,10 +3,11 @@ package canonical_test
 import (
 	"testing"
 
-	"github.com/amberpixels/r3"
-	"github.com/amberpixels/r3/dialects/canonical"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/amberpixels/r3"
+	"github.com/amberpixels/r3/dialects/canonical"
 )
 
 func TestParseFilterOperator(t *testing.T) {

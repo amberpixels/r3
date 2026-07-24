@@ -6,13 +6,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amberpixels/r3"
-	r3gopg "github.com/amberpixels/r3/drivers/gopg"
 	"github.com/go-pg/pg/v10/orm"
 	_ "github.com/lib/pq" // PostgreSQL driver for database/sql (used by goose)
 	"github.com/pressly/goose"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/amberpixels/r3"
+	r3gopg "github.com/amberpixels/r3/drivers/gopg"
 )
 
 // --- go-pg specific test models ---

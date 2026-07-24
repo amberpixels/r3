@@ -13,9 +13,11 @@ type CRUD[T any, ID comparable] struct {
 	inner r3.CRUD[T, ID]
 }
 
-var _ r3.CRUD[any, any] = &CRUD[any, any]{}
-var _ r3.Aggregator = &CRUD[any, any]{}
-var _ r3.RelationAggregator = &CRUD[any, any]{}
+var (
+	_ r3.CRUD[any, any]     = &CRUD[any, any]{}
+	_ r3.Aggregator         = &CRUD[any, any]{}
+	_ r3.RelationAggregator = &CRUD[any, any]{}
+)
 
 // WithSoftDelete wraps an existing r3.CRUD with soft-delete capabilities
 // (Restore and HardDelete). All standard CRUD methods pass through unchanged.

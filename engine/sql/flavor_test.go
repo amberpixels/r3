@@ -3,8 +3,9 @@ package enginesql_test
 import (
 	"testing"
 
-	enginesql "github.com/amberpixels/r3/engine/sql"
 	"github.com/expectto/be"
+
+	enginesql "github.com/amberpixels/r3/engine/sql"
 )
 
 // TestQuoteIdentifiers verifies that the dialect's ANSI double-quoted identifiers

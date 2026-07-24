@@ -3,8 +3,9 @@ package r3bson
 import (
 	"fmt"
 
-	"github.com/amberpixels/r3"
 	"go.mongodb.org/mongo-driver/v2/bson"
+
+	"github.com/amberpixels/r3"
 )
 
 // CursorToBSON builds a keyset pagination filter from decoded cursor values and

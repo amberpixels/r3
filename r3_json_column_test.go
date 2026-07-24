@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/amberpixels/r3"
 	"github.com/expectto/be"
 	"github.com/expectto/be/be_json"
 	"github.com/expectto/be/be_reflected"
+
+	"github.com/amberpixels/r3"
 )
 
 func TestJSONColumn_ValueAndScan(t *testing.T) {

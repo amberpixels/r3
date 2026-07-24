@@ -5,10 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amberpixels/r3"
-	enginefile "github.com/amberpixels/r3/engine/file"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/amberpixels/r3"
+	enginefile "github.com/amberpixels/r3/engine/file"
 )
 
 // seedBucketSessions creates sessions across a fixed set of timestamps so

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/amberpixels/k1/quick"
+
 	"github.com/amberpixels/r3"
 )
 
@@ -69,7 +70,7 @@ func OperatorToSQL(op r3.FilterOperatorSpec) (SQLClauseOperator, error) {
 		return "", fmt.Errorf("operator %s unsupported by the SQL dialect yet (docs/plan-when-filters.md)", &op)
 
 	case r3.OperatorUnspecified:
-		fallthrough
+		return "", fmt.Errorf("unsupported filter operator: %s", &op)
 	default:
 		return "", fmt.Errorf("unsupported filter operator: %s", &op)
 	}
@@ -367,7 +368,7 @@ func sqlSortDirectionString(direction r3.SortDirection) string {
 	case r3.SortDirectionDesc:
 		return sqlDesc
 	case r3.SortDirectionUnspecified:
-		fallthrough
+		return sqlDesc // default to descending
 	default:
 		return sqlDesc // default to descending
 	}
@@ -381,7 +382,7 @@ func sqlNullsPositionString(position r3.SortNullsPosition) string {
 	case r3.NullsPositionLast:
 		return sqlNullsLast
 	case r3.NullsPositionNotSpecified:
-		fallthrough
+		return ""
 	default:
 		return ""
 	}
@@ -389,7 +390,6 @@ func sqlNullsPositionString(position r3.SortNullsPosition) string {
 
 // isBetweenOperator returns true if the operator is any of the between variants.
 func isBetweenOperator(op r3.FilterOperatorSpec) bool {
-	//nolint:exhaustive // only checking between variants
 	switch op {
 	case r3.OperatorBetween,
 		r3.OperatorBetweenEx,
@@ -414,7 +414,7 @@ func betweenToSQL(safeCol string, op r3.FilterOperatorSpec, value any, joins []S
 	}
 
 	var lowOp, highOp SQLClauseOperator
-	//nolint:exhaustive // only between variants reach here, guarded by isBetweenOperator
+
 	switch op {
 	case r3.OperatorBetween:
 		lowOp, highOp = SQLClauseOperatorGte, SQLClauseOperatorLte

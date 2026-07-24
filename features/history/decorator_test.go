@@ -10,11 +10,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amberpixels/r3"
-	"github.com/amberpixels/r3/features/history"
 	"github.com/expectto/be"
 	"github.com/expectto/be/be_string"
 	"github.com/expectto/be/be_time"
+
+	"github.com/amberpixels/r3"
+	"github.com/amberpixels/r3/features/history"
 )
 
 // ── In-Memory CRUD (mock for entity) ─────────────────────────────────────

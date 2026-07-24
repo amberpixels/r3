@@ -6,9 +6,10 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/features/history"
-	"github.com/stretchr/testify/require"
 )
 
 // memChangeStore is a minimal in-memory r3.CRUD[history.ChangeRecord, string]
@@ -38,14 +39,17 @@ func (m *memChangeStore) List(_ context.Context, _ ...r3.Query) ([]history.Chang
 func (m *memChangeStore) Get(_ context.Context, _ string, _ ...r3.Query) (history.ChangeRecord, error) {
 	return history.ChangeRecord{}, r3.ErrNotFound
 }
+
 func (m *memChangeStore) Count(_ context.Context, _ ...r3.Query) (int64, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	return int64(len(m.records)), nil
 }
+
 func (m *memChangeStore) Update(_ context.Context, rec history.ChangeRecord) (history.ChangeRecord, error) {
 	return rec, nil
 }
+
 func (m *memChangeStore) Patch(_ context.Context, rec history.ChangeRecord, _ r3.Fields) (history.ChangeRecord, error) {
 	return rec, nil
 }

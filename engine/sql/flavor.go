@@ -138,7 +138,7 @@ var (
 
 // Placeholders builds a placeholder list: "$1, $2, $3" from startIdx (dollar) or
 // "?, ?, ?" (question).
-func (f Flavor) Placeholders(count int, startIdx int) string {
+func (f Flavor) Placeholders(count, startIdx int) string {
 	parts := make([]string, count)
 	switch f.Placeholder {
 	case PlaceholderQuestion:

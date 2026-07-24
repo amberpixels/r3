@@ -4,10 +4,11 @@ import (
 	"testing"
 
 	"github.com/amberpixels/k1/maybe"
-	"github.com/amberpixels/r3"
 	"github.com/expectto/be"
 	"github.com/expectto/be/be_math"
 	"github.com/expectto/be/be_struct"
+
+	"github.com/amberpixels/r3"
 )
 
 func TestNewPaginationSpec(t *testing.T) {

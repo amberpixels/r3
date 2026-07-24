@@ -13,9 +13,11 @@ type CRUD[T any, ID comparable] struct {
 	inner r3.CRUD[T, ID]
 }
 
-var _ r3.CRUD[any, any] = &CRUD[any, any]{}
-var _ r3.Aggregator = &CRUD[any, any]{}
-var _ r3.RelationAggregator = &CRUD[any, any]{}
+var (
+	_ r3.CRUD[any, any]     = &CRUD[any, any]{}
+	_ r3.Aggregator         = &CRUD[any, any]{}
+	_ r3.RelationAggregator = &CRUD[any, any]{}
+)
 
 // WithTransactor wraps inner with transaction capabilities.
 func WithTransactor[T any, ID comparable](inner r3.CRUD[T, ID]) *CRUD[T, ID] {

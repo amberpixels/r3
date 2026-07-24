@@ -446,7 +446,7 @@ The **structural floor is un-bypassable by both** - a computed/PK has no writabl
 - The two intentional behavior changes (unknown-field → typed error; Update no longer writes
   non-`Mutable` columns) are **pre-1.0, documented** breaks. Note them in `tasks.md` /
   changelog with before/after.
-- Keep depguard/`.golangci.yml` layering intact: core `r3` package must stay
+- Keep the layering intact (enforced by `standardgo` lint): core `r3` package must stay
   **dependency-free** (no imports of `engine`/`dialects`/`drivers`). `schema*.go` files use
   only stdlib + `internal/utils`, `internal/tag`.
 

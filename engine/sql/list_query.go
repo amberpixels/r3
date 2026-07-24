@@ -55,6 +55,8 @@ func PrepareListQuery(dm *DefaultsManager, qarg ...r3.Query) (PreparedListQuery,
 // It applies no value codecs; a driver whose schema declares codecs must call
 // [PrepareMergedListQuerySchema] to encode codec'd filter/cursor args to stored
 // form.
+//
+//nolint:lostfield // thin wrapper: delegates to PrepareMergedListQuerySchema, which reads the query and populates every PreparedListQuery field
 func PrepareMergedListQuery(q r3.Query) (PreparedListQuery, error) {
 	return PrepareMergedListQuerySchema(r3.Schema{}, q)
 }
@@ -63,6 +65,8 @@ func PrepareMergedListQuery(q r3.Query) (PreparedListQuery, error) {
 // value codecs applied: filter args and decoded cursor keys on codec'd attributes
 // are encoded to stored form so predicates compare against stored column values.
 // A zero schema (no codecs) behaves exactly like PrepareMergedListQuery.
+//
+//nolint:lostfield // every PreparedListQuery field is assigned imperatively below; some branches are conditional by design (zero value means "not requested")
 func PrepareMergedListQuerySchema(schema r3.Schema, q r3.Query) (PreparedListQuery, error) {
 	var p PreparedListQuery
 

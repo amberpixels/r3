@@ -141,6 +141,7 @@ func resolveTransactor[T any, ID comparable](
 // top of a backend transaction; Commit/Rollback drive that backend transaction.
 type decoratedTx[T any, ID comparable] struct {
 	CRUD[T, ID]
+
 	base TxCRUD[T, ID]
 }
 

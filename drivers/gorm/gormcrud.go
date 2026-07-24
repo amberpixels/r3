@@ -7,17 +7,18 @@ import (
 	"strings"
 	"time"
 
-	"github.com/amberpixels/r3"
-	enginesql "github.com/amberpixels/r3/engine/sql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	"github.com/amberpixels/r3"
+	enginesql "github.com/amberpixels/r3/engine/sql"
 )
 
 // GormCRUD is a CRUD repository based on gorm.DB.
 type GormCRUD[T any, ID comparable] struct {
-	db *gorm.DB
-
 	enginesql.DefaultsManager
+
+	db *gorm.DB
 
 	meta   enginesql.StructMeta
 	schema r3.Schema // logical schema for read validation and write-shaping
@@ -25,10 +26,12 @@ type GormCRUD[T any, ID comparable] struct {
 	raw    *GormRaw[T, ID]
 }
 
-var _ r3.CRUD[any, any] = &GormCRUD[any, any]{}
-var _ r3.Aggregator = &GormCRUD[any, any]{}
-var _ r3.Upserter[any, any] = &GormCRUD[any, any]{}
-var _ r3.BulkPatcher[any, any] = &GormCRUD[any, any]{}
+var (
+	_ r3.CRUD[any, any]        = &GormCRUD[any, any]{}
+	_ r3.Aggregator            = &GormCRUD[any, any]{}
+	_ r3.Upserter[any, any]    = &GormCRUD[any, any]{}
+	_ r3.BulkPatcher[any, any] = &GormCRUD[any, any]{}
+)
 
 // NewGormCRUD builds a GORM-based repository.
 func NewGormCRUD[T any, ID comparable](db *gorm.DB, opts ...r3.Option) *GormCRUD[T, ID] {
@@ -266,7 +269,7 @@ func (r *GormCRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3
 // yields a zero Flavor (no bucket support), so a bucket query degrades loudly
 // (r3.ErrBucketNotSupported) rather than emitting wrong SQL.
 func gormFlavor(db *gorm.DB) enginesql.Flavor {
-	switch db.Dialector.Name() {
+	switch db.Name() {
 	case "postgres":
 		return enginesql.FlavorPostgres
 	case "sqlite":

@@ -5,10 +5,11 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/amberpixels/r3"
-	r3bson "github.com/amberpixels/r3/dialects/bson"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
+
+	"github.com/amberpixels/r3"
+	r3bson "github.com/amberpixels/r3/dialects/bson"
 )
 
 var _ r3.Aggregator = (*BaseCRUD[any, any])(nil)

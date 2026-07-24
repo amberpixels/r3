@@ -1,8 +1,9 @@
 package r3mongo
 
 import (
-	enginemongo "github.com/amberpixels/r3/engine/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo"
+
+	enginemongo "github.com/amberpixels/r3/engine/mongo"
 )
 
 // MongoRaw wraps enginemongo.BaseRaw.

@@ -3,9 +3,10 @@ package canonical_test
 import (
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+
 	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/dialects/canonical"
-	"github.com/stretchr/testify/assert"
 )
 
 func TestParseSortDirection(t *testing.T) {

@@ -5,13 +5,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amberpixels/r3"
-	r3gorm "github.com/amberpixels/r3/drivers/gorm"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	gsqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/amberpixels/r3"
+	r3gorm "github.com/amberpixels/r3/drivers/gorm"
 )
 
 // codecEvent stores its timestamps as INTEGER unix-seconds via the r3 codec,

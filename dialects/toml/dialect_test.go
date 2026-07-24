@@ -3,11 +3,12 @@ package r3toml_test
 import (
 	"testing"
 
-	"github.com/amberpixels/r3"
-	r3toml "github.com/amberpixels/r3/dialects/toml"
 	"github.com/pelletier/go-toml/v2"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/amberpixels/r3"
+	r3toml "github.com/amberpixels/r3/dialects/toml"
 )
 
 func TestFieldToTOML(t *testing.T) {

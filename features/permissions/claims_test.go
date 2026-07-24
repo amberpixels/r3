@@ -4,9 +4,10 @@ import (
 	"context"
 	"testing"
 
+	"github.com/expectto/be"
+
 	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/features/permissions"
-	"github.com/expectto/be"
 )
 
 // claimsPrincipal is an application-defined principal carried on r3.Actor.Claims.

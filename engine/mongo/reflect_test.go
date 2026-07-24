@@ -4,8 +4,9 @@ import (
 	"testing"
 	"time"
 
-	enginemongo "github.com/amberpixels/r3/engine/mongo"
 	"github.com/expectto/be"
+
+	enginemongo "github.com/amberpixels/r3/engine/mongo"
 )
 
 // nonPtrSoftDelete uses a non-pointer time.Time soft-delete field, which mongo

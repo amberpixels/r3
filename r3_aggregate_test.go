@@ -5,9 +5,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amberpixels/r3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/amberpixels/r3"
 )
 
 func TestAggregateHelpers(t *testing.T) {
@@ -242,6 +243,7 @@ type stubQuerier struct{}
 func (stubQuerier) Get(context.Context, int64, ...r3.Query) (struct{}, error) {
 	return struct{}{}, nil
 }
+
 func (stubQuerier) List(context.Context, ...r3.Query) ([]struct{}, int64, error) {
 	return nil, 0, nil
 }

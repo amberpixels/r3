@@ -3,9 +3,10 @@ package r3sql_test
 import (
 	"testing"
 
+	"github.com/expectto/be"
+
 	"github.com/amberpixels/r3"
 	r3sql "github.com/amberpixels/r3/dialects/sql"
-	"github.com/expectto/be"
 )
 
 func TestSortSpec_DialectString(t *testing.T) {

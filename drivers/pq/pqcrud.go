@@ -31,4 +31,4 @@ func NewPqQuerier[T any, ID comparable](db *sql.DB, opts ...r3.Option) r3.Querie
 func (r *PqCRUD[T, ID]) Raw() *enginesql.BaseRaw[T, ID] { return r.BaseCRUD.Raw }
 
 // DB returns the underlying *sql.DB for advanced usage.
-func (r *PqCRUD[T, ID]) DB() *sql.DB { return r.BaseCRUD.SQLDB() }
+func (r *PqCRUD[T, ID]) DB() *sql.DB { return r.SQLDB() }

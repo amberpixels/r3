@@ -4,10 +4,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amberpixels/r3"
-	r3bson "github.com/amberpixels/r3/dialects/bson"
 	"github.com/expectto/be"
 	"go.mongodb.org/mongo-driver/v2/bson"
+
+	"github.com/amberpixels/r3"
+	r3bson "github.com/amberpixels/r3/dialects/bson"
 )
 
 // minuteOfDayExpr mirrors the aggregation expression the dialect builds for a

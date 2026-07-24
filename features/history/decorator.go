@@ -6,8 +6,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/amberpixels/r3"
 	"github.com/google/uuid"
+
+	"github.com/amberpixels/r3"
 )
 
 // CRUD records every mutation on the wrapped repo as a [ChangeRecord] in the
@@ -21,9 +22,11 @@ type CRUD[T any, ID comparable] struct {
 	versionLocks *versionLocker
 }
 
-var _ r3.CRUD[any, any] = &CRUD[any, any]{}
-var _ r3.Aggregator = &CRUD[any, any]{}
-var _ r3.RelationAggregator = &CRUD[any, any]{}
+var (
+	_ r3.CRUD[any, any]     = &CRUD[any, any]{}
+	_ r3.Aggregator         = &CRUD[any, any]{}
+	_ r3.RelationAggregator = &CRUD[any, any]{}
+)
 
 // WithHistory wraps a repo with history tracking. store is any
 // r3.CRUD[ChangeRecord, string]; the IDFunc option is required so the decorator

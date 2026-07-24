@@ -7,9 +7,10 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/expectto/be"
+
 	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/features/validation"
-	"github.com/expectto/be"
 )
 
 // ── Test entity ──────────────────────────────────────────────────────────
@@ -615,7 +616,7 @@ func TestOperationValidators_RoutesCorrectly(t *testing.T) {
 	// Create requires name, but Update/Patch don't.
 	repo := validation.WithValidation[Pet, int64](
 		inner,
-		//nolint:exhaustive // intentionally partial map; unmapped ops pass through
+
 		validation.OperationValidators[Pet, int64](map[validation.Operation]validation.Validator[Pet, int64]{
 			validation.OpCreate: nameRequiredValidator,
 		}),

@@ -5,10 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amberpixels/r3"
-	r3gorm "github.com/amberpixels/r3/drivers/gorm"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/amberpixels/r3"
+	r3gorm "github.com/amberpixels/r3/drivers/gorm"
 )
 
 // TestGormAggregate_BucketByDay pushes a "count per day" grouping down to SQLite

@@ -39,6 +39,12 @@ func parseUnified(values url.Values, cfg Config) (r3.Query, error) {
 }
 
 // convertUnifiedToQuery converts the parsed JSON structure into an r3.Query.
+//
+// The URL wire schema (unifiedQuery) only carries fields/filters/sorts/pagination by design;
+// the remaining r3.Query fields (Cursor, Preloads, GroupBy, Buckets, Aggregates, Having,
+// IncludeTrashed) have no wire form and are intentionally left at their zero values.
+//
+//nolint:lostfield // wire schema carries only fields/filters/sorts/pagination by design, see doc above
 func convertUnifiedToQuery(uq unifiedQuery) (r3.Query, error) {
 	q := r3.NewQuery()
 

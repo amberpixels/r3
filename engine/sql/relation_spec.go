@@ -46,6 +46,8 @@ func relationKindFromSpec(k r3.RelationKind) RelationKind {
 // A declared relation whose name matches a tag-reflected one replaces it (explicit
 // spec wins). The input meta is never mutated (shared and cached); a nil/empty
 // specs returns meta unchanged.
+//
+//nolint:lostfield // not a field-by-field converter: the by-value copy of meta carries every field through unchanged; only Relations is deliberately replaced
 func WithDeclaredRelations(meta StructMeta, specs []r3.RelationSpec) StructMeta {
 	if len(specs) == 0 {
 		return meta

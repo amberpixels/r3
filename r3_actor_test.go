@@ -4,9 +4,10 @@ import (
 	"context"
 	"testing"
 
-	"github.com/amberpixels/r3"
 	"github.com/expectto/be"
 	"github.com/expectto/be/be_ctx"
+
+	"github.com/amberpixels/r3"
 )
 
 func TestWithActor_RoundTripsIDAndType(t *testing.T) {

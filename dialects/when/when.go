@@ -3,8 +3,9 @@ package r3when
 import (
 	"time"
 
-	"github.com/amberpixels/r3"
 	"github.com/amberpixels/years/schedule"
+
+	"github.com/amberpixels/r3"
 )
 
 const (

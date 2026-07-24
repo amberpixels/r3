@@ -20,8 +20,9 @@ const (
 	BSONOperatorAnd     BSONOperator = "$and"
 	BSONOperatorOr      BSONOperator = "$or"
 
-	// Aggregation-expression operators used by $expr to lower the time-component
-	// filter operators (weekday_in, tod_between), which have no plain-query form.
+	// BSONOperatorExpr and the aggregation-expression operators below are used by
+	// $expr to lower the time-component filter operators (weekday_in, tod_between),
+	// which have no plain-query form.
 	BSONOperatorExpr      BSONOperator = "$expr"
 	BSONOperatorDayOfWeek BSONOperator = "$dayOfWeek"
 	BSONOperatorHour      BSONOperator = "$hour"

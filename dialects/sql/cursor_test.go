@@ -3,10 +3,11 @@ package r3sql_test
 import (
 	"testing"
 
-	"github.com/amberpixels/r3"
-	r3sql "github.com/amberpixels/r3/dialects/sql"
 	"github.com/expectto/be"
 	"github.com/expectto/be/be_string"
+
+	"github.com/amberpixels/r3"
+	r3sql "github.com/amberpixels/r3/dialects/sql"
 )
 
 // NOTE on MatchTemplate + SQL:

@@ -5,8 +5,9 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/amberpixels/r3/features/history"
 	"github.com/expectto/be"
+
+	"github.com/amberpixels/r3/features/history"
 )
 
 // TestRetention_CompactionPreservesReconstruction verifies M9: pruning old

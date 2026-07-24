@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/amberpixels/r3"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
+
+	"github.com/amberpixels/r3"
 )
 
 // setOp is the MongoDB update operator for setting field values.
@@ -21,9 +22,9 @@ const inOp = "$in"
 // BaseCRUD is a full r3.CRUD[T, ID] backed by a *mongo.Collection. ID must match
 // the _id field type (e.g. primitive.ObjectID or string).
 type BaseCRUD[T any, ID comparable] struct {
-	Collection *mongo.Collection
-
 	r3.DefaultsManager
+
+	Collection *mongo.Collection
 
 	Meta   StructMeta
 	Config r3.Config

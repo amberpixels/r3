@@ -6,11 +6,12 @@ import (
 	"testing"
 	"time"
 
-	r3gorm "github.com/amberpixels/r3/drivers/gorm"
-	"github.com/amberpixels/r3/features/history"
 	"github.com/expectto/be"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	r3gorm "github.com/amberpixels/r3/drivers/gorm"
+	"github.com/amberpixels/r3/features/history"
 )
 
 // Ticket carries a system-managed created_at, the shape that surfaced the

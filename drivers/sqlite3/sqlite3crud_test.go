@@ -4,11 +4,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amberpixels/r3"
-	r3sqlite3 "github.com/amberpixels/r3/drivers/sqlite3"
 	"github.com/pressly/goose"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/amberpixels/r3"
+	r3sqlite3 "github.com/amberpixels/r3/drivers/sqlite3"
 )
 
 // --- SQLite-specific test models ---

@@ -4,8 +4,9 @@ import (
 	"context"
 	"testing"
 
-	"github.com/amberpixels/r3"
 	"github.com/stretchr/testify/require"
+
+	"github.com/amberpixels/r3"
 )
 
 type kv struct {
@@ -25,6 +26,7 @@ func (bareCommander) Delete(context.Context, string) error             { return 
 // upserter adds the Upserter/BulkPatcher capabilities, recording what it saw.
 type capCommander struct {
 	bareCommander
+
 	gotSpec    r3.UpsertSpec
 	gotFilters r3.Filters
 	gotFields  r3.Fields

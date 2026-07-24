@@ -4,10 +4,11 @@ import (
 	"context"
 	"fmt"
 
+	"gorm.io/gorm"
+
 	"github.com/amberpixels/r3"
 	r3sql "github.com/amberpixels/r3/dialects/sql"
 	enginesql "github.com/amberpixels/r3/engine/sql"
-	"gorm.io/gorm"
 )
 
 // This file resolves relationship ("has") filters backend-agnostically: instead of

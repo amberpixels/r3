@@ -5,9 +5,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/amberpixels/r3"
 	r3sqlite3 "github.com/amberpixels/r3/drivers/sqlite3"
-	"github.com/stretchr/testify/require"
 )
 
 // widget exercises the schema capability model on the raw SQL engine:

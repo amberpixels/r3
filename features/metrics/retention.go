@@ -5,8 +5,9 @@ import (
 	"log/slog"
 	"time"
 
-	"github.com/amberpixels/r3"
 	"github.com/amberpixels/years"
+
+	"github.com/amberpixels/r3"
 )
 
 // RetentionPolicy defines cleanup rules for old metric records; both fields

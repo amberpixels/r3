@@ -3,9 +3,9 @@ package r3sql_test
 import (
 	"testing"
 
-	r3sql "github.com/amberpixels/r3/dialects/sql"
-
 	"github.com/stretchr/testify/assert"
+
+	r3sql "github.com/amberpixels/r3/dialects/sql"
 )
 
 func TestSQLClause_Joins(t *testing.T) {

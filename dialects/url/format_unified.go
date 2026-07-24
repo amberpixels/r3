@@ -32,6 +32,13 @@ func formatUnified(q r3.Query, cfg Config) (url.Values, error) {
 }
 
 // convertQueryToUnified converts an r3.Query into the unified JSON structure.
+//
+// The URL wire schema (unifiedQuery) only carries fields/filters/sorts/pagination by design;
+// Cursor, Preloads, GroupBy, Buckets, Aggregates, Having and IncludeTrashed have no wire form
+// and do not round-trip through serialization dialects (see r3.Has docs). TODO verify whether
+// formatting a Query that carries these should error instead of silently dropping them.
+//
+//nolint:lostfield // wire schema carries only fields/filters/sorts/pagination by design, see doc above
 func convertQueryToUnified(q r3.Query) (*unifiedQuery, error) {
 	uq := &unifiedQuery{}
 

@@ -76,7 +76,7 @@ func (r *BaseCRUD[T, ID]) buildBulkWhere(filters r3.Filters, startIdx int) (stri
 	var whereParts []string
 	var whereArgs []any
 	if r.Meta.SoftDeleteColumn != "" {
-		whereParts = append(whereParts, fmt.Sprintf("%s IS NULL", r.Meta.SoftDeleteColumn))
+		whereParts = append(whereParts, r.Meta.SoftDeleteColumn+" IS NULL")
 	}
 
 	argIdx := startIdx

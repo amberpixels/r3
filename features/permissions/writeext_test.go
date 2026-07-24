@@ -4,9 +4,10 @@ import (
 	"context"
 	"testing"
 
+	"github.com/expectto/be"
+
 	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/features/permissions"
-	"github.com/expectto/be"
 )
 
 // capMemory is a memoryCRUD that also implements the Upserter and BulkPatcher
@@ -14,6 +15,7 @@ import (
 // permission gating and scope injection.
 type capMemory struct {
 	*memoryCRUD
+
 	upsertCalls    int
 	lastPWFilters  r3.Filters
 	patchWhereCall int

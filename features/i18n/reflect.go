@@ -25,7 +25,7 @@ func resolveFields[T any](names []string) (map[string]int, error) {
 		if !f.IsExported() {
 			continue
 		}
-		name := strings.Split(f.Tag.Get("db"), ",")[0]
+		name, _, _ := strings.Cut(f.Tag.Get("db"), ",")
 		if name == "" || name == "-" {
 			name = r3utils.ToSnakeCase(f.Name)
 		}

@@ -6,26 +6,30 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/amberpixels/r3"
-	enginesql "github.com/amberpixels/r3/engine/sql"
 	"github.com/go-pg/pg/v10"
 	"github.com/go-pg/pg/v10/orm"
 	"github.com/go-pg/pg/v10/types"
+
+	"github.com/amberpixels/r3"
+	enginesql "github.com/amberpixels/r3/engine/sql"
 )
 
 // GoPgCRUD is a go-pg repository. It holds orm.DB (not *pg.DB) so the same code
 // runs against a transaction.
 type GoPgCRUD[T any, ID comparable] struct {
+	enginesql.DefaultsManager
+
 	db   orm.DB
 	pgDB *pg.DB // original *pg.DB, nil when inside a transaction
-	enginesql.DefaultsManager
 
 	Config r3.Config
 	raw    *GoPgRaw[T, ID]
 }
 
-var _ r3.CRUD[any, any] = &GoPgCRUD[any, any]{}
-var _ r3.Aggregator = &GoPgCRUD[any, any]{}
+var (
+	_ r3.CRUD[any, any] = &GoPgCRUD[any, any]{}
+	_ r3.Aggregator     = &GoPgCRUD[any, any]{}
+)
 
 // NewGoPgCRUD builds a go-pg-based repository.
 func NewGoPgCRUD[T any, ID comparable](db *pg.DB, opts ...r3.Option) *GoPgCRUD[T, ID] {

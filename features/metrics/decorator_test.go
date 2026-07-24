@@ -9,9 +9,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/expectto/be"
+
 	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/features/metrics"
-	"github.com/expectto/be"
 )
 
 // ── Test Entity ──────────────────────────────────────────────────────────
@@ -922,6 +923,7 @@ func TestAggregator_GroupBy(t *testing.T) {
 // to test server-side aggregation delegation.
 type mockPusherStore struct {
 	*memoryMetricsCRUD
+
 	pushCountCalls      int
 	pushSumCalls        int
 	pushAvgCalls        int

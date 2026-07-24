@@ -3,10 +3,11 @@ package r3json_test
 import (
 	"testing"
 
-	"github.com/amberpixels/r3"
-	r3json "github.com/amberpixels/r3/dialects/json"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/amberpixels/r3"
+	r3json "github.com/amberpixels/r3/dialects/json"
 )
 
 func TestFieldToJSON(t *testing.T) {

@@ -62,7 +62,7 @@ func (r *BaseRaw[T, ID]) InsertOne(ctx context.Context, doc any) (*mongo.InsertO
 }
 
 // UpdateOne updates a single document matching the filter.
-func (r *BaseRaw[T, ID]) UpdateOne(ctx context.Context, filter any, update any) (*mongo.UpdateResult, error) {
+func (r *BaseRaw[T, ID]) UpdateOne(ctx context.Context, filter, update any) (*mongo.UpdateResult, error) {
 	return r.Collection.UpdateOne(ctx, filter, update)
 }
 
@@ -100,7 +100,7 @@ func (r *BaseRaw[T, ID]) Distinct(ctx context.Context, fieldName string, filter 
 }
 
 // UpdateMany updates all documents matching the filter.
-func (r *BaseRaw[T, ID]) UpdateMany(ctx context.Context, filter any, update any) (*mongo.UpdateResult, error) {
+func (r *BaseRaw[T, ID]) UpdateMany(ctx context.Context, filter, update any) (*mongo.UpdateResult, error) {
 	return r.Collection.UpdateMany(ctx, filter, update)
 }
 

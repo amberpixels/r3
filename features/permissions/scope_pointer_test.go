@@ -4,9 +4,10 @@ import (
 	"context"
 	"testing"
 
+	"github.com/expectto/be"
+
 	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/features/permissions"
-	"github.com/expectto/be"
 )
 
 // Doc is an entity with a nullable foreign key (pointer field), the common shape
@@ -26,6 +27,7 @@ func (m *docMem) Get(_ context.Context, id int64, _ ...r3.Query) (Doc, error) {
 	}
 	return d, nil
 }
+
 func (m *docMem) List(_ context.Context, _ ...r3.Query) ([]Doc, int64, error) {
 	out := make([]Doc, 0, len(m.data))
 	for _, d := range m.data {
@@ -33,6 +35,7 @@ func (m *docMem) List(_ context.Context, _ ...r3.Query) ([]Doc, int64, error) {
 	}
 	return out, int64(len(out)), nil
 }
+
 func (m *docMem) Count(_ context.Context, _ ...r3.Query) (int64, error) {
 	return int64(len(m.data)), nil
 }

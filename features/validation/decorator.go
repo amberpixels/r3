@@ -14,9 +14,11 @@ type CRUD[T any, ID comparable] struct {
 	opts      Options[T, ID]
 }
 
-var _ r3.CRUD[any, any] = &CRUD[any, any]{}
-var _ r3.Aggregator = &CRUD[any, any]{}
-var _ r3.RelationAggregator = &CRUD[any, any]{}
+var (
+	_ r3.CRUD[any, any]     = &CRUD[any, any]{}
+	_ r3.Aggregator         = &CRUD[any, any]{}
+	_ r3.RelationAggregator = &CRUD[any, any]{}
+)
 
 // WithValidation wraps inner so mutations are validated by validator.
 func WithValidation[T any, ID comparable](

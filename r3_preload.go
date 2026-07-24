@@ -1,6 +1,8 @@
 package r3
 
 // Preloads is a slice of *PreloadSpec.
+//
+//nolint:recvcheck // slice type: value receivers for non-mutating MergeWith/Clone, pointer only for in-place Dedupe; unifying would break non-addressable call sites
 type Preloads []*PreloadSpec
 
 // MergeWith merges (combines) preloads with other preloads.
@@ -27,6 +29,9 @@ type PreloadSpec struct {
 	Name string
 }
 
+// NewPreloadSpec creates a PreloadSpec.
+func NewPreloadSpec(name string) *PreloadSpec { return &PreloadSpec{Name: name} }
+
 // GetName returns the preload name.
 func (t *PreloadSpec) GetName() string { return t.Name }
 
@@ -37,6 +42,3 @@ func (t *PreloadSpec) Clone() *PreloadSpec {
 
 // String returns the preload name.
 func (t *PreloadSpec) String() string { return t.Name }
-
-// NewPreloadSpec creates a PreloadSpec.
-func NewPreloadSpec(name string) *PreloadSpec { return &PreloadSpec{Name: name} }

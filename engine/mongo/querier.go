@@ -1,8 +1,9 @@
 package enginemongo
 
 import (
-	"github.com/amberpixels/r3"
 	"go.mongodb.org/mongo-driver/v2/mongo"
+
+	"github.com/amberpixels/r3"
 )
 
 // NewBaseQuerier returns a [BaseCRUD] as a read-only [r3.Querier], so callers get

@@ -4,18 +4,22 @@ import (
 	"context"
 	"database/sql"
 
-	"github.com/amberpixels/r3"
 	"github.com/uptrace/bun"
+
+	"github.com/amberpixels/r3"
 )
 
 // bunTxCRUD is a transactional Bun CRUD that wraps a bun.Tx.
 type bunTxCRUD[T any, ID comparable] struct {
 	*BunCRUD[T, ID]
+
 	tx bun.Tx
 }
 
-var _ r3.Transactor[any, any] = &BunCRUD[any, any]{}
-var _ r3.TxCRUD[any, any] = &bunTxCRUD[any, any]{}
+var (
+	_ r3.Transactor[any, any] = &BunCRUD[any, any]{}
+	_ r3.TxCRUD[any, any]     = &bunTxCRUD[any, any]{}
+)
 
 func (t *bunTxCRUD[T, ID]) Commit() error   { return t.tx.Commit() }
 func (t *bunTxCRUD[T, ID]) Rollback() error { return t.tx.Rollback() }

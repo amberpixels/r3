@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"testing"
 
+	"github.com/expectto/be"
+
 	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/features/permissions"
-	"github.com/expectto/be"
 )
 
 // ── Shared fixtures ──────────────────────────────────────────────────────

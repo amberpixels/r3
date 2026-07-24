@@ -90,7 +90,7 @@ func multiColumnCursor(sorts r3.Sorts, values r3.CursorValues, direction r3.Curs
 			if err != nil {
 				return SQLClause{}, fmt.Errorf("unsafe cursor column: %w", err)
 			}
-			andParts = append(andParts, fmt.Sprintf("%s = ?", safeCol))
+			andParts = append(andParts, safeCol+" = ?")
 			args = append(args, values[sorts[j].Column.String()])
 		}
 

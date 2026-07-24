@@ -4,15 +4,17 @@ import (
 	"context"
 	"testing"
 
+	"github.com/expectto/be"
+
 	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/features/metrics"
-	"github.com/expectto/be"
 )
 
 // aggMemoryCRUD extends the in-memory mock with a canned Aggregate so the
 // decorator's forwarding + instrumentation can be observed.
 type aggMemoryCRUD struct {
 	*memoryCRUD
+
 	lastQuery r3.Query
 }
 

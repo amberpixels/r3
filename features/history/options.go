@@ -127,7 +127,7 @@ func WithIDFunc[T any, ID comparable](fn IDFunc[T, ID]) Option[T, ID] {
 }
 
 // WithParentRef configures parent-child linking for tree queries.
-func WithParentRef[T any, ID comparable](parentType string, fkField string) Option[T, ID] {
+func WithParentRef[T any, ID comparable](parentType, fkField string) Option[T, ID] {
 	return func(o *Options[T, ID]) {
 		o.ParentRef = &ParentRef{
 			ParentType: parentType,

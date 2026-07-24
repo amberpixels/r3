@@ -3,8 +3,9 @@ package r3gorm
 import (
 	"errors"
 
-	"github.com/amberpixels/r3"
 	"gorm.io/gorm"
+
+	"github.com/amberpixels/r3"
 )
 
 // ErrRawNotSupported is returned by [RawOf] and [DBOf] when the repository is

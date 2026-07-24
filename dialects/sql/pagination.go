@@ -8,6 +8,14 @@ type SQLPagination struct {
 	Offset int
 }
 
+// NewSQLPagination creates a new SQLPagination with given limit and offset.
+func NewSQLPagination(limit, offset int) *SQLPagination {
+	return &SQLPagination{
+		Limit:  limit,
+		Offset: offset,
+	}
+}
+
 // String returns the string representation of SQL pagination.
 func (sp *SQLPagination) String() string {
 	if sp.Limit > 0 && sp.Offset > 0 {
@@ -25,12 +33,4 @@ func (sp *SQLPagination) String() string {
 // ToLimitOffset returns the limit and offset values.
 func (sp *SQLPagination) ToLimitOffset() (int, int) {
 	return sp.Limit, sp.Offset
-}
-
-// NewSQLPagination creates a new SQLPagination with given limit and offset.
-func NewSQLPagination(limit, offset int) *SQLPagination {
-	return &SQLPagination{
-		Limit:  limit,
-		Offset: offset,
-	}
 }

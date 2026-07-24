@@ -5,11 +5,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amberpixels/r3"
-	r3gorm "github.com/amberpixels/r3/drivers/gorm"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	"github.com/amberpixels/r3"
+	r3gorm "github.com/amberpixels/r3/drivers/gorm"
 )
 
 // widget mirrors the raw-engine schema test on the GORM seam, proving the engine

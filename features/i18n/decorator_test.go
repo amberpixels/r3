@@ -7,9 +7,10 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/expectto/be"
+
 	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/features/i18n"
-	"github.com/expectto/be"
 )
 
 // Article is the entity under test: two translatable string fields (one via
@@ -99,54 +100,6 @@ type memoryTranslationCRUD struct {
 	lists int // number of List calls, to assert batching
 }
 
-func (s *memoryTranslationCRUD) match(tr i18n.Translation, filters r3.Filters) bool {
-	for _, f := range filters {
-		if !s.matchSpec(tr, f) {
-			return false
-		}
-	}
-	return true
-}
-
-func (s *memoryTranslationCRUD) matchSpec(tr i18n.Translation, f *r3.FilterSpec) bool {
-	if len(f.And) > 0 {
-		for _, g := range f.And {
-			if !s.matchSpec(tr, g) {
-				return false
-			}
-		}
-		return true
-	}
-
-	var actual any
-	switch f.Field.String() {
-	case "entity_type":
-		actual = tr.EntityType
-	case "entity_id":
-		actual = tr.EntityID
-	case "field":
-		actual = tr.Field
-	case "lang":
-		actual = tr.Lang
-	case "stale":
-		actual = tr.Stale
-	default:
-		return false
-	}
-
-	switch f.Operator { //nolint:exhaustive // the i18n query builders only emit Eq and In
-	case r3.OperatorEq:
-		return fmt.Sprint(actual) == fmt.Sprint(f.Value)
-	case r3.OperatorIn:
-		if vals, ok := f.Value.([]string); ok {
-			return slices.Contains(vals, fmt.Sprint(actual))
-		}
-		return false
-	default:
-		return false
-	}
-}
-
 func (s *memoryTranslationCRUD) Get(_ context.Context, id string, _ ...r3.Query) (i18n.Translation, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -209,6 +162,54 @@ func (s *memoryTranslationCRUD) Delete(_ context.Context, id string) error {
 		}
 	}
 	return r3.ErrNotFound
+}
+
+func (s *memoryTranslationCRUD) match(tr i18n.Translation, filters r3.Filters) bool {
+	for _, f := range filters {
+		if !s.matchSpec(tr, f) {
+			return false
+		}
+	}
+	return true
+}
+
+func (s *memoryTranslationCRUD) matchSpec(tr i18n.Translation, f *r3.FilterSpec) bool {
+	if len(f.And) > 0 {
+		for _, g := range f.And {
+			if !s.matchSpec(tr, g) {
+				return false
+			}
+		}
+		return true
+	}
+
+	var actual any
+	switch f.Field.String() {
+	case "entity_type":
+		actual = tr.EntityType
+	case "entity_id":
+		actual = tr.EntityID
+	case "field":
+		actual = tr.Field
+	case "lang":
+		actual = tr.Lang
+	case "stale":
+		actual = tr.Stale
+	default:
+		return false
+	}
+
+	switch f.Operator {
+	case r3.OperatorEq:
+		return fmt.Sprint(actual) == fmt.Sprint(f.Value)
+	case r3.OperatorIn:
+		if vals, ok := f.Value.([]string); ok {
+			return slices.Contains(vals, fmt.Sprint(actual))
+		}
+		return false
+	default:
+		return false
+	}
 }
 
 // --- helpers -----------------------------------------------------------

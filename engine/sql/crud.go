@@ -24,13 +24,13 @@ type SQLExecutor interface {
 // struct scanning and the r3 SQL dialect. Drivers embed it and may override
 // methods (e.g. MySQL overrides Create, lacking RETURNING).
 type BaseCRUD[T any, ID comparable] struct {
+	DefaultsManager
+
 	// Executor is the *sql.DB or *sql.Tx used for all queries.
 	Executor SQLExecutor
 
 	// sqlDB is the original *sql.DB for starting transactions; nil inside a tx.
 	sqlDB *sql.DB
-
-	DefaultsManager
 
 	Meta   StructMeta
 	Schema r3.Schema // logical schema for read validation and write-shaping
@@ -192,7 +192,7 @@ func (r *BaseCRUD[T, ID]) buildFilterSQL(
 
 	// Soft-delete: add WHERE deleted_at IS NULL unless IncludeTrashed.
 	if r.Meta.SoftDeleteColumn != "" && !prep.Query.IncludeTrashed.Some(true) {
-		whereParts = append(whereParts, fmt.Sprintf("%s IS NULL", r.Meta.SoftDeleteColumn))
+		whereParts = append(whereParts, r.Meta.SoftDeleteColumn+" IS NULL")
 	}
 
 	for _, clause := range prep.Clauses {
@@ -379,7 +379,7 @@ func (r *BaseCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 	// WHERE pk = ? [AND deleted_at IS NULL]
 	whereParts := []string{r.Flavor.WhereEq(r.Meta.PKColumn, 1)}
 	if r.Meta.SoftDeleteColumn != "" && !q.IncludeTrashed.Some(true) {
-		whereParts = append(whereParts, fmt.Sprintf("%s IS NULL", r.Meta.SoftDeleteColumn))
+		whereParts = append(whereParts, r.Meta.SoftDeleteColumn+" IS NULL")
 	}
 
 	query := fmt.Sprintf(

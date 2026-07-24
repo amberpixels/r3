@@ -22,14 +22,6 @@ type FieldError struct {
 	Code string
 }
 
-// Error returns a human-readable representation of the field error.
-func (e FieldError) Error() string {
-	if e.Field != "" {
-		return e.Field + ": " + e.Message
-	}
-	return e.Message
-}
-
 // NewFieldError creates a new FieldError.
 func NewFieldError(field, message, code string) FieldError {
 	return FieldError{
@@ -37,6 +29,14 @@ func NewFieldError(field, message, code string) FieldError {
 		Message: message,
 		Code:    code,
 	}
+}
+
+// Error returns a human-readable representation of the field error.
+func (e FieldError) Error() string {
+	if e.Field != "" {
+		return e.Field + ": " + e.Message
+	}
+	return e.Message
 }
 
 // Error carries structured per-field validation failures and matches
@@ -47,6 +47,14 @@ type Error struct {
 
 	// Errors is the list of per-field failures.
 	Errors []FieldError
+}
+
+// NewError creates a new Error with the given field errors.
+func NewError(op Operation, errs ...FieldError) *Error {
+	return &Error{
+		Operation: op,
+		Errors:    errs,
+	}
 }
 
 // Error returns a human-readable summary of all validation failures.
@@ -77,12 +85,4 @@ func (e *Error) HasField(name string) bool {
 		}
 	}
 	return false
-}
-
-// NewError creates a new Error with the given field errors.
-func NewError(op Operation, errs ...FieldError) *Error {
-	return &Error{
-		Operation: op,
-		Errors:    errs,
-	}
 }

@@ -3,10 +3,11 @@ package enginesql_test
 import (
 	"testing"
 
-	"github.com/amberpixels/r3"
-	enginesql "github.com/amberpixels/r3/engine/sql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/amberpixels/r3"
+	enginesql "github.com/amberpixels/r3/engine/sql"
 )
 
 // sqliteWeekWant is the SQLite ISO-Monday week truncation, kept on its own lines

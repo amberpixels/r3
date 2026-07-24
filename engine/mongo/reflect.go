@@ -292,7 +292,7 @@ func (m *StructMeta) IDValue(entity any) any {
 }
 
 // SetIDValue sets the ID field value on an entity (via pointer).
-func (m *StructMeta) SetIDValue(entityPtr any, val any) {
+func (m *StructMeta) SetIDValue(entityPtr, val any) {
 	v := reflect.ValueOf(entityPtr).Elem()
 	if m.IDFieldIdx >= 0 && m.IDFieldIdx < len(m.FieldIndices) {
 		idField := v.Field(m.FieldIndices[m.IDFieldIdx])

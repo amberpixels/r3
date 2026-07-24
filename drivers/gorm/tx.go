@@ -3,18 +3,22 @@ package r3gorm
 import (
 	"context"
 
-	"github.com/amberpixels/r3"
 	"gorm.io/gorm"
+
+	"github.com/amberpixels/r3"
 )
 
 // gormTxCRUD is a transactional GORM CRUD that wraps a *gorm.DB transaction.
 type gormTxCRUD[T any, ID comparable] struct {
 	*GormCRUD[T, ID]
+
 	tx *gorm.DB
 }
 
-var _ r3.Transactor[any, any] = &GormCRUD[any, any]{}
-var _ r3.TxCRUD[any, any] = &gormTxCRUD[any, any]{}
+var (
+	_ r3.Transactor[any, any] = &GormCRUD[any, any]{}
+	_ r3.TxCRUD[any, any]     = &gormTxCRUD[any, any]{}
+)
 
 func (t *gormTxCRUD[T, ID]) Commit() error   { return t.tx.Commit().Error }
 func (t *gormTxCRUD[T, ID]) Rollback() error { return t.tx.Rollback().Error }

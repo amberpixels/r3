@@ -4,8 +4,9 @@ import (
 	"context"
 	"reflect"
 
-	r3utils "github.com/amberpixels/r3/internal/utils"
 	"github.com/go-pg/pg/v10/orm"
+
+	r3utils "github.com/amberpixels/r3/internal/utils"
 )
 
 // GoPgRaw is the go-pg escape hatch, exposing any go-pg query via Find/Scan callbacks.

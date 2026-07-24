@@ -4,12 +4,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amberpixels/r3"
-	r3bun "github.com/amberpixels/r3/drivers/bun"
 	"github.com/pressly/goose"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
+
+	"github.com/amberpixels/r3"
+	r3bun "github.com/amberpixels/r3/drivers/bun"
 )
 
 // --- Bun-specific test models ---
@@ -392,10 +393,11 @@ func TestBunRepository(t *testing.T) {
 		// Aggregate queries return a different shape than the model,
 		// so we use Scan into a dedicated struct.
 		type LocationAggregate struct {
-			bun.BaseModel `       bun:"table:locations"`
-			ID            int64  `bun:"id"`
-			Name          string `bun:"name"`
-			TotalWeight   int64  `bun:"total_weight"`
+			bun.BaseModel `bun:"table:locations"`
+
+			ID          int64  `bun:"id"`
+			Name        string `bun:"name"`
+			TotalWeight int64  `bun:"total_weight"`
 		}
 
 		var results []LocationAggregate

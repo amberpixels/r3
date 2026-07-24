@@ -4,11 +4,12 @@ import (
 	"net/url"
 	"testing"
 
-	"github.com/amberpixels/r3"
-	r3url "github.com/amberpixels/r3/dialects/url"
 	"github.com/expectto/be"
 	"github.com/expectto/be/be_reflected"
 	"github.com/expectto/be/be_url"
+
+	"github.com/amberpixels/r3"
+	r3url "github.com/amberpixels/r3/dialects/url"
 )
 
 func TestParsePagination(t *testing.T) {

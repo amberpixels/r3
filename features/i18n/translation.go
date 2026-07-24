@@ -6,8 +6,9 @@ import (
 	"encoding/hex"
 	"time"
 
-	"github.com/amberpixels/r3"
 	"github.com/google/uuid"
+
+	"github.com/amberpixels/r3"
 )
 
 // Source records where a translation came from, so human work is never

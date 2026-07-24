@@ -3,11 +3,12 @@ package r3mongo_test
 import (
 	"testing"
 
-	"github.com/amberpixels/r3"
-	r3mongo "github.com/amberpixels/r3/drivers/mongo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/v2/bson"
+
+	"github.com/amberpixels/r3"
+	r3mongo "github.com/amberpixels/r3/drivers/mongo"
 )
 
 // Setting is a Mongo-backed entity with a caller-supplied string _id and a

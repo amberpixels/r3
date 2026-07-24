@@ -3,9 +3,10 @@ package petstore
 import (
 	"net/http"
 
+	"gorm.io/gorm"
+
 	"github.com/amberpixels/r3"
 	r3gorm "github.com/amberpixels/r3/drivers/gorm"
-	"gorm.io/gorm"
 )
 
 // Server is the pet store HTTP server.

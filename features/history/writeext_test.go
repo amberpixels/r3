@@ -5,9 +5,10 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/expectto/be"
+
 	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/features/history"
-	"github.com/expectto/be"
 )
 
 // capMemory adds the Upserter/BulkPatcher capabilities to the in-memory Order

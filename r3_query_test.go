@@ -3,8 +3,9 @@ package r3_test
 import (
 	"testing"
 
-	"github.com/amberpixels/r3"
 	"github.com/expectto/be"
+
+	"github.com/amberpixels/r3"
 )
 
 // A per-query Unpaginated()/NoPagination() must clear an inherited default page

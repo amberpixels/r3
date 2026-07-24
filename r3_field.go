@@ -37,7 +37,7 @@ func ValidateIdentifier(s string) error {
 // isValidIdentifierSegment checks that a single dot-free segment matches
 // [a-zA-Z_][a-zA-Z0-9_]*.
 func isValidIdentifierSegment(s string) bool {
-	if len(s) == 0 {
+	if s == "" {
 		return false
 	}
 
@@ -64,6 +64,8 @@ func isDigit(c byte) bool  { return c >= '0' && c <= '9' }
 // (very optional) We should support computed field e.g. (card.image.url(thumbnail=X)))
 
 // Fields is a slice of *FieldSpec.
+//
+//nolint:recvcheck // slice type: value receivers for non-mutating MergeWith/Clone, pointer only for in-place Dedupe; unifying would break non-addressable call sites
 type Fields []*FieldSpec
 
 // MergeWith merges (combines) fields with other fields.
@@ -91,7 +93,7 @@ type FieldSpec string
 
 // NewFieldSpec returns a *FieldSpec for s.
 func NewFieldSpec(s string) *FieldSpec {
-	var cf = new(FieldSpec)
+	cf := new(FieldSpec)
 	*cf = FieldSpec(s)
 	return cf
 }

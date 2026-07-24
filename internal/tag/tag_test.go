@@ -4,8 +4,9 @@ import (
 	"reflect"
 	"testing"
 
-	r3tag "github.com/amberpixels/r3/internal/tag"
 	"github.com/expectto/be"
+
+	r3tag "github.com/amberpixels/r3/internal/tag"
 )
 
 type capModel struct {

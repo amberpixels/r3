@@ -4,11 +4,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amberpixels/r3"
-	r3pq "github.com/amberpixels/r3/drivers/pq"
 	"github.com/pressly/goose"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/amberpixels/r3"
+	r3pq "github.com/amberpixels/r3/drivers/pq"
 )
 
 // --- lib/pq-specific test models ---

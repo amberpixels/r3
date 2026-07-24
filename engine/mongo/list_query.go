@@ -3,9 +3,10 @@ package enginemongo
 import (
 	"fmt"
 
+	"go.mongodb.org/mongo-driver/v2/bson"
+
 	"github.com/amberpixels/r3"
 	r3bson "github.com/amberpixels/r3/dialects/bson"
-	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
 // PreparedListQuery holds the BSON-ready pieces (filter, sort, projection,
@@ -44,6 +45,8 @@ func PrepareListQuery(dm *r3.DefaultsManager, schema r3.Schema, qarg ...r3.Query
 // schema drives value-codec encoding of filter and cursor arguments to stored form
 // (e.g. a time.Time bound against an int column); a zero schema (no codecs) leaves
 // the arguments untouched.
+//
+//nolint:lostfield // every PreparedListQuery field is assigned imperatively below; some branches are conditional by design (zero value means "not requested")
 func PrepareMergedListQuery(schema r3.Schema, q r3.Query) (PreparedListQuery, error) {
 	var p PreparedListQuery
 

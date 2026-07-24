@@ -4,8 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amberpixels/r3"
 	"github.com/expectto/be"
+
+	"github.com/amberpixels/r3"
 )
 
 // schemaModel exercises every tag combination and default-rule exception.

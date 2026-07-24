@@ -23,15 +23,15 @@ func (fs Filters) Clone() Filters {
 
 // FilterSpec represents a filtering criteria with a field, an operator, and a value.
 type FilterSpec struct {
-	Field    *FieldSpec
-	Operator FilterOperatorSpec
-	Value    any
+	Field    *FieldSpec         `json:"Field"`
+	Operator FilterOperatorSpec `json:"Operator"`
+	Value    any                `json:"Value"`
 
 	// And and Or hold child groups. When either is set, the parent's
 	// Field/Operator/Value are ignored.
 
-	And Filters
-	Or  Filters
+	And Filters `json:"And"`
+	Or  Filters `json:"Or"`
 
 	// Relation, when non-empty, makes this a relationship ("has") filter matching
 	// rows whose declared relation (by preload struct-field name) has at least one
@@ -39,14 +39,31 @@ type FilterSpec struct {
 	// ignored. The driver lowers it to a key-set In filter before SQL translation,
 	// so it works on any backend regardless of native subquery support.
 	// omitempty keeps a non-relationship filter serializing exactly as before.
-	Relation       string  `json:",omitempty"`
-	RelationFilter Filters `json:",omitempty"`
+	Relation       string  `json:"Relation,omitempty"`
+	RelationFilter Filters `json:"RelationFilter,omitempty"`
 
 	// RelationNegate inverts a relationship filter (see [HasNo]): match rows whose
 	// relation has NO related row satisfying RelationFilter - an anti-join /
 	// NOT EXISTS. Only meaningful with Relation set; the driver lowers it to a
 	// NOT-IN key set.
-	RelationNegate bool `json:",omitempty"`
+	RelationNegate bool `json:"RelationNegate,omitempty"`
+}
+
+// Auxiliary helpers for quick filter scaffolding.
+
+// NewFilterSpec constructs a FilterSpec (not an AND/OR group).
+func NewFilterSpec(field *FieldSpec, operator FilterOperatorSpec, value any) *FilterSpec {
+	return &FilterSpec{Field: field, Operator: operator, Value: value}
+}
+
+// NewFilterSpecAndGroup wraps filters in an AND group.
+func NewFilterSpecAndGroup(filters ...*FilterSpec) *FilterSpec {
+	return &FilterSpec{And: filters}
+}
+
+// NewFilterSpecOrGroup wraps filters in an OR group.
+func NewFilterSpecOrGroup(filters ...*FilterSpec) *FilterSpec {
+	return &FilterSpec{Or: filters}
 }
 
 // String renders the filter as JSON.
@@ -67,23 +84,6 @@ func (f *FilterSpec) Clone() *FilterSpec {
 	clone.Or = f.Or.Clone()
 	clone.RelationFilter = f.RelationFilter.Clone()
 	return &clone
-}
-
-// Auxiliary helpers for quick filter scaffolding.
-
-// NewFilterSpec constructs a FilterSpec (not an AND/OR group).
-func NewFilterSpec(field *FieldSpec, operator FilterOperatorSpec, value any) *FilterSpec {
-	return &FilterSpec{Field: field, Operator: operator, Value: value}
-}
-
-// NewFilterSpecAndGroup wraps filters in an AND group.
-func NewFilterSpecAndGroup(filters ...*FilterSpec) *FilterSpec {
-	return &FilterSpec{And: filters}
-}
-
-// NewFilterSpecOrGroup wraps filters in an OR group.
-func NewFilterSpecOrGroup(filters ...*FilterSpec) *FilterSpec {
-	return &FilterSpec{Or: filters}
 }
 
 // Fop is shorthand for [NewFilterSpec] ("F" for filter, "op" for operator).

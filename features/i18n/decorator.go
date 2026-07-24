@@ -21,9 +21,11 @@ type CRUD[T any, ID comparable] struct {
 	fields map[string]int // storage field name -> struct field index on T
 }
 
-var _ r3.CRUD[struct{}, int64] = &CRUD[struct{}, int64]{}
-var _ r3.Aggregator = &CRUD[struct{}, int64]{}
-var _ r3.RelationAggregator = &CRUD[struct{}, int64]{}
+var (
+	_ r3.CRUD[struct{}, int64] = &CRUD[struct{}, int64]{}
+	_ r3.Aggregator            = &CRUD[struct{}, int64]{}
+	_ r3.RelationAggregator    = &CRUD[struct{}, int64]{}
+)
 
 // WithTranslations wraps inner with locale-aware reads and staleness tracking.
 // IDFunc and Fields are required; it panics on misconfiguration (unknown or

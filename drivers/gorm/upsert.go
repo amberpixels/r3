@@ -6,10 +6,11 @@ import (
 	"slices"
 	"time"
 
-	"github.com/amberpixels/r3"
-	enginesql "github.com/amberpixels/r3/engine/sql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
+
+	"github.com/amberpixels/r3"
+	enginesql "github.com/amberpixels/r3/engine/sql"
 )
 
 var _ r3.Upserter[any, any] = &GormCRUD[any, any]{}

@@ -5,10 +5,11 @@ import (
 	"testing"
 
 	"github.com/amberpixels/k1/maybe"
-	"github.com/amberpixels/r3"
-	enginefile "github.com/amberpixels/r3/engine/file"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/amberpixels/r3"
+	enginefile "github.com/amberpixels/r3/engine/file"
 )
 
 func seedAggregateCities(t *testing.T) *enginefile.BaseCRUD[City, int] {

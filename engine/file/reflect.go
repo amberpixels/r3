@@ -184,7 +184,7 @@ func (m *StructMeta) PKValue(entity any) any {
 }
 
 // SetPKValue sets the primary key value on an entity (via pointer).
-func (m *StructMeta) SetPKValue(entityPtr any, val any) {
+func (m *StructMeta) SetPKValue(entityPtr, val any) {
 	v := reflect.ValueOf(entityPtr)
 	if v.Kind() == reflect.Pointer {
 		v = v.Elem()
@@ -226,7 +226,7 @@ func (m *StructMeta) SetFieldValue(entityPtr any, fieldName string, val any) boo
 }
 
 // CopyFieldValues copies the specified fields from src to dst (both must be pointers).
-func (m *StructMeta) CopyFieldValues(dst any, src any, fieldNames []string) {
+func (m *StructMeta) CopyFieldValues(dst, src any, fieldNames []string) {
 	dstV := reflect.ValueOf(dst)
 	if dstV.Kind() == reflect.Pointer {
 		dstV = dstV.Elem()

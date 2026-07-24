@@ -3,10 +3,11 @@ package r3bson_test
 import (
 	"testing"
 
-	"github.com/amberpixels/r3"
-	r3bson "github.com/amberpixels/r3/dialects/bson"
 	"github.com/expectto/be"
 	"go.mongodb.org/mongo-driver/v2/bson"
+
+	"github.com/amberpixels/r3"
+	r3bson "github.com/amberpixels/r3/dialects/bson"
 )
 
 func TestFilterToBSON_SimpleEq(t *testing.T) {

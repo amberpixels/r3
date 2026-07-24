@@ -149,7 +149,6 @@ func splitDjangoParam(key, sep string) (string, string) {
 
 // parseDjangoValue parses a value by operator: in/not_in split on commas into a slice.
 func parseDjangoValue(raw string, op r3.FilterOperatorSpec) any {
-	//nolint:exhaustive // only checking list-type operators
 	switch op {
 	case r3.OperatorIn, r3.OperatorNotIn:
 		parts := strings.Split(raw, ",")

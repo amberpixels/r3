@@ -8,6 +8,30 @@ type SortSpec struct {
 	NullsPosition SortNullsPosition // First | Last | Unspecified
 }
 
+// NewSortSpec is the primary SortSpec constructor.
+func NewSortSpec(col *FieldSpec, direction SortDirection, nullsPositionArg ...SortNullsPosition) *SortSpec {
+	s := &SortSpec{
+		Column:    col,
+		Direction: direction,
+	}
+
+	if len(nullsPositionArg) > 0 {
+		s.NullsPosition = nullsPositionArg[0]
+	}
+
+	return s
+}
+
+// NewSortAscSpec sorts by col ascending.
+func NewSortAscSpec(col *FieldSpec) *SortSpec {
+	return NewSortSpec(col, SortDirectionAsc)
+}
+
+// NewSortDescSpec sorts by col descending.
+func NewSortDescSpec(col *FieldSpec) *SortSpec {
+	return NewSortSpec(col, SortDirectionDesc)
+}
+
 // String returns a debug representation of the sort spec.
 func (s *SortSpec) String() string {
 	str := s.Column.String() + " " + s.Direction.String()
@@ -31,30 +55,6 @@ func (s *SortSpec) Clone() *SortSpec {
 	clone.NullsPosition = s.NullsPosition
 
 	return &clone
-}
-
-// NewSortSpec is the primary SortSpec constructor.
-func NewSortSpec(col *FieldSpec, direction SortDirection, nullsPositionArg ...SortNullsPosition) *SortSpec {
-	s := &SortSpec{
-		Column:    col,
-		Direction: direction,
-	}
-
-	if len(nullsPositionArg) > 0 {
-		s.NullsPosition = nullsPositionArg[0]
-	}
-
-	return s
-}
-
-// NewSortAscSpec sorts by col ascending.
-func NewSortAscSpec(col *FieldSpec) *SortSpec {
-	return NewSortSpec(col, SortDirectionAsc)
-}
-
-// NewSortDescSpec sorts by col descending.
-func NewSortDescSpec(col *FieldSpec) *SortSpec {
-	return NewSortSpec(col, SortDirectionDesc)
 }
 
 // Sorts is a list of *SortSpec.
@@ -94,7 +94,7 @@ func (s SortNullsPosition) String() string {
 	case NullsPositionLast:
 		return "nulls last"
 	case NullsPositionNotSpecified:
-		fallthrough
+		return ""
 	default:
 		return ""
 	}
@@ -120,7 +120,7 @@ func (s SortDirection) String() string {
 	case SortDirectionDesc:
 		return "desc"
 	case SortDirectionUnspecified:
-		fallthrough
+		return strUnspecified
 	default:
 		return strUnspecified
 	}

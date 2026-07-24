@@ -3,10 +3,11 @@ package r3url_test
 import (
 	"testing"
 
-	"github.com/amberpixels/r3"
-	r3url "github.com/amberpixels/r3/dialects/url"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/amberpixels/r3"
+	r3url "github.com/amberpixels/r3/dialects/url"
 )
 
 func TestParseFields(t *testing.T) {

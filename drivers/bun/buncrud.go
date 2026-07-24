@@ -7,25 +7,28 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/uptrace/bun"
+
 	"github.com/amberpixels/r3"
 	enginesql "github.com/amberpixels/r3/engine/sql"
-	"github.com/uptrace/bun"
 )
 
 // BunCRUD is a Bun repository. It holds bun.IDB (not *bun.DB) so the same code
 // runs against a transaction.
 type BunCRUD[T any, ID comparable] struct {
+	enginesql.DefaultsManager
+
 	db    bun.IDB
 	sqlDB *bun.DB // original *bun.DB, nil when inside a transaction
-
-	enginesql.DefaultsManager
 
 	Config r3.Config
 	raw    *BunRaw[T, ID]
 }
 
-var _ r3.CRUD[any, any] = &BunCRUD[any, any]{}
-var _ r3.Aggregator = &BunCRUD[any, any]{}
+var (
+	_ r3.CRUD[any, any] = &BunCRUD[any, any]{}
+	_ r3.Aggregator     = &BunCRUD[any, any]{}
+)
 
 // NewBunCRUD builds a Bun-based repository.
 func NewBunCRUD[T any, ID comparable](db *bun.DB, opts ...r3.Option) *BunCRUD[T, ID] {

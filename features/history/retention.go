@@ -6,8 +6,9 @@ import (
 	"sort"
 	"time"
 
-	"github.com/amberpixels/r3"
 	"github.com/amberpixels/years"
+
+	"github.com/amberpixels/r3"
 )
 
 // RetentionPolicy defines automatic cleanup rules for old change records. A zero

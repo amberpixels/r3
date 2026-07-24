@@ -22,10 +22,11 @@ import (
 	"net/http"
 	"os"
 
-	petstore "github.com/amberpixels/r3/examples/02petstore"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+
+	petstore "github.com/amberpixels/r3/examples/02petstore"
 )
 
 // statusAvailable is the seed pet status for pets ready to be adopted.

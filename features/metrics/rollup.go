@@ -8,8 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/amberpixels/r3"
 	"github.com/amberpixels/years"
+
+	"github.com/amberpixels/r3"
 )
 
 // RollupPolicy defines how old fine-grained records are compacted into coarser

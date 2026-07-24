@@ -5,11 +5,12 @@ import (
 	"time"
 
 	"github.com/amberpixels/k1/maybe"
-	"github.com/amberpixels/r3"
-	r3mongo "github.com/amberpixels/r3/drivers/mongo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/v2/bson"
+
+	"github.com/amberpixels/r3"
+	r3mongo "github.com/amberpixels/r3/drivers/mongo"
 )
 
 // City is a Mongo-backed entity. The engine generates the _id on Create, so the

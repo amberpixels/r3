@@ -4,10 +4,11 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/amberpixels/r3"
-	r3json "github.com/amberpixels/r3/dialects/json"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/amberpixels/r3"
+	r3json "github.com/amberpixels/r3/dialects/json"
 )
 
 func TestJSONPagination_String(t *testing.T) {

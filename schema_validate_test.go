@@ -3,9 +3,10 @@ package r3_test
 import (
 	"testing"
 
-	"github.com/amberpixels/r3"
 	"github.com/expectto/be"
 	"github.com/expectto/be/be_string"
+
+	"github.com/amberpixels/r3"
 )
 
 func TestValidateQuery_AcceptsAllowedFields(t *testing.T) {

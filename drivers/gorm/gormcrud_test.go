@@ -1,16 +1,16 @@
 package r3gorm_test
 
 import (
-	"encoding/json"
 	"testing"
 
-	"github.com/amberpixels/r3"
-	r3gorm "github.com/amberpixels/r3/drivers/gorm"
-	. "github.com/amberpixels/r3/internal/testing" //nolint: revive // testing is OK
 	"github.com/pressly/goose"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
+
+	"github.com/amberpixels/r3"
+	r3gorm "github.com/amberpixels/r3/drivers/gorm"
+	. "github.com/amberpixels/r3/internal/testing"
 )
 
 func TestGormRepository(t *testing.T) {
@@ -251,16 +251,6 @@ func TestGormRepository(t *testing.T) {
 		})
 		require.NoError(t, err, "failed to run aggregate query via Raw")
 
-		jj, _ := json.Marshal(results)
-		_ = jj
-		// fmt.Println(",.,,. ", string(jj))
-
-		// Log the results for debugging.
-		// for _, res := range results {
-		//	t.Logf("Location ID: %d, Name: %s, TotalWeight: %d", res.ID, res.Name, res.TotalWeight)
-		//}
-
-		// You can add assertions here based on expected results.
 		assert.NotEmpty(t, results, "expected at least one location with aggregated event weights")
 	})
 

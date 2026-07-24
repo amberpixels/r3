@@ -12,6 +12,7 @@ import (
 // Commit/Rollback to satisfy [r3.TxCRUD].
 type baseTxCRUD[T any, ID comparable] struct {
 	*BaseCRUD[T, ID]
+
 	tx *sql.Tx
 }
 

@@ -12,7 +12,6 @@ import (
 	"testing"
 	"time"
 
-	petstore "github.com/amberpixels/r3/examples/02petstore"
 	dockerclient "github.com/moby/moby/client"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -21,6 +20,8 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+
+	petstore "github.com/amberpixels/r3/examples/02petstore"
 )
 
 // isDockerAvailable checks if Docker (or OrbStack) is reachable.
@@ -373,7 +374,7 @@ func TestPetStoreAPI(t *testing.T) {
 	// DELETE /pets/{id} - soft delete
 	// ---------------------------------------------------
 	t.Run("delete pet", func(t *testing.T) {
-		req, _ := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/pets/%d", ts.URL, createdPetID), nil)
+		req, _ := http.NewRequest(http.MethodDelete, fmt.Sprintf("%s/pets/%d", ts.URL, createdPetID), http.NoBody)
 		resp, err := client.Do(req)
 		require.NoError(t, err)
 		defer resp.Body.Close()

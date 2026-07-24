@@ -6,10 +6,11 @@ import (
 	"fmt"
 	"reflect"
 
-	"github.com/amberpixels/r3"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
+
+	"github.com/amberpixels/r3"
 )
 
 var _ r3.Upserter[any, any] = &BaseCRUD[any, any]{}

@@ -4,8 +4,9 @@ import (
 	"testing"
 	"time"
 
-	enginesql "github.com/amberpixels/r3/engine/sql"
 	"github.com/expectto/be"
+
+	enginesql "github.com/amberpixels/r3/engine/sql"
 )
 
 type reflectWidget struct {

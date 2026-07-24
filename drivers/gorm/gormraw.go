@@ -4,8 +4,9 @@ import (
 	"context"
 	"reflect"
 
-	r3utils "github.com/amberpixels/r3/internal/utils"
 	"gorm.io/gorm"
+
+	r3utils "github.com/amberpixels/r3/internal/utils"
 )
 
 // GormRaw is the GORM escape hatch, exposing any gorm query via Find/Scan callbacks.

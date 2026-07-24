@@ -5,10 +5,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amberpixels/r3"
-	r3json "github.com/amberpixels/r3/dialects/json"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/amberpixels/r3"
+	r3json "github.com/amberpixels/r3/dialects/json"
 )
 
 // TestTimePatternOperators_JSONRoundTrip verifies the time-component operators

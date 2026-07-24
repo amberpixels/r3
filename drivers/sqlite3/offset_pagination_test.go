@@ -4,10 +4,11 @@ import (
 	"database/sql"
 	"testing"
 
-	"github.com/amberpixels/r3"
-	r3sqlite3 "github.com/amberpixels/r3/drivers/sqlite3"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/amberpixels/r3"
+	r3sqlite3 "github.com/amberpixels/r3/drivers/sqlite3"
 )
 
 // offsetRow is a minimal numbered row for exercising raw-offset pagination end

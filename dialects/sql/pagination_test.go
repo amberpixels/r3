@@ -3,10 +3,11 @@ package r3sql_test
 import (
 	"testing"
 
-	"github.com/amberpixels/r3"
-	r3sql "github.com/amberpixels/r3/dialects/sql"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/amberpixels/r3"
+	r3sql "github.com/amberpixels/r3/dialects/sql"
 )
 
 func TestNewSQLPagination(t *testing.T) {

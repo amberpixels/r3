@@ -3,11 +3,12 @@ package r3yaml_test
 import (
 	"testing"
 
-	"github.com/amberpixels/r3"
-	r3yaml "github.com/amberpixels/r3/dialects/yaml"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gopkg.in/yaml.v3"
+
+	"github.com/amberpixels/r3"
+	r3yaml "github.com/amberpixels/r3/dialects/yaml"
 )
 
 func TestFieldToYAML(t *testing.T) {

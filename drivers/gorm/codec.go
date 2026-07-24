@@ -7,9 +7,10 @@ import (
 	"strconv"
 	"sync"
 
-	"github.com/amberpixels/r3"
 	"gorm.io/gorm"
 	gschema "gorm.io/gorm/schema"
+
+	"github.com/amberpixels/r3"
 )
 
 // This file bridges an r3 value codec (r3:"...,codec:<name>") to GORM's serializer

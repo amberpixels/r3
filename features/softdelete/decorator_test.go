@@ -6,9 +6,10 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/expectto/be"
+
 	"github.com/amberpixels/r3"
 	"github.com/amberpixels/r3/features/softdelete"
-	"github.com/expectto/be"
 )
 
 // ── Test entity ──────────────────────────────────────────────────────────
@@ -293,6 +294,7 @@ type passthroughDecorator struct {
 func (d *passthroughDecorator) Create(ctx context.Context, e User) (User, error) {
 	return d.inner.Create(ctx, e)
 }
+
 func (d *passthroughDecorator) Get(ctx context.Context, id int64, q ...r3.Query) (User, error) {
 	return d.inner.Get(ctx, id, q...)
 }
@@ -300,9 +302,11 @@ func (d *passthroughDecorator) Get(ctx context.Context, id int64, q ...r3.Query)
 func (d *passthroughDecorator) List(ctx context.Context, q ...r3.Query) ([]User, int64, error) {
 	return d.inner.List(ctx, q...)
 }
+
 func (d *passthroughDecorator) Count(ctx context.Context, q ...r3.Query) (int64, error) {
 	return d.inner.Count(ctx, q...)
 }
+
 func (d *passthroughDecorator) Update(ctx context.Context, e User) (User, error) {
 	return d.inner.Update(ctx, e)
 }
@@ -310,6 +314,7 @@ func (d *passthroughDecorator) Update(ctx context.Context, e User) (User, error)
 func (d *passthroughDecorator) Patch(ctx context.Context, e User, f r3.Fields) (User, error) {
 	return d.inner.Patch(ctx, e, f)
 }
+
 func (d *passthroughDecorator) Delete(ctx context.Context, id int64) error {
 	return d.inner.Delete(ctx, id)
 }

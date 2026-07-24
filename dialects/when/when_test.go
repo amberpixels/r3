@@ -4,11 +4,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amberpixels/r3"
-	r3when "github.com/amberpixels/r3/dialects/when"
 	"github.com/amberpixels/years/schedule"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/amberpixels/r3"
+	r3when "github.com/amberpixels/r3/dialects/when"
 )
 
 const field = "started_at"
@@ -45,7 +46,7 @@ func evalFilter(f *r3.FilterSpec, tm time.Time) bool {
 		}
 		return false
 	}
-	//nolint:exhaustive // compiled when-filters only ever use the two time-component operators
+
 	switch f.Operator {
 	case r3.OperatorWeekdayIn:
 		ok, err := r3.EvalWeekdayIn(tm, f.Value)

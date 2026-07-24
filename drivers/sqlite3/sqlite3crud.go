@@ -32,4 +32,4 @@ func NewSqlite3Querier[T any, ID comparable](db *sql.DB, opts ...r3.Option) r3.Q
 func (r *Sqlite3CRUD[T, ID]) Raw() *enginesql.BaseRaw[T, ID] { return r.BaseCRUD.Raw }
 
 // DB returns the underlying *sql.DB for advanced usage.
-func (r *Sqlite3CRUD[T, ID]) DB() *sql.DB { return r.BaseCRUD.SQLDB() }
+func (r *Sqlite3CRUD[T, ID]) DB() *sql.DB { return r.SQLDB() }

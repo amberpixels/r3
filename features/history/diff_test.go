@@ -4,8 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amberpixels/r3/features/history"
 	"github.com/expectto/be"
+
+	"github.com/amberpixels/r3/features/history"
 )
 
 // Test entity types

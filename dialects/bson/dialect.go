@@ -4,8 +4,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/amberpixels/r3"
 	"go.mongodb.org/mongo-driver/v2/bson"
+
+	"github.com/amberpixels/r3"
 )
 
 // OperatorToBSON converts a FilterOperatorSpec to a BSONOperator.
@@ -50,7 +51,7 @@ func OperatorToBSON(op r3.FilterOperatorSpec) (BSONOperator, error) {
 		return "", errors.New("time-component operators must be handled via FilterToBSON, not OperatorToBSON")
 
 	case r3.OperatorUnspecified:
-		fallthrough
+		return "", fmt.Errorf("unsupported filter operator: %s", &op)
 	default:
 		return "", fmt.Errorf("unsupported filter operator: %s", &op)
 	}
@@ -77,7 +78,6 @@ func FilterToBSON(f *r3.FilterSpec) (bson.D, error) {
 
 		// Nil value: $eq null / $ne null.
 		if f.Value == nil {
-			//nolint:exhaustive // handled by default case
 			switch f.Operator {
 			case r3.OperatorEq:
 				return bson.D{{Key: fieldName, Value: bson.D{{Key: string(BSONOperatorEq), Value: nil}}}}, nil
@@ -256,7 +256,6 @@ func FieldsToBSON(fields r3.Fields) bson.D {
 
 // isBetweenOperator reports whether op is any between variant.
 func isBetweenOperator(op r3.FilterOperatorSpec) bool {
-	//nolint:exhaustive // only checking between variants
 	switch op {
 	case r3.OperatorBetween,
 		r3.OperatorBetweenEx,
@@ -278,7 +277,7 @@ func betweenToBSON(fieldName string, op r3.FilterOperatorSpec, value any) (bson.
 	}
 
 	var lowOp, highOp BSONOperator
-	//nolint:exhaustive // only between variants reach here, guarded by isBetweenOperator
+
 	switch op {
 	case r3.OperatorBetween:
 		lowOp, highOp = BSONOperatorGte, BSONOperatorLte
@@ -307,7 +306,6 @@ func betweenToBSON(fieldName string, op r3.FilterOperatorSpec, value any) (bson.
 func timePatternToBSON(fieldName string, op r3.FilterOperatorSpec, value any) (bson.D, error) {
 	fieldRef := "$" + fieldName
 
-	//nolint:exhaustive // only the two time-component operators reach here (guarded by the caller)
 	switch op {
 	case r3.OperatorWeekdayIn:
 		days, err := r3.WeekdaysValue(value)
