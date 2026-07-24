@@ -16,7 +16,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - uses: extractions/setup-just@v3
+      - uses: extractions/setup-just@v4
 
       - name: Lint
         run: just lint
@@ -37,7 +37,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - uses: extractions/setup-just@v3
+      - uses: extractions/setup-just@v4
 
       - name: Test (full, with Docker/testcontainers)
         run: just test-integration
