@@ -310,3 +310,12 @@ require (
 )
 
 tool github.com/amberpixels/standardgo/cmd/standardgo
+
+// cloud.google.com/go/compute below v1.20.0 still bundles the metadata package
+// that later became its own module. golangci-lint - pulled in by the standardgo
+// tool directive above - depends on viper v1.12.0, which asks for v1.6.1. Any
+// consumer that also uses cloud.google.com/go/compute/metadata then sees two
+// modules claiming one import path and fails to build. r3 imports neither, so
+// excluding the pre-split version simply keeps our dev toolchain out of
+// downstream builds.
+exclude cloud.google.com/go/compute v1.6.1
