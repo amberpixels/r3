@@ -24,7 +24,7 @@ jobs:
           cache-dependency-path: |
             go.sum
             justfile
-      - uses: extractions/setup-just@v3
+      - uses: extractions/setup-just@v4
 
       - name: Lint
         # standardgo is a tool built in its own module context, not a dependency:
@@ -47,7 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: extractions/setup-just@v3
+      - uses: extractions/setup-just@v4
 
       - id: pin
         run: echo "go=$(just --evaluate floor_go | sed 's/^go//')" >>"$GITHUB_OUTPUT"
@@ -74,7 +74,7 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
-      - uses: extractions/setup-just@v3
+      - uses: extractions/setup-just@v4
 
       - name: Test (full, with Docker/testcontainers)
         run: just test-integration
