@@ -55,8 +55,6 @@ func PrepareListQuery(dm *DefaultsManager, qarg ...r3.Query) (PreparedListQuery,
 // It applies no value codecs; a driver whose schema declares codecs must call
 // [PrepareMergedListQuerySchema] to encode codec'd filter/cursor args to stored
 // form.
-//
-//nolint:lostfield // thin wrapper: delegates to PrepareMergedListQuerySchema, which reads the query and populates every PreparedListQuery field
 func PrepareMergedListQuery(q r3.Query) (PreparedListQuery, error) {
 	return PrepareMergedListQuerySchema(r3.Schema{}, q)
 }

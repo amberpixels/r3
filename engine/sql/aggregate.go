@@ -46,8 +46,6 @@ type PreparedAggregateQuery struct {
 // PrepareAggregateQuery merges defaults with args, validates against the schema
 // (a zero r3.Schema does structural-only validation), and converts to SQL-ready
 // aggregate components.
-//
-//nolint:lostfield // thin wrapper: delegates to PrepareMergedAggregateQuery, which populates every PreparedAggregateQuery field
 func PrepareAggregateQuery(
 	dm *DefaultsManager, schema r3.Schema, flavor Flavor, qarg ...r3.Query,
 ) (PreparedAggregateQuery, error) {
