@@ -101,6 +101,14 @@ func (r *BaseCRUD[T, ID]) relationAggregatePrefix(
 		}}})
 	}
 
+	// A qualified many-to-many owns one slice of the join collection, so folding
+	// the whole collection would count the other slices too.
+	if rel.Kind == RelManyToMany && rel.WhereField != "" {
+		prefix = append(prefix, bson.D{{Key: matchOp, Value: bson.D{
+			{Key: rel.WhereField, Value: rel.WhereValue},
+		}}})
+	}
+
 	// Exclude soft-deleted related rows when the relation declares a soft-delete
 	// field on the target.
 	if sd := rel.TargetMeta.SoftDeleteField; sd != "" {

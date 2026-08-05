@@ -39,6 +39,12 @@ type RelationMeta struct {
 	// (M2M only): sync writes each element's index, preload orders by it.
 	// Empty means order is not persisted.
 	OrderColumn string
+	// WhereColumn and WhereValue scope an M2M relation to one slice of its join
+	// table (`where:<column>=<value>`, or [r3.RelationWhere]): every join-table
+	// read filters on the pair and every write supplies it, so two relations can
+	// share a join table. Empty WhereColumn spans the whole join table.
+	WhereColumn string
+	WhereValue  string
 	Owned       bool         // children are lifecycle-bound to parent (has-many only)
 	TargetMeta  StructMeta   // metadata for the related entity type
 	TargetType  reflect.Type // target element type (not slice/ptr)
@@ -164,6 +170,8 @@ func buildRelationMeta(field reflect.StructField, fieldIndex int) (RelationMeta,
 		RefColumn:   tag.RefColumn,
 		JoinTable:   tag.JoinTable,
 		OrderColumn: tag.OrderColumn,
+		WhereColumn: tag.WhereColumn,
+		WhereValue:  tag.WhereValue,
 		Owned:       tag.Owned,
 		TargetMeta:  targetMeta,
 		TargetType:  targetType,

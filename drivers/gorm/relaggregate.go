@@ -59,6 +59,9 @@ func (r *GormCRUD[T, ID]) AggregateThroughRelation(
 	if plan.softDeleteCond != "" {
 		query = query.Where(plan.softDeleteCond)
 	}
+	if plan.qualifierCond != "" {
+		query = query.Where(plan.qualifierCond, plan.qualifierArg)
+	}
 	// Owner filters restrict which owners' related rows are aggregated - this is
 	// where a permissions Scoper's owner filters land. Applied as a subquery on the
 	// owner table rather than a materialized key set.
@@ -104,6 +107,10 @@ type relationAggregatePlan struct {
 	ownerKeyColumn string // column in baseTable that identifies the owner
 	joinClause     string // "JOIN target ON ..." for m2m soft-delete exclusion, else ""
 	softDeleteCond string // "<col> IS NULL" predicate excluding soft-deleted related rows, else ""
+	// qualifierCond ("<join>.<col> = ?") and its argument restrict a qualified
+	// m2m relation to its own slice of the join table, else "".
+	qualifierCond string
+	qualifierArg  any
 }
 
 func buildRelationAggregatePlan(rel enginesql.RelationMeta) (relationAggregatePlan, error) {
@@ -130,6 +137,14 @@ func buildRelationAggregatePlan(rel enginesql.RelationMeta) (relationAggregatePl
 		plan := relationAggregatePlan{
 			baseTable:      rel.JoinTable,
 			ownerKeyColumn: rel.FKColumn,
+		}
+		// A qualified relation owns one slice of the join table, so folding the
+		// whole table would count the other slices too. Qualify the column with
+		// the join table: the soft-delete case joins the target alongside it.
+		if rel.WhereColumn != "" {
+			plan.qualifierCond = r3sql.QuoteIdentifier(rel.JoinTable) + "." +
+				r3sql.QuoteIdentifier(rel.WhereColumn) + " = ?"
+			plan.qualifierArg = rel.WhereValue
 		}
 		if sd := rel.TargetMeta.SoftDeleteColumn; sd != "" {
 			target := r3sql.QuoteIdentifier(rel.TargetMeta.TableName)

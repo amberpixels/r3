@@ -585,6 +585,26 @@ rows, _ := r3.AggregateThroughRelation(ctx, storeRepo, "pets", r3.Query{
 })
 ```
 
+A join table often carries a column saying *what kind* of link a row is
+(`role`, `relation`, `kind`). A constant predicate scopes a many-to-many
+relation to one slice of it, so several relations can share one join table
+without seeing or deleting each other's rows - reads filter on it, writes filter
+and supply it:
+
+```go
+// One join table - article_tags(article_id, tag_id, sort_order, relation) -
+// backing a curated list of topics and a looser set of mentions.
+type Article struct {
+    ID       int64
+    Topics   []Tag `r3:"rel:many-to-many,join:article_tags,fk:article_id,ref:tag_id,order:sort_order,where:relation=topic"`
+    Mentions []Tag `r3:"rel:many-to-many,join:article_tags,fk:article_id,ref:tag_id,where:relation=mention"`
+}
+
+// The same predicate on a physically declared relation:
+r3.ManyToManyRelation("topics", "article_tags", "article_id", "tag_id", "tags",
+    r3.RelationWhere("relation", "topic"))
+```
+
 `AggregateThroughRelation` interprets `Filters` as owner filters (so a
 permissions `Scoper` restricts which owners' related rows are folded) and
 excludes soft-deleted related rows when the relation declares a soft-delete
@@ -592,7 +612,9 @@ column. It is reached via the `RelationAggregator` capability, forwarded by
 every decorator like `Aggregator`.
 
 **Backend support:** relation resolution (`Has`/`HasNo`/`AggregateThroughRelation`)
-is implemented by the GORM and Mongo drivers today; other backends reject or ignore it. See
+is implemented by the GORM and Mongo drivers today; other backends reject or ignore it.
+The `where:` and `order:` tag keywords are GORM-only - on Mongo the same predicate is
+declared with `r3.RelationWhere`. See
 [`docs/backend-parity.md`](docs/backend-parity.md) for the tracked gap list.
 
 ## Transactions

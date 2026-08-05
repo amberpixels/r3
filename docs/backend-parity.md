@@ -98,6 +98,15 @@ These are feature gaps (not backend-parity gaps) tracked in the p44 feedback log
   slice's order (`syncM2M` writes each element's index, `preloadM2M` orders by
   it) so drag-and-drop-style orderings survive the round-trip. The other backends
   ignore the column and preload M2M rows in unspecified order.
+- **Qualified M2M (`where:<col>=<value>` / `r3.RelationWhere`)** - a constant
+  predicate scoping a many-to-many relation to one slice of a discriminated join
+  table, so several relations can share it. Split by declaration form: the tag
+  keyword is GORM only (preload and join-table sync live there), while the
+  spec-declared form is honoured by GORM and Mongo, the two backends that resolve
+  relations at all - `Has`/`HasNo` and `AggregateThroughRelation` both filter on
+  the pair. A tag-declared many-to-many does not resolve on Mongo regardless of
+  this predicate: `engine/mongo`'s `buildRelationMeta` carries neither the join
+  collection nor the ref field, so Mongo M2M is spec-declared only.
 
 ## Already at parity (for reference)
 

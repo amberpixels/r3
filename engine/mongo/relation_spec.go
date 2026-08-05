@@ -22,6 +22,8 @@ func RelationMetaFromSpec(spec r3.RelationSpec) RelationMeta {
 		FKField:    spec.FKColumn,
 		RefField:   spec.RefColumn,
 		JoinTable:  spec.JoinTable,
+		WhereField: spec.WhereColumn,
+		WhereValue: spec.WhereValue,
 		TargetMeta: StructMeta{
 			CollectionName:  spec.TargetTable,
 			IDField:         pk,
