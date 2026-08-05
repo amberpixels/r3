@@ -235,4 +235,73 @@ func TestMongoRelations(t *testing.T) {
 		n, _ := rows[0].Int64("n")
 		assert.Equal(t, int64(2), n, "Concert has two tag links")
 	})
+
+	t.Run("qualified many-to-many sees only its own slice", func(t *testing.T) {
+		// One join collection with a "kind" discriminator backs two relations.
+		eventRepo := r3mongo.NewMongoCRUD[Event, bson.ObjectID](db.Collection("qual_events"),
+			r3.WithRelations(
+				r3.ManyToManyRelation("headliners", "qual_event_tags", "event_id", "tag_id", "qual_tags",
+					r3.RelationWhere("kind", "headliner")),
+				r3.ManyToManyRelation("support", "qual_event_tags", "event_id", "tag_id", "qual_tags",
+					r3.RelationWhere("kind", "support")),
+			))
+		tagRepo := r3mongo.NewMongoCRUD[Tag, bson.ObjectID](db.Collection("qual_tags"))
+
+		festival, err := eventRepo.Create(ctx, Event{Name: "Festival"})
+		require.NoError(t, err)
+		gig, err := eventRepo.Create(ctx, Event{Name: "Gig"})
+		require.NoError(t, err)
+
+		jazz, err := tagRepo.Create(ctx, Tag{Label: "jazz"})
+		require.NoError(t, err)
+		folk, err := tagRepo.Create(ctx, Tag{Label: "folk"})
+		require.NoError(t, err)
+
+		// Festival: jazz headlines, folk supports. Gig: folk headlines.
+		_, err = db.Collection("qual_event_tags").InsertMany(ctx, []any{
+			bson.D{
+				{Key: "event_id", Value: festival.ID},
+				{Key: "tag_id", Value: jazz.ID},
+				{Key: "kind", Value: "headliner"},
+			},
+			bson.D{
+				{Key: "event_id", Value: festival.ID},
+				{Key: "tag_id", Value: folk.ID},
+				{Key: "kind", Value: "support"},
+			},
+			bson.D{
+				{Key: "event_id", Value: gig.ID},
+				{Key: "tag_id", Value: folk.ID},
+				{Key: "kind", Value: "headliner"},
+			},
+		})
+		require.NoError(t, err)
+
+		// "folk" headlines the Gig and supports the Festival: one query per
+		// relation, two different answers.
+		got, _, err := eventRepo.List(ctx, r3.Query{
+			Filters: r3.Filters{r3.Has("headliners", r3.Eq("label", "folk"))},
+		})
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		assert.Equal(t, "Gig", got[0].Name)
+
+		got, _, err = eventRepo.List(ctx, r3.Query{
+			Filters: r3.Filters{r3.Has("support", r3.Eq("label", "folk"))},
+		})
+		require.NoError(t, err)
+		require.Len(t, got, 1)
+		assert.Equal(t, "Festival", got[0].Name)
+
+		// The aggregate folds the join collection itself, so it must fold one
+		// slice only.
+		rows, err := eventRepo.AggregateThroughRelation(ctx, "headliners", r3.Query{
+			Filters:    r3.Filters{r3.Eq("name", "Festival")},
+			Aggregates: r3.Aggregates{r3.AggCount("n")},
+		})
+		require.NoError(t, err)
+		require.Len(t, rows, 1)
+		n, _ := rows[0].Int64("n")
+		assert.Equal(t, int64(1), n, "the Festival's support link must not be counted")
+	})
 }

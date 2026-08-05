@@ -100,7 +100,8 @@ func resolveRelationFilter(
 	switch rel.Kind {
 	case enginesql.RelManyToMany:
 		// Two hops: related rows matching the inner filter → their PKs → the join
-		// table → the parent FKs. WHERE parent.id [NOT] IN (those FKs).
+		// table → the parent FKs. WHERE parent.id [NOT] IN (those FKs). A
+		// WhereColumn narrows the join-table hop to the relation's own slice.
 		targetKeys, err := selectRelationKeys(
 			ctx, db, rel.TargetMeta.TableName, rel.TargetMeta.PKColumn, f.RelationFilter,
 		)
@@ -109,9 +110,11 @@ func resolveRelationFilter(
 		}
 		parentKeys := []any{}
 		if len(targetKeys) > 0 {
-			parentKeys, err = selectRelationKeys(
-				ctx, db, rel.JoinTable, rel.FKColumn, r3.Filters{r3.In(rel.RefColumn, targetKeys)},
-			)
+			joinFilters := r3.Filters{r3.In(rel.RefColumn, targetKeys)}
+			if rel.WhereColumn != "" {
+				joinFilters = append(joinFilters, r3.Eq(rel.WhereColumn, rel.WhereValue))
+			}
+			parentKeys, err = selectRelationKeys(ctx, db, rel.JoinTable, rel.FKColumn, joinFilters)
 			if err != nil {
 				return nil, err
 			}

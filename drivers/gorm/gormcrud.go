@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"slices"
 	"strings"
 	"time"
 
@@ -473,28 +474,44 @@ func (r *GormCRUD[T, ID]) syncAssociations(ctx context.Context, entityPtr *T) er
 	return nil
 }
 
-// syncM2M replaces all join table rows for a many-to-many relation using direct
-// SQL. With an OrderColumn, each row also records its slice index, so the
-// relation's order survives the round-trip (preloadM2M orders by it).
+// syncM2M replaces the join table rows a many-to-many relation owns, using
+// direct SQL. With an OrderColumn, each row also records its slice index, so the
+// relation's order survives the round-trip (preloadM2M orders by it). With a
+// WhereColumn, both statements carry the relation's constant, so the relation
+// only ever clears and writes its own slice of the join table.
 func syncM2M[T any](db *gorm.DB, rel enginesql.RelationMeta, pkVal any, entityPtr *T) error {
-	if err := db.Exec(
-		"DELETE FROM "+rel.JoinTable+" WHERE "+rel.FKColumn+" = ?", pkVal,
-	).Error; err != nil {
+	del := "DELETE FROM " + rel.JoinTable + " WHERE " + rel.FKColumn + " = ?"
+	delArgs := []any{pkVal}
+	if rel.WhereColumn != "" {
+		del += " AND " + rel.WhereColumn + " = ?"
+		delArgs = append(delArgs, rel.WhereValue)
+	}
+	if err := db.Exec(del, delArgs...).Error; err != nil {
 		return err
 	}
 
-	insert := "INSERT INTO " + rel.JoinTable + " (" + rel.FKColumn + ", " + rel.RefColumn + ") VALUES (?, ?)"
+	// The two FKs are always written; the order and predicate columns join them
+	// when declared, and each contributes one argument per row below.
+	cols := []string{rel.FKColumn, rel.RefColumn}
 	if rel.OrderColumn != "" {
-		insert = "INSERT INTO " + rel.JoinTable +
-			" (" + rel.FKColumn + ", " + rel.RefColumn + ", " + rel.OrderColumn + ") VALUES (?, ?, ?)"
+		cols = append(cols, rel.OrderColumn)
 	}
+	if rel.WhereColumn != "" {
+		cols = append(cols, rel.WhereColumn)
+	}
+	insert := "INSERT INTO " + rel.JoinTable + " (" + strings.Join(cols, ", ") + ") VALUES (" +
+		strings.Join(slices.Repeat([]string{"?"}, len(cols)), ", ") + ")"
 
 	slice := reflect.ValueOf(entityPtr).Elem().Field(rel.FieldIndex)
 	for i := range slice.Len() {
 		childPK := rel.TargetMeta.PKValue(slice.Index(i).Interface())
-		args := []any{pkVal, childPK}
+		args := make([]any, 0, len(cols))
+		args = append(args, pkVal, childPK)
 		if rel.OrderColumn != "" {
 			args = append(args, i)
+		}
+		if rel.WhereColumn != "" {
+			args = append(args, rel.WhereValue)
 		}
 		if err := db.Exec(insert, args...).Error; err != nil {
 			return err

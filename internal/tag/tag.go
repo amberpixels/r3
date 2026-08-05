@@ -20,9 +20,17 @@
 //	r3:"rel:belongs-to,fk:city_id"
 //	r3:"rel:has-many,fk:city_id,table:translations"
 //	r3:"rel:many-to-many,join:city_tags,fk:city_id,ref:tag_id,order:sort_order"
+//	r3:"rel:many-to-many,join:city_tags,fk:city_id,ref:tag_id,where:kind=topic"
 //
 // order: names an integer column on the M2M join table that persists the
 // slice order: sync writes each element's index into it, preload orders by it.
+//
+// where: scopes an M2M relation to one slice of its join table via a constant
+// predicate (`where:<column>=<value>`), so two relations can share one join
+// table without seeing or deleting each other's rows: reads filter on it, writes
+// filter and supply it. The value is always bound as a query argument, so the
+// database coerces it to the column's type; it cannot contain a comma (the tag
+// separator). M2M only - other relation kinds ignore it.
 //
 // Capability flags (additive — they tighten the permissive defaults, never widen):
 //
@@ -170,6 +178,7 @@ func isKnownKeyword(s string) bool {
 		strings.HasPrefix(s, "ref:") ||
 		strings.HasPrefix(s, "join:") ||
 		strings.HasPrefix(s, "order:") ||
+		strings.HasPrefix(s, "where:") ||
 		strings.HasPrefix(s, "table:") ||
 		strings.HasPrefix(s, "enum:") ||
 		strings.HasPrefix(s, "codec:")
@@ -237,6 +246,11 @@ type RelationTag struct {
 	// relation slice's order: sync writes each element's index into it, preload
 	// orders by it. Empty means order is not persisted.
 	OrderColumn string
+	// WhereColumn and WhereValue are the constant predicate scoping an M2M
+	// relation to one slice of its join table (`where:<column>=<value>`). Empty
+	// WhereColumn means the relation spans the whole join table, as before.
+	WhereColumn string
+	WhereValue  string
 	Owned       bool // if true, children are lifecycle-bound to parent (delete orphans on update)
 }
 
@@ -274,6 +288,8 @@ func ParseRelationTag(field reflect.StructField) (RelationTag, bool) {
 			tag.JoinTable = strings.TrimPrefix(part, "join:")
 		case strings.HasPrefix(part, "order:"):
 			tag.OrderColumn = strings.TrimPrefix(part, "order:")
+		case strings.HasPrefix(part, "where:"):
+			tag.WhereColumn, tag.WhereValue = parseWhereClause(strings.TrimPrefix(part, "where:"))
 		case strings.HasPrefix(part, "table:"):
 			tag.TableName = strings.TrimPrefix(part, "table:")
 		}
@@ -284,4 +300,17 @@ func ParseRelationTag(field reflect.StructField) (RelationTag, bool) {
 	}
 
 	return tag, true
+}
+
+// parseWhereClause splits a `where:` clause ("column=value") on its first "=".
+// Both halves must be non-empty; anything else yields no predicate, leaving the
+// relation itself intact.
+func parseWhereClause(raw string) (string, string) {
+	column, value, ok := strings.Cut(raw, "=")
+	column = strings.TrimSpace(column)
+	value = strings.TrimSpace(value)
+	if !ok || column == "" || value == "" {
+		return "", ""
+	}
+	return column, value
 }

@@ -96,6 +96,50 @@ func TestParseColumnTag_GormFallback(t *testing.T) {
 	be.AssertThat(t, plain.Column, be.Eq("plain"))
 }
 
+type relModel struct {
+	Plain     []string `r3:"rel:many-to-many,join:article_tags,fk:article_id,ref:tag_id"`
+	Topics    []string `r3:"rel:many-to-many,join:article_tags,fk:article_id,ref:tag_id,order:sort_order,where:relation=topic"`
+	NoEquals  []string `r3:"rel:many-to-many,join:article_tags,fk:article_id,ref:tag_id,where:relation"`
+	NoColumn  []string `r3:"rel:many-to-many,join:article_tags,fk:article_id,ref:tag_id,where:=topic"`
+	NoValue   []string `r3:"rel:many-to-many,join:article_tags,fk:article_id,ref:tag_id,where:relation="`
+	ValueOnly []string `r3:"rel:many-to-many,join:article_tags,fk:article_id,ref:tag_id,where:kind=a=b"`
+}
+
+func relFieldByName(t *testing.T, name string) reflect.StructField {
+	t.Helper()
+	f, ok := reflect.TypeFor[relModel]().FieldByName(name)
+	be.RequireThat(t, ok, be.True(), "field %q not found", name)
+	return f
+}
+
+func TestParseRelationTag_Where(t *testing.T) {
+	// A relation with no where: clause keeps both fields empty, as before.
+	plain, ok := r3tag.ParseRelationTag(relFieldByName(t, "Plain"))
+	be.RequireThat(t, ok, be.True())
+	be.AssertThat(t, plain, be.HaveFields(map[string]any{"WhereColumn": "", "WhereValue": ""}))
+
+	topics, ok := r3tag.ParseRelationTag(relFieldByName(t, "Topics"))
+	be.RequireThat(t, ok, be.True())
+	be.AssertThat(t, topics, be.HaveFields(map[string]any{
+		"JoinTable": "article_tags", "OrderColumn": "sort_order",
+		"WhereColumn": "relation", "WhereValue": "topic",
+	}))
+
+	// A malformed clause yields no predicate but leaves the relation itself intact.
+	for _, name := range []string{"NoEquals", "NoColumn", "NoValue"} {
+		rel, ok := r3tag.ParseRelationTag(relFieldByName(t, name))
+		be.RequireThat(t, ok, be.True(), "relation %q", name)
+		be.AssertThat(t, rel, be.HaveFields(map[string]any{
+			"JoinTable": "article_tags", "WhereColumn": "", "WhereValue": "",
+		}), "relation %q", name)
+	}
+
+	// Only the first "=" separates: the rest belongs to the value.
+	valueOnly, ok := r3tag.ParseRelationTag(relFieldByName(t, "ValueOnly"))
+	be.RequireThat(t, ok, be.True())
+	be.AssertThat(t, valueOnly, be.HaveFields(map[string]any{"WhereColumn": "kind", "WhereValue": "a=b"}))
+}
+
 func TestParseColumnTag_PreservesExistingBehavior(t *testing.T) {
 	id := r3tag.ParseColumnTag(fieldByName(t, "ID"))
 	be.AssertThat(t, id, be.HaveFields(map[string]any{"Column": "id", "IsPK": true}))

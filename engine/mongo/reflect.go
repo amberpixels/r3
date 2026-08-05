@@ -35,6 +35,11 @@ type RelationMeta struct {
 	FKField    string       // foreign key field: child-side (has-many), owner-side (belongs-to), owner-side in join (m2m)
 	RefField   string       // related-side FK field in the join collection (many-to-many only)
 	JoinTable  string       // join collection name (many-to-many only)
+	// WhereField and WhereValue scope a many-to-many relation to the join
+	// documents whose WhereField equals WhereValue (see [r3.RelationWhere]), so
+	// several relations can share one join collection. Empty spans all of it.
+	WhereField string
+	WhereValue string
 	TargetMeta StructMeta   // metadata for the related entity (collection, IDField, SoftDeleteField)
 	TargetType reflect.Type // reflect.Type of the target entity (element type); nil for a declared spec
 }

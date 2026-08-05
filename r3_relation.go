@@ -68,6 +68,12 @@ type RelationSpec struct {
 	// column: [AggregateThroughRelation] excludes related rows whose value is
 	// non-NULL, so soft-deleted related rows are not counted.
 	TargetSoftDeleteColumn string
+
+	// WhereColumn and WhereValue, when set, scope a many-to-many relation to the
+	// join-table rows whose WhereColumn equals WhereValue (see [RelationWhere]),
+	// so several relations can share one join table.
+	WhereColumn string
+	WhereValue  string
 }
 
 // RelationOption customizes an optional field of a [RelationSpec].
@@ -82,6 +88,20 @@ func RelationTargetPK(column string) RelationOption {
 // [AggregateThroughRelation] excludes soft-deleted related rows.
 func RelationTargetSoftDelete(column string) RelationOption {
 	return func(s *RelationSpec) { s.TargetSoftDeleteColumn = column }
+}
+
+// RelationWhere scopes a many-to-many relation to the join-table rows whose
+// `column` equals `value`, the constant-predicate twin of the `where:col=value`
+// relation tag. A join table carrying a discriminator ("role", "kind") can then
+// back several relations, each seeing only its own rows through [Has]/[HasNo]
+// and [AggregateThroughRelation]. The value is always bound as a query argument,
+// so the store coerces it to the column's type. Many-to-many only; other
+// relation kinds ignore it.
+func RelationWhere(column, value string) RelationOption {
+	return func(s *RelationSpec) {
+		s.WhereColumn = column
+		s.WhereValue = value
+	}
 }
 
 // HasManyRelation declares a one-to-many relation: `fkColumn` on `targetTable`

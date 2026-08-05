@@ -94,9 +94,13 @@ func (r *BaseCRUD[T, ID]) resolveRelationFilter(ctx context.Context, f *r3.Filte
 		}
 		ownerKeys := []any{}
 		if len(targetKeys) > 0 {
-			ownerKeys, err = selectRelationKeys(
-				ctx, db.Collection(rel.JoinTable), rel.FKField, r3.Filters{r3.In(rel.RefField, targetKeys)},
-			)
+			// A WhereField narrows the join hop to the relation's own slice of the
+			// join collection.
+			joinFilters := r3.Filters{r3.In(rel.RefField, targetKeys)}
+			if rel.WhereField != "" {
+				joinFilters = append(joinFilters, r3.Eq(rel.WhereField, rel.WhereValue))
+			}
+			ownerKeys, err = selectRelationKeys(ctx, db.Collection(rel.JoinTable), rel.FKField, joinFilters)
 			if err != nil {
 				return nil, err
 			}

@@ -15,12 +15,14 @@ func RelationMetaFromSpec(spec r3.RelationSpec) RelationMeta {
 		pk = "id"
 	}
 	return RelationMeta{
-		FieldName:  spec.Name,
-		FieldIndex: -1,
-		Kind:       relationKindFromSpec(spec.Kind),
-		FKColumn:   spec.FKColumn,
-		RefColumn:  spec.RefColumn,
-		JoinTable:  spec.JoinTable,
+		FieldName:   spec.Name,
+		FieldIndex:  -1,
+		Kind:        relationKindFromSpec(spec.Kind),
+		FKColumn:    spec.FKColumn,
+		RefColumn:   spec.RefColumn,
+		JoinTable:   spec.JoinTable,
+		WhereColumn: spec.WhereColumn,
+		WhereValue:  spec.WhereValue,
 		TargetMeta: StructMeta{
 			TableName:        spec.TargetTable,
 			PKColumn:         pk,
