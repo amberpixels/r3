@@ -179,7 +179,14 @@ func (r *BaseCRUD[T, ID]) Get(_ context.Context, id ID, qarg ...r3.Query) (T, er
 		return zero, errNotFound
 	}
 
-	return entity, nil
+	if err := q.ValidateProjection(); err != nil {
+		var zero T
+		return zero, err
+	}
+	one := []T{entity}
+	projectEntities(one, &r.Meta, q)
+
+	return one[0], nil
 }
 
 // List retrieves entities matching the given query.
@@ -188,6 +195,10 @@ func (r *BaseCRUD[T, ID]) List(_ context.Context, qarg ...r3.Query) ([]T, int64,
 	defer r.mu.RUnlock()
 
 	q := r.MergeListQuery(qarg...)
+
+	if err := q.ValidateProjection(); err != nil {
+		return nil, 0, err
+	}
 
 	entities, err := r.loadAll()
 	if err != nil {
@@ -250,6 +261,9 @@ func (r *BaseCRUD[T, ID]) List(_ context.Context, qarg ...r3.Query) ([]T, int64,
 	if result == nil {
 		result = []T{}
 	}
+	// Projected last: filters, sorts and the cursor all read fields a projection
+	// may drop, so narrowing earlier would change which rows come back.
+	projectEntities(result, &r.Meta, q)
 	return result, count, nil
 }
 

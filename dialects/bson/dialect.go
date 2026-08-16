@@ -254,6 +254,34 @@ func FieldsToBSON(fields r3.Fields) bson.D {
 	return projection
 }
 
+// ExcludeFieldsToBSON converts r3.Fields to a bson.D exclusion projection (each
+// field set to 0) - the subtractive form of [FieldsToBSON]. _id is never
+// excluded, the mirror of FieldsToBSON always including it: an entity returned
+// without its identity cannot be patched, deleted, or linked. MongoDB rejects a
+// projection mixing 1s and 0s, so the two forms are never combined - r3 refuses
+// that pairing upstream with [r3.ErrProjectionConflict].
+func ExcludeFieldsToBSON(fields r3.Fields) bson.D {
+	if len(fields) == 0 {
+		return nil
+	}
+
+	projection := make(bson.D, 0, len(fields))
+	for _, f := range fields {
+		if f == nil {
+			continue
+		}
+		name := f.String()
+		if name == "_id" {
+			continue
+		}
+		projection = append(projection, bson.E{Key: name, Value: 0})
+	}
+	if len(projection) == 0 {
+		return nil
+	}
+	return projection
+}
+
 // isBetweenOperator reports whether op is any between variant.
 func isBetweenOperator(op r3.FilterOperatorSpec) bool {
 	switch op {

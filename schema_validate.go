@@ -55,6 +55,11 @@ func (s Schema) hasCap(name string, c Capability) bool {
 // validated by the engine against the target schema (TODO), not the root.
 // Relationship ("has") filters are likewise skipped.
 func (s Schema) ValidateQuery(q Query) error {
+	// Structural, so it runs even for a zero schema - the same split
+	// ValidateAggregateQuery makes between shape and capability checks.
+	if err := q.ValidateProjection(); err != nil {
+		return err
+	}
 	if s.IsZero() {
 		return nil
 	}
@@ -74,6 +79,15 @@ func (s Schema) ValidateQuery(q Query) error {
 	}
 	for _, field := range q.Fields {
 		if err := s.validateField(field.String(), Queryable, ErrFieldNotQueryable); err != nil {
+			return err
+		}
+	}
+	// An excluded field only has to exist. Requiring Queryable would reject
+	// dropping a column that is already never returned, which is a no-op the
+	// caller asked for harmlessly - but a typo names nothing at all, and silently
+	// excluding no column is exactly the bug this catches.
+	for _, field := range q.ExcludeFields {
+		if err := s.validateFieldExists(field.String()); err != nil {
 			return err
 		}
 	}
@@ -285,6 +299,20 @@ func (s Schema) validateFilter(f *FilterSpec) error {
 		return nil
 	}
 	return s.validateField(f.Field.String(), Filterable, ErrFieldNotFilterable)
+}
+
+// validateFieldExists checks only that a field is declared, with no capability
+// requirement. It backs ExcludeFields: dropping a column that is already not
+// returned is a harmless no-op, but a name that matches nothing excludes nothing,
+// which is a typo that would otherwise pass silently.
+func (s Schema) validateFieldExists(name string) error {
+	if name == "" || strings.Contains(name, ".") {
+		return nil
+	}
+	if _, ok := s.Lookup(name); !ok {
+		return fmt.Errorf("%w: %q", ErrUnknownField, name)
+	}
+	return nil
 }
 
 // validateField checks one field name: unknown yields [ErrUnknownField], a known

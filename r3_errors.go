@@ -63,4 +63,7 @@ var (
 	ErrFieldNotSortable = errors.New("field is not sortable")
 	// ErrFieldNotQueryable is returned when a non-queryable field appears in Query.Fields.
 	ErrFieldNotQueryable = errors.New("field is not queryable")
+	// ErrProjectionConflict is returned when a Query sets both Fields and
+	// ExcludeFields: a projection is additive or subtractive, never both.
+	ErrProjectionConflict = errors.New("query sets both Fields and ExcludeFields")
 )

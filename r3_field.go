@@ -125,3 +125,30 @@ func FieldsToStrings(fields Fields) []string {
 	}
 	return out
 }
+
+// Exclude builds the Fields list for [Query.ExcludeFields] from plain field
+// names - the subtractive projection, "everything but these":
+//
+//	r3.Query{ExcludeFields: r3.Exclude("streams_json", "garmin_json"), ...}
+//
+// The primary key is never excluded, whatever this names: [Query.Fields] always
+// adds it back for the same reason, and an entity returned without its identity
+// cannot be patched, deleted, or linked.
+func Exclude(fields ...string) Fields {
+	out := make(Fields, 0, len(fields))
+	for _, f := range fields {
+		out = append(out, NewFieldSpec(f))
+	}
+	return out
+}
+
+// ValidateProjection checks the structural rule both projection forms share: a
+// query names fields to keep or fields to drop, never both. Engines call it
+// before lowering a projection, so the conflict surfaces as a typed error rather
+// than as a backend complaint about a mixed projection document.
+func (q Query) ValidateProjection() error {
+	if len(q.Fields) > 0 && len(q.ExcludeFields) > 0 {
+		return ErrProjectionConflict
+	}
+	return nil
+}

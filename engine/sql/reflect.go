@@ -277,6 +277,55 @@ func (m *StructMeta) FieldIndicesForColumns(selectedCols []string) ([]string, []
 	return columns, fieldIndices
 }
 
+// FieldIndicesExcludingColumns is the subtractive counterpart of
+// [StructMeta.FieldIndicesForColumns]: every column EXCEPT those named, in
+// declaration order. The PK is always kept, exactly as the additive form always
+// adds it. An empty exclusion list selects everything.
+func (m *StructMeta) FieldIndicesExcludingColumns(excludedCols []string) ([]string, []int) {
+	if len(excludedCols) == 0 {
+		return m.Columns, m.Fields
+	}
+	excluded := make(map[string]bool, len(excludedCols))
+	for _, c := range excludedCols {
+		excluded[c] = true
+	}
+	delete(excluded, m.PKColumn)
+
+	var columns []string
+	var fieldIndices []int
+	for i, col := range m.Columns {
+		if !excluded[col] {
+			columns = append(columns, col)
+			fieldIndices = append(fieldIndices, m.Fields[i])
+		}
+	}
+	return columns, fieldIndices
+}
+
+// ProjectionColumns resolves a query's projection into the columns to SELECT and
+// their struct field indices: the additive [r3.Query.Fields] list, the
+// subtractive [r3.Query.ExcludeFields] list, or every column when neither is set.
+// Callers validate the two are not both set (see [r3.Query.ValidateProjection]).
+func (m *StructMeta) ProjectionColumns(q r3.Query) ([]string, []int) {
+	if len(q.ExcludeFields) > 0 {
+		return m.FieldIndicesExcludingColumns(FieldsToColumns(q.ExcludeFields))
+	}
+	return m.FieldIndicesForColumns(FieldsToColumns(q.Fields))
+}
+
+// ScanDestForFieldIndices returns scan destinations for the given struct field
+// indices, in order - the half of [StructMeta.ScanDestForColumns] after the
+// column lookup, so a caller that already resolved a projection does not resolve
+// it twice.
+func (m *StructMeta) ScanDestForFieldIndices(entityPtr any, fieldIndices []int) []any {
+	v := reflect.ValueOf(entityPtr).Elem()
+	dests := make([]any, len(fieldIndices))
+	for i, idx := range fieldIndices {
+		dests[i] = v.Field(idx).Addr().Interface()
+	}
+	return dests
+}
+
 // ScanDestForColumns returns scan destinations for selectedCols only; like
 // ScanDest (all columns) when empty.
 func (m *StructMeta) ScanDestForColumns(entityPtr any, selectedCols []string) []any {
@@ -284,12 +333,7 @@ func (m *StructMeta) ScanDestForColumns(entityPtr any, selectedCols []string) []
 		return m.ScanDest(entityPtr)
 	}
 	_, fieldIndices := m.FieldIndicesForColumns(selectedCols)
-	v := reflect.ValueOf(entityPtr).Elem()
-	dests := make([]any, len(fieldIndices))
-	for i, idx := range fieldIndices {
-		dests[i] = v.Field(idx).Addr().Interface()
-	}
-	return dests
+	return m.ScanDestForFieldIndices(entityPtr, fieldIndices)
 }
 
 // FieldValuesForColumns extracts an entity's values for the given columns, in

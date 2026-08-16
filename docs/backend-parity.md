@@ -29,6 +29,7 @@ it).
 | Value codecs - aggregate `min`/`max` decode on a codec'd field | ✅ | ❌ | ❌ | ✅ | ❌ |
 | Time-pattern filters - `r3.WeekdayIn` / `r3.TimeOfDayBetween` | ❌ errors at SQL translation | ❌ | ❌ | ✅ `$expr` | ✅ |
 | Aggregation - time-bucket GROUP BY key (`r3.Bucket`) | ✅ | ✅ | gopg ✅ · bun ❌ loud | ✅ `$dateTrunc` | ✅ |
+| Projection - `Query.Fields` / `Query.ExcludeFields` | ❌ ignored | ✅ SELECT column list | ❌ ignored | ✅ BSON projection | ✅ in-memory |
 
 Value codecs are the transparent Go-value ⇄ stored-value transform (flagship
 `time.Time` ⇄ unix int). Design + rollout status live in
@@ -38,6 +39,19 @@ storing the un-encoded value, so a declared codec can never corrupt data on an
 unsupported backend. Filter/cursor argument encoding is already shared in
 `engine/sql.PrepareMergedListQuerySchema`, so porting to the raw SQL drivers is
 mostly wiring the scan/bind path.
+
+Projection has two forms and identical backend support for both: the additive
+`Query.Fields` and the subtractive `Query.ExcludeFields` (`r3.Exclude`), which
+answers "everything but the fat blob" without enumerating the rest - and without
+silently dropping a column added later. Setting both on one query is
+`r3.ErrProjectionConflict`: MongoDB rejects a mixed inclusion/exclusion document
+outright, and the SQL side would have to invent a precedence. The primary key
+survives every projection on every backend (`Fields` adds it back, `ExcludeFields`
+refuses to drop it), since an entity returned without its identity cannot be
+patched, deleted, or linked. The ORM drivers **ignore** a projection rather than
+erroring, which predates the exclusion form: they build their reads through the
+ORM's own query API and never consult `Fields`. Closing that gap is a `Select()`
+call per driver.
 
 Time-pattern filters (`WeekdayIn`, `TimeOfDayBetween`) lower to weekday /
 minute-of-day extraction, which has no flavor-neutral SQL form (PG

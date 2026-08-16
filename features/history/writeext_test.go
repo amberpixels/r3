@@ -20,9 +20,23 @@ type capMemory struct {
 
 func newCapMemory() *capMemory { return &capMemory{memoryCRUD: newMemoryCRUD()} }
 
-func (m *capMemory) Upsert(_ context.Context, e Order, _ ...r3.UpsertOption) (Order, error) {
+// Upsert honours a "name" conflict target, so the decorator's pre-state lookup
+// can be exercised against a unique column rather than only against the PK.
+func (m *capMemory) Upsert(_ context.Context, e Order, opts ...r3.UpsertOption) (Order, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
+	spec := r3.NewUpsertSpec(opts...)
+	if len(spec.ConflictColumns) == 1 && spec.ConflictColumns[0] == "name" {
+		for id, existing := range m.data {
+			if existing.Name == e.Name {
+				e.ID = id
+				m.data[id] = e
+				return e, nil
+			}
+		}
+	}
+
 	if e.ID == 0 {
 		e.ID = m.nextID
 		m.nextID++
@@ -65,14 +79,23 @@ func (m *capMemory) PatchWhere(
 	return n, nil
 }
 
-// orderMatches applies the status equality filter used by these tests.
+// orderMatches applies the status and name equality filters used by these tests.
 func orderMatches(o Order, filters r3.Filters) bool {
 	for _, f := range filters {
 		if f == nil || f.Field == nil {
 			continue
 		}
-		if f.Field.String() == "status" {
-			if s, ok := f.Value.(string); ok && o.Status != s {
+		want, ok := f.Value.(string)
+		if !ok {
+			continue
+		}
+		switch f.Field.String() {
+		case "status":
+			if o.Status != want {
+				return false
+			}
+		case "name":
+			if o.Name != want {
 				return false
 			}
 		}
@@ -146,4 +169,46 @@ func TestHistory_PatchWhere_RecordsPerAffectedRow(t *testing.T) {
 		be.RequireThat(t, recs, be.HaveLength(1))
 		be.RequireThat(t, recs[0].Action, be.Eq(history.ActionPatch))
 	}
+}
+
+// An upsert conflicting on a unique column must record the update it actually
+// performed. Resolving the pre-state by PK cannot see that row - the caller has
+// no id to give - so every such write used to land in the log as a create with
+// no diff, which is the audit trail for a rename or an edit going missing.
+func TestHistory_Upsert_ResolvesPreStateByConflictTarget(t *testing.T) {
+	crud := newCapMemory()
+	store := newMemoryChangeRecordCRUD()
+	repo := history.WithHistory[Order, int64](crud, store,
+		history.WithIDFunc[Order, int64](func(o Order) int64 { return o.ID }),
+	)
+	ctx := context.Background()
+
+	created, err := repo.Upsert(ctx, Order{Name: "alice", Total: 100, Status: "pending"},
+		r3.OnConflict("name"))
+	be.NoError(t, err)
+
+	recs, _, err := listForRecord(ctx, store, "orders", strconv.FormatInt(created.ID, 10))
+	be.NoError(t, err)
+	be.RequireThat(t, recs, be.HaveLength(1))
+	be.RequireThat(t, recs[0].Action, be.Eq(history.ActionCreate))
+
+	// Same natural key, no id in hand - the shape an admin form or a CLI seed
+	// produces.
+	updated, err := repo.Upsert(ctx, Order{Name: "alice", Total: 250, Status: "confirmed"},
+		r3.OnConflict("name"))
+	be.NoError(t, err)
+	be.RequireThat(t, updated.ID, be.Eq(created.ID))
+
+	recs, _, err = listForRecord(ctx, store, "orders", strconv.FormatInt(created.ID, 10))
+	be.NoError(t, err)
+	be.RequireThat(t, recs, be.HaveLength(2))
+
+	var update *history.ChangeRecord
+	for i := range recs {
+		if recs[i].Action == history.ActionUpdate {
+			update = &recs[i]
+		}
+	}
+	be.RequireThat(t, update, be.Not(be.Nil()))
+	be.AssertThat(t, update.Changes.Val, be.NotEmpty(), "an update records what changed")
 }

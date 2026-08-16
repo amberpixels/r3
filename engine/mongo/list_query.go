@@ -72,8 +72,14 @@ func PrepareMergedListQuery(schema r3.Schema, q r3.Query) (PreparedListQuery, er
 		p.Sort = sort
 	}
 
-	if len(q.Fields) > 0 {
+	if err := q.ValidateProjection(); err != nil {
+		return p, err
+	}
+	switch {
+	case len(q.Fields) > 0:
 		p.Projection = r3bson.FieldsToBSON(q.Fields)
+	case len(q.ExcludeFields) > 0:
+		p.Projection = r3bson.ExcludeFieldsToBSON(q.ExcludeFields)
 	}
 
 	if q.Cursor != nil {

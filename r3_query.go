@@ -19,6 +19,18 @@ type Query struct {
 	Sorts    Sorts    // []*SortSpec
 	Preloads Preloads // []*PreloadSpec
 
+	// ExcludeFields is the subtractive projection: return every queryable field
+	// EXCEPT these. It answers "everything but the fat blob", which an additive
+	// [Fields] list can only express by enumerating the rest - and by silently
+	// dropping any column added later. Build it with [Exclude].
+	//
+	// Mutually exclusive with Fields: setting both is [ErrProjectionConflict],
+	// since a projection cannot be additive and subtractive at once (MongoDB
+	// rejects the mixed form outright). The primary key is never excluded, the
+	// mirror of Fields always including it - an entity without its identity
+	// cannot be patched, deleted, or linked.
+	ExcludeFields Fields
+
 	// GroupBy, Buckets, Aggregates, and Having describe an aggregation honored
 	// only by Aggregate (see [Aggregator]); Get/List/Count ignore them, as Count
 	// ignores pagination. GroupBy names the plain grouping fields (empty = one
@@ -42,12 +54,13 @@ func NewQuery() Query { return Query{} }
 func DefaultQuery() Query { q := NewQuery(); q.Pagination = DefaultPagination(); return q }
 
 // MergeWith returns a new Query combining q with other (no mutation). Fields,
-// Filters, and Preloads accumulate (union). Sorts and Pagination OVERRIDE - other
+// ExcludeFields, Filters, and Preloads accumulate (union). Sorts and Pagination OVERRIDE - other
 // is the higher-precedence layer, typically a per-call query over a repo's defaults.
 func (q Query) MergeWith(other Query) Query {
 	result := q.Clone()
 
 	result.Fields = result.Fields.MergeWith(other.Fields)
+	result.ExcludeFields = result.ExcludeFields.MergeWith(other.ExcludeFields)
 	result.Filters = result.Filters.MergeWith(other.Filters)
 	result.Preloads = result.Preloads.MergeWith(other.Preloads)
 
@@ -105,6 +118,7 @@ func (q Query) Clone() Query {
 	clone.Pagination = q.Pagination.Clone()
 	clone.Cursor = q.Cursor.Clone()
 	clone.Fields = q.Fields.Clone()
+	clone.ExcludeFields = q.ExcludeFields.Clone()
 	clone.Filters = q.Filters.Clone()
 	clone.Sorts = q.Sorts.Clone()
 	clone.Preloads = q.Preloads.Clone()

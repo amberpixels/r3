@@ -312,8 +312,7 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		limitSQL = fmt.Sprintf(" LIMIT %d OFFSET %d", prep.Limit, prep.Offset)
 	}
 
-	selectedCols := FieldsToColumns(prep.Query.Fields)
-	selectCols, _ := r.Meta.FieldIndicesForColumns(selectedCols)
+	selectCols, selectFieldIdx := r.Meta.ProjectionColumns(prep.Query)
 
 	selectQuery := r.Flavor.QuoteIdentifiers(fmt.Sprintf(
 		"SELECT %s FROM %s%s%s%s%s",
@@ -334,7 +333,7 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 	var entities []T
 	for rows.Next() {
 		var entity T
-		dests := r.Meta.ScanDestForColumns(&entity, selectedCols)
+		dests := r.Meta.ScanDestForFieldIndices(&entity, selectFieldIdx)
 		if err := rows.Scan(dests...); err != nil {
 			return nil, 0, err
 		}
@@ -373,8 +372,7 @@ func (r *BaseCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 		return entity, err
 	}
 
-	selectedCols := FieldsToColumns(q.Fields)
-	selectCols, _ := r.Meta.FieldIndicesForColumns(selectedCols)
+	selectCols, selectFieldIdx := r.Meta.ProjectionColumns(q)
 
 	// WHERE pk = ? [AND deleted_at IS NULL]
 	whereParts := []string{r.Flavor.WhereEq(r.Meta.PKColumn, 1)}
@@ -389,7 +387,7 @@ func (r *BaseCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 		strings.Join(whereParts, " AND "),
 	)
 
-	dests := r.Meta.ScanDestForColumns(&entity, selectedCols)
+	dests := r.Meta.ScanDestForFieldIndices(&entity, selectFieldIdx)
 	err := r.Executor.QueryRowContext(ctx, query, id).Scan(dests...)
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {

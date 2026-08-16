@@ -14,12 +14,13 @@ var (
 )
 
 // Upsert inserts-or-updates via the inner CRUD and records the change. It
-// fetches the pre-state by PK (via IDFunc) before the write: a hit records an
-// ActionUpdate with a field-level diff, a miss records an ActionCreate.
+// fetches the pre-state before the write: a hit records an ActionUpdate with a
+// field-level diff, a miss records an ActionCreate.
 //
-// Because the lookup is by PK, a custom OnConflict target on a unique column can
-// miss a colliding row and record it as a create - an accepted approximation,
-// since the audited KV/settings use case conflicts on its primary key.
+// The pre-state is looked up through the SAME target the write conflicts on -
+// [r3.OnConflict]'s columns when it declares any, the PK otherwise - so an upsert
+// that updates an existing row by unique column records the update it performed
+// rather than a create.
 func (h *CRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.UpsertOption) (T, error) {
 	up, ok := h.inner.(r3.Upserter[T, ID])
 	if !ok {
@@ -27,15 +28,7 @@ func (h *CRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.UpsertOpt
 		return zero, r3.ErrUpsertNotSupported
 	}
 
-	var old T
-	var hasOld bool
-	if h.opts.IDFunc != nil {
-		id := h.opts.IDFunc(entity)
-		if oldEntity, err := h.inner.Get(ctx, id); err == nil {
-			old = oldEntity
-			hasOld = true
-		}
-	}
+	old, hasOld := h.upsertPreState(ctx, entity, r3.NewUpsertSpec(opts...))
 
 	result, err := up.Upsert(ctx, entity, opts...)
 	if err != nil {
@@ -58,6 +51,43 @@ func (h *CRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.UpsertOpt
 		return result, recErr
 	}
 	return result, nil
+}
+
+// upsertPreState reads the row an Upsert is about to collide with, so the record
+// can be an update with a real diff instead of a create.
+//
+// It resolves the row the same way the write will: by the [r3.OnConflict]
+// columns when the spec names any, by primary key otherwise. A conflict column
+// that does not map to a struct field falls back to the PK lookup rather than
+// querying on a value it could not read. Not finding a row is the normal insert
+// case, not an error.
+func (h *CRUD[T, ID]) upsertPreState(ctx context.Context, entity T, spec r3.UpsertSpec) (T, bool) {
+	var zero T
+
+	if len(spec.ConflictColumns) > 0 {
+		if values, ok := fieldValuesByColumn(entity, spec.ConflictColumns); ok {
+			filters := make(r3.Filters, 0, len(spec.ConflictColumns))
+			for i, col := range spec.ConflictColumns {
+				filters = append(filters, r3.Eq(col, values[i]))
+			}
+			existing, _, err := h.inner.List(ctx, r3.Query{
+				Filters:    filters,
+				Pagination: r3.NewPaginationSpec(1, 1),
+			})
+			if err == nil && len(existing) > 0 {
+				return existing[0], true
+			}
+			return zero, false
+		}
+	}
+
+	if h.opts.IDFunc == nil {
+		return zero, false
+	}
+	if oldEntity, err := h.inner.Get(ctx, h.opts.IDFunc(entity)); err == nil {
+		return oldEntity, true
+	}
+	return zero, false
 }
 
 // PatchWhere runs a bulk conditional update and records one ActionPatch per

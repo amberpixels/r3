@@ -11,6 +11,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
 	"github.com/amberpixels/r3"
+	r3bson "github.com/amberpixels/r3/dialects/bson"
 )
 
 // setOp is the MongoDB update operator for setting field values.
@@ -106,9 +107,14 @@ func (r *BaseCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 
 	opts := options.FindOne()
 
-	if len(q.Fields) > 0 {
-		projection := r3FieldsToBSONProjection(q.Fields)
-		opts.SetProjection(projection)
+	if err := q.ValidateProjection(); err != nil {
+		return entity, err
+	}
+	switch {
+	case len(q.Fields) > 0:
+		opts.SetProjection(r3bson.FieldsToBSON(q.Fields))
+	case len(q.ExcludeFields) > 0:
+		opts.SetProjection(r3bson.ExcludeFieldsToBSON(q.ExcludeFields))
 	}
 
 	if r.Meta.HasCodecs() {
@@ -402,29 +408,4 @@ func (r *BaseCRUD[T, ID]) HardDelete(ctx context.Context, id ID) error {
 		return r3.ErrNotFound
 	}
 	return nil
-}
-
-// r3FieldsToBSONProjection converts r3.Fields to a BSON projection, always
-// including _id.
-func r3FieldsToBSONProjection(fields r3.Fields) bson.D {
-	if len(fields) == 0 {
-		return nil
-	}
-
-	projection := make(bson.D, 0, len(fields)+1)
-	hasID := false
-	for _, f := range fields {
-		if f == nil {
-			continue
-		}
-		name := f.String()
-		if name == "_id" {
-			hasID = true
-		}
-		projection = append(projection, bson.E{Key: name, Value: 1})
-	}
-	if !hasID {
-		projection = append(bson.D{{Key: "_id", Value: 1}}, projection...)
-	}
-	return projection
 }
