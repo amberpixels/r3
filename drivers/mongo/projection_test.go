@@ -64,7 +64,7 @@ func TestMongoProjection(t *testing.T) {
 	// before it reaches the driver.
 	t.Run("both projection forms at once is a conflict", func(t *testing.T) {
 		_, _, err := repo.List(ctx, r3.Query{
-			Fields:        r3.Fields{r3.NewFieldSpec("name")},
+			Fields:        r3.Include("name"),
 			ExcludeFields: r3.Exclude("garmin_json"),
 		})
 		assert.ErrorIs(t, err, r3.ErrProjectionConflict)

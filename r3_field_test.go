@@ -181,3 +181,22 @@ func TestFieldsDedupe(t *testing.T) {
 		})
 	}
 }
+
+// Include and Exclude are the two halves of the projection and must build the
+// same thing: they differ only in which half of the query they are assigned to.
+func TestIncludeAndExclude(t *testing.T) {
+	t.Run("both build a Fields list from plain names", func(t *testing.T) {
+		be.AssertThat(t, r3.FieldsToStrings(r3.Include("id", "name")), be.Eq([]string{"id", "name"}))
+		be.AssertThat(t, r3.FieldsToStrings(r3.Exclude("id", "name")), be.Eq([]string{"id", "name"}))
+	})
+
+	t.Run("no names yields an empty list, not nil-dereferencing specs", func(t *testing.T) {
+		be.AssertThat(t, len(r3.Include()), be.Eq(0))
+		be.AssertThat(t, len(r3.Exclude()), be.Eq(0))
+	})
+
+	t.Run("the result is an ordinary Fields, usable anywhere one is", func(t *testing.T) {
+		merged := r3.Include("a").MergeWith(r3.Exclude("b"))
+		be.AssertThat(t, r3.FieldsToStrings(merged), be.Eq([]string{"a", "b"}))
+	})
+}

@@ -52,7 +52,7 @@ func TestList_Projection(t *testing.T) {
 	})
 
 	t.Run("Fields keeps only what it names, plus the PK", func(t *testing.T) {
-		got, _, err := seedBlobbed(t).List(ctx, r3.Query{Fields: r3.Fields{r3.NewFieldSpec("name")}})
+		got, _, err := seedBlobbed(t).List(ctx, r3.Query{Fields: r3.Include("name")})
 		require.NoError(t, err)
 		require.Len(t, got, 2)
 		for _, row := range got {
@@ -79,7 +79,7 @@ func TestList_Projection(t *testing.T) {
 
 	t.Run("both forms at once is a conflict", func(t *testing.T) {
 		_, _, err := seedBlobbed(t).List(ctx, r3.Query{
-			Fields:        r3.Fields{r3.NewFieldSpec("name")},
+			Fields:        r3.Include("name"),
 			ExcludeFields: r3.Exclude("blob"),
 		})
 		assert.ErrorIs(t, err, r3.ErrProjectionConflict)
@@ -101,4 +101,31 @@ func TestGet_Projection(t *testing.T) {
 	full, err := repo.Get(ctx, 1)
 	require.NoError(t, err)
 	assert.Equal(t, "a very large payload", full.Blob)
+}
+
+// An excluded name that matches no stored field drops nothing. Returning the
+// full record for a typo is exactly what the subtractive form exists to prevent,
+// so the engine rejects it instead.
+func TestProjection_UnknownExcludedField(t *testing.T) {
+	ctx := context.Background()
+	repo := seedBlobbed(t)
+
+	_, _, err := repo.List(ctx, r3.Query{ExcludeFields: r3.Exclude("bolb")})
+	require.ErrorIs(t, err, r3.ErrUnknownField)
+
+	_, err = repo.Get(ctx, 1, r3.Query{ExcludeFields: r3.Exclude("bolb")})
+	require.ErrorIs(t, err, r3.ErrUnknownField)
+}
+
+// Validation precedes execution: a bad query is a bad query whether or not the
+// row happens to exist, so Get must not report ErrNotFound for one.
+func TestGet_ProjectionValidatedBeforeLookup(t *testing.T) {
+	ctx := context.Background()
+	repo := seedBlobbed(t)
+
+	_, err := repo.Get(ctx, 404, r3.Query{
+		Fields:        r3.Include("name"),
+		ExcludeFields: r3.Exclude("blob"),
+	})
+	assert.ErrorIs(t, err, r3.ErrProjectionConflict)
 }

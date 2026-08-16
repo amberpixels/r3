@@ -126,29 +126,36 @@ func FieldsToStrings(fields Fields) []string {
 	return out
 }
 
+// Include builds the Fields list for [Query.Fields] from plain field names - the
+// additive projection, "only these":
+//
+//	r3.Query{Fields: r3.Include("id", "name"), ...}
+//
+// The primary key is always returned whether or not this names it, since an
+// entity returned without its identity cannot be patched, deleted, or linked.
+// [Exclude] is the mirror image.
+//
+// Nothing about it is projection-specific - it is the general "Fields from
+// names" constructor, so it serves [Commander.Patch], [Query.GroupBy] and
+// [UpdateOnConflict] equally.
+func Include(fields ...string) Fields { return fieldsFromNames(fields) }
+
 // Exclude builds the Fields list for [Query.ExcludeFields] from plain field
 // names - the subtractive projection, "everything but these":
 //
 //	r3.Query{ExcludeFields: r3.Exclude("streams_json", "garmin_json"), ...}
 //
-// The primary key is never excluded, whatever this names: [Query.Fields] always
-// adds it back for the same reason, and an entity returned without its identity
+// The primary key is never excluded, whatever this names: [Include] always adds
+// it back for the same reason, and an entity returned without its identity
 // cannot be patched, deleted, or linked.
-func Exclude(fields ...string) Fields {
-	out := make(Fields, 0, len(fields))
-	for _, f := range fields {
-		out = append(out, NewFieldSpec(f))
+func Exclude(fields ...string) Fields { return fieldsFromNames(fields) }
+
+// fieldsFromNames is the body [Include] and [Exclude] share; they differ only in
+// which half of the projection they read as at the call site.
+func fieldsFromNames(names []string) Fields {
+	out := make(Fields, 0, len(names))
+	for _, name := range names {
+		out = append(out, NewFieldSpec(name))
 	}
 	return out
-}
-
-// ValidateProjection checks the structural rule both projection forms share: a
-// query names fields to keep or fields to drop, never both. Engines call it
-// before lowering a projection, so the conflict surfaces as a typed error rather
-// than as a backend complaint about a mixed projection document.
-func (q Query) ValidateProjection() error {
-	if len(q.Fields) > 0 && len(q.ExcludeFields) > 0 {
-		return ErrProjectionConflict
-	}
-	return nil
 }

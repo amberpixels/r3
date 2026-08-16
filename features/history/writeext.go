@@ -59,8 +59,10 @@ func (h *CRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.UpsertOpt
 // It resolves the row the same way the write will: by the [r3.OnConflict]
 // columns when the spec names any, by primary key otherwise. A conflict column
 // that does not map to a struct field falls back to the PK lookup rather than
-// querying on a value it could not read. Not finding a row is the normal insert
-// case, not an error.
+// querying on a value it could not read, as does a lookup that fails outright -
+// a backend error is not evidence that no row exists, and treating it as one
+// would log an update as a create. Finding no row, on the other hand, is the
+// normal insert case.
 func (h *CRUD[T, ID]) upsertPreState(ctx context.Context, entity T, spec r3.UpsertSpec) (T, bool) {
 	var zero T
 
@@ -74,10 +76,12 @@ func (h *CRUD[T, ID]) upsertPreState(ctx context.Context, entity T, spec r3.Upse
 				Filters:    filters,
 				Pagination: r3.NewPaginationSpec(1, 1),
 			})
-			if err == nil && len(existing) > 0 {
-				return existing[0], true
+			if err == nil {
+				if len(existing) > 0 {
+					return existing[0], true
+				}
+				return zero, false
 			}
-			return zero, false
 		}
 	}
 

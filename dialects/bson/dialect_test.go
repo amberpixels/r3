@@ -173,6 +173,32 @@ func TestFieldsToBSON_Empty(t *testing.T) {
 	be.RequireThat(t, doc, be.Nil())
 }
 
+// The exclusion projection must never drop _id: an entity handed back without
+// its identity cannot be patched, deleted, or linked. Mirrors FieldsToBSON
+// always including it.
+func TestExcludeFieldsToBSON(t *testing.T) {
+	t.Run("empty yields no projection", func(t *testing.T) {
+		be.AssertThat(t, r3bson.ExcludeFieldsToBSON(nil), be.Nil())
+	})
+
+	t.Run("each field is set to 0", func(t *testing.T) {
+		got := r3bson.ExcludeFieldsToBSON(r3.Exclude("streams_json", "garmin_json"))
+		assertBSONEqual(t, bson.D{
+			{Key: "streams_json", Value: 0},
+			{Key: "garmin_json", Value: 0},
+		}, got)
+	})
+
+	t.Run("_id is never excluded", func(t *testing.T) {
+		got := r3bson.ExcludeFieldsToBSON(r3.Exclude("_id", "blob"))
+		assertBSONEqual(t, bson.D{{Key: "blob", Value: 0}}, got)
+	})
+
+	t.Run("excluding only _id yields no projection at all", func(t *testing.T) {
+		be.AssertThat(t, r3bson.ExcludeFieldsToBSON(r3.Exclude("_id")), be.Nil())
+	})
+}
+
 func TestFilterToBSON_InvalidField(t *testing.T) {
 	f := r3.F(r3.NewFieldSpec("1invalid"), "foo")
 	_, err := r3bson.FilterToBSON(f)

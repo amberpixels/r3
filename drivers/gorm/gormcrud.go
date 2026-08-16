@@ -113,8 +113,12 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 	var entity T
 	query := r.db.WithContext(ctx).Model(&entity)
 
-	if fieldCols := r3.FieldsToStrings(prep.Query.Fields); len(fieldCols) > 0 {
-		query = query.Select(fieldCols)
+	selectCols, err := r.meta.SelectColumns(prep.Query)
+	if err != nil {
+		return nil, 0, err
+	}
+	if len(selectCols) > 0 {
+		query = query.Select(selectCols)
 	}
 
 	// Split preloads: r3-managed relations are handled post-query, others use GORM's Preload
@@ -293,8 +297,12 @@ func (r *GormCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 
 	query := r.db.WithContext(ctx)
 
-	if fieldCols := r3.FieldsToStrings(q.Fields); len(fieldCols) > 0 {
-		query = query.Select(fieldCols)
+	selectCols, err := meta.SelectColumns(q)
+	if err != nil {
+		return entity, err
+	}
+	if len(selectCols) > 0 {
+		query = query.Select(selectCols)
 	}
 
 	// Split preloads: r3-managed relations are handled post-query, others use GORM's Preload

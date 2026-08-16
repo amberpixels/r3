@@ -97,7 +97,10 @@ func (r *BaseCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 func (r *BaseCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, error) {
 	var entity T
 
-	q := r.MergeGetQuery(qarg...)
+	q, err := r.Meta.ResolveProjection(r.MergeGetQuery(qarg...))
+	if err != nil {
+		return entity, err
+	}
 
 	// {_id: id} [AND soft-delete check]
 	filter := bson.D{{Key: r.Meta.IDField, Value: id}}
@@ -107,9 +110,6 @@ func (r *BaseCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 
 	opts := options.FindOne()
 
-	if err := q.ValidateProjection(); err != nil {
-		return entity, err
-	}
 	switch {
 	case len(q.Fields) > 0:
 		opts.SetProjection(r3bson.FieldsToBSON(q.Fields))

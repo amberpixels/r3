@@ -6,6 +6,14 @@ import (
 	"github.com/amberpixels/r3"
 )
 
+// ValidateProjection checks a query's projection against this type's stored
+// field names. The file engine derives those from `json`/`yaml` tags as often as
+// from `r3`/`db` ones, so the meta - not [r3.SchemaOf] - is the authority on
+// what a name has to match.
+func (m *StructMeta) ValidateProjection(q r3.Query) error {
+	return q.ValidateProjectionAgainst(m.Fields)
+}
+
 // keptFieldIndices resolves a query's projection into the struct field indices to
 // keep. ok is false when neither projection form is set, so callers skip the
 // reflection walk entirely.

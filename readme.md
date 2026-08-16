@@ -120,7 +120,7 @@ pet.Name = "Max"
 pet, err = petRepo.Update(ctx, pet)
 
 // Patch (partial update - only specified fields)
-pet, err = petRepo.Patch(ctx, pet, r3.Fields{r3.NewFieldSpec("name")})
+pet, err = petRepo.Patch(ctx, pet, r3.Include("name"))
 
 // Delete
 err = petRepo.Delete(ctx, 42)
@@ -170,7 +170,8 @@ The interfaces and query model. This is the contract everything else implements.
 - `Sorts` - Multi-column sort with direction and NULLS FIRST/LAST
 - `PaginationSpec` - Page number + size, or a raw `(offset, limit)`
 - `CursorSpec` - Keyset/cursor-based (forward/backward with opaque tokens)
-- `Fields` - Column selection (SELECT specific fields)
+- `Fields` - Column selection: only these (`r3.Include`)
+- `ExcludeFields` - The subtractive form: everything *but* these (`r3.Exclude`)
 - `Preloads` - Eager loading of related entities
 
 Queries are immutable values. `MergeWith()` combines queries from different sources
@@ -542,7 +543,7 @@ pet, err := r3.UpsertOf(ctx, petRepo, pet,
 n, err := r3.PatchWhereOf(ctx, petRepo,
     r3.Filters{r3.Eq("status", "pending")},
     Pet{Status: "available"},
-    r3.Fields{r3.NewFieldSpec("status")},
+    r3.Include("status"),
 )
 ```
 

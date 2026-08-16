@@ -305,7 +305,11 @@ func (m *StructMeta) FieldIndicesExcludingColumns(excludedCols []string) ([]stri
 // ProjectionColumns resolves a query's projection into the columns to SELECT and
 // their struct field indices: the additive [r3.Query.Fields] list, the
 // subtractive [r3.Query.ExcludeFields] list, or every column when neither is set.
-// Callers validate the two are not both set (see [r3.Query.ValidateProjection]).
+//
+// It resolves rather than validates: the raw SQL engine runs
+// [r3.Schema.ValidateQuery] first, which rejects both forms at once and an
+// excluded name matching no attribute. A driver without that step wants
+// [StructMeta.SelectColumns], which validates as it resolves.
 func (m *StructMeta) ProjectionColumns(q r3.Query) ([]string, []int) {
 	if len(q.ExcludeFields) > 0 {
 		return m.FieldIndicesExcludingColumns(FieldsToColumns(q.ExcludeFields))
@@ -313,8 +317,33 @@ func (m *StructMeta) ProjectionColumns(q r3.Query) ([]string, []int) {
 	return m.FieldIndicesForColumns(FieldsToColumns(q.Fields))
 }
 
+// SelectColumns resolves a query's projection into an explicit column list for a
+// driver that builds its reads through an ORM's Select/Column call rather than
+// through [StructMeta.ProjectionColumns]. It returns nil when the query requests
+// no projection, so the driver leaves the ORM's own column choice alone.
+//
+// The additive form passes the caller's names through untouched - the ORM
+// resolves them. The subtractive form is resolved here against the model's
+// columns, and an excluded name matching no column is an error: it would drop
+// nothing and return the full row, the one mistake the exclusion form exists to
+// prevent.
+func (m *StructMeta) SelectColumns(q r3.Query) ([]string, error) {
+	if err := q.ValidateProjectionAgainst(m.Columns); err != nil {
+		return nil, err
+	}
+	switch {
+	case len(q.Fields) > 0:
+		return FieldsToColumns(q.Fields), nil
+	case len(q.ExcludeFields) > 0:
+		columns, _ := m.FieldIndicesExcludingColumns(FieldsToColumns(q.ExcludeFields))
+		return columns, nil
+	default:
+		return nil, nil
+	}
+}
+
 // ScanDestForFieldIndices returns scan destinations for the given struct field
-// indices, in order - the half of [StructMeta.ScanDestForColumns] after the
+// indices, in order - the half of [StructMeta.ProjectionColumns] after the
 // column lookup, so a caller that already resolved a projection does not resolve
 // it twice.
 func (m *StructMeta) ScanDestForFieldIndices(entityPtr any, fieldIndices []int) []any {
@@ -324,16 +353,6 @@ func (m *StructMeta) ScanDestForFieldIndices(entityPtr any, fieldIndices []int) 
 		dests[i] = v.Field(idx).Addr().Interface()
 	}
 	return dests
-}
-
-// ScanDestForColumns returns scan destinations for selectedCols only; like
-// ScanDest (all columns) when empty.
-func (m *StructMeta) ScanDestForColumns(entityPtr any, selectedCols []string) []any {
-	if len(selectedCols) == 0 {
-		return m.ScanDest(entityPtr)
-	}
-	_, fieldIndices := m.FieldIndicesForColumns(selectedCols)
-	return m.ScanDestForFieldIndices(entityPtr, fieldIndices)
 }
 
 // FieldValuesForColumns extracts an entity's values for the given columns, in

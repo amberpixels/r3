@@ -51,6 +51,11 @@ func (s Schema) hasCap(name string, c Capability) bool {
 // typed error (wrapping the field name) on the first violation. A zero Schema
 // validates nothing; see [Schema.IsZero].
 //
+// The projection is the exception: the rule that Fields and ExcludeFields cannot
+// both be set is structural, so it runs even for a zero Schema, and every
+// excluded field is held to existence (see [Query.ValidateProjectionAgainst] for
+// the same check on engines that name their fields outside this schema's tags).
+//
 // Dotted ("relation.path") names are skipped: they reference another entity,
 // validated by the engine against the target schema (TODO), not the root.
 // Relationship ("has") filters are likewise skipped.

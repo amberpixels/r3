@@ -21,7 +21,10 @@ import (
 // components. The lowering step is the only difference from the pure
 // [PrepareListQuery]; it needs a context and the database, so it lives here.
 func (r *BaseCRUD[T, ID]) prepareListQuery(ctx context.Context, qarg ...r3.Query) (PreparedListQuery, error) {
-	q := r.MergeListQuery(qarg...)
+	q, err := r.Meta.ResolveProjection(r.MergeListQuery(qarg...))
+	if err != nil {
+		return PreparedListQuery{}, err
+	}
 	if hasRelationFilter(q.Filters) {
 		lowered, err := r.lowerRelationFilters(ctx, q.Filters)
 		if err != nil {

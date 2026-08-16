@@ -29,7 +29,6 @@ it).
 | Value codecs - aggregate `min`/`max` decode on a codec'd field | ✅ | ❌ | ❌ | ✅ | ❌ |
 | Time-pattern filters - `r3.WeekdayIn` / `r3.TimeOfDayBetween` | ❌ errors at SQL translation | ❌ | ❌ | ✅ `$expr` | ✅ |
 | Aggregation - time-bucket GROUP BY key (`r3.Bucket`) | ✅ | ✅ | gopg ✅ · bun ❌ loud | ✅ `$dateTrunc` | ✅ |
-| Projection - `Query.Fields` / `Query.ExcludeFields` | ❌ ignored | ✅ SELECT column list | ❌ ignored | ✅ BSON projection | ✅ in-memory |
 
 Value codecs are the transparent Go-value ⇄ stored-value transform (flagship
 `time.Time` ⇄ unix int). Design + rollout status live in
@@ -39,19 +38,6 @@ storing the un-encoded value, so a declared codec can never corrupt data on an
 unsupported backend. Filter/cursor argument encoding is already shared in
 `engine/sql.PrepareMergedListQuerySchema`, so porting to the raw SQL drivers is
 mostly wiring the scan/bind path.
-
-Projection has two forms and identical backend support for both: the additive
-`Query.Fields` and the subtractive `Query.ExcludeFields` (`r3.Exclude`), which
-answers "everything but the fat blob" without enumerating the rest - and without
-silently dropping a column added later. Setting both on one query is
-`r3.ErrProjectionConflict`: MongoDB rejects a mixed inclusion/exclusion document
-outright, and the SQL side would have to invent a precedence. The primary key
-survives every projection on every backend (`Fields` adds it back, `ExcludeFields`
-refuses to drop it), since an entity returned without its identity cannot be
-patched, deleted, or linked. The ORM drivers **ignore** a projection rather than
-erroring, which predates the exclusion form: they build their reads through the
-ORM's own query API and never consult `Fields`. Closing that gap is a `Select()`
-call per driver.
 
 Time-pattern filters (`WeekdayIn`, `TimeOfDayBetween`) lower to weekday /
 minute-of-day extraction, which has no flavor-neutral SQL form (PG
@@ -129,3 +115,39 @@ These are feature gaps (not backend-parity gaps) tracked in the p44 feedback log
 `ErrUpsertNotSupported`) and `BulkPatcher` (GORM + engine/sql raw drivers +
 mongo; file/bun/gopg degrade to `ErrBulkPatchNotSupported`). See each
 capability's doc comment for the authoritative per-backend status.
+
+### Projection - `Query.Fields` and `Query.ExcludeFields`
+
+Projection has two forms and full backend support for both: the additive
+`Query.Fields` (`r3.Include`) and the subtractive `Query.ExcludeFields`
+(`r3.Exclude`), which answers "everything but the fat blob" without enumerating the rest - and without
+silently dropping a column added later. It gets its own notes here because it is
+the one query feature every backend lowers differently (an ORM `Select()`, a raw
+SELECT list, a BSON document, an in-memory blanking pass), so it is the likeliest
+to drift back out of parity.
+
+Setting both forms on one query is `r3.ErrProjectionConflict`: MongoDB rejects a
+mixed inclusion/exclusion document outright, and the SQL side would have to
+invent a precedence. Merging is the exception - `Query.MergeWith` lets the
+higher-precedence layer's form win, so a repo default naming `Fields` does not
+make every per-call `Exclude` an unavoidable conflict.
+
+The primary key survives every projection on every backend (`Fields` adds it
+back, `ExcludeFields` refuses to drop it), since an entity returned without its
+identity cannot be patched, deleted, or linked. An excluded name that matches no
+field is rejected rather than ignored: it would drop nothing and hand back the
+full row, which is the one mistake the subtractive form exists to prevent. Each
+backend checks against its own reflected names, because `r3.SchemaOf` reads
+`r3`/`db`/`gorm` tags while a Mongo model names its fields with `bson` and a
+file-backed one with `json`.
+
+**A projected entity is not safe to write back.** `Update` and `Upsert` persist
+every mutable field of the value they are given, so an entity read without a
+column and then passed to `Update` stores that column's zero value. Read
+unprojected when the value is going back to the store, or use `Patch`, which
+writes only the fields it names. This applies to both forms and to every backend.
+
+Not yet wired: the serialization dialects (`json`, `url`, `yaml`, `toml`) carry
+`Fields` but not `ExcludeFields`, so a REST layer built on `dialects/url` cannot
+express the subtractive form and a `Query` round-tripped through JSON drops it.
+See `tasks.md`.

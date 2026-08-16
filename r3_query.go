@@ -1,6 +1,10 @@
 package r3
 
 import (
+	"fmt"
+	"slices"
+	"strings"
+
 	"github.com/amberpixels/k1/maybe"
 )
 
@@ -14,21 +18,34 @@ type Query struct {
 	// takes precedence over Pagination; the two are mutually exclusive.
 	Cursor *CursorSpec
 
-	Fields   Fields   // Specific fields to retrieve.
 	Filters  Filters  // []*FilterSpec
 	Sorts    Sorts    // []*SortSpec
 	Preloads Preloads // []*PreloadSpec
 
+	// Fields is the additive projection: return only these. Build it with
+	// [Include]. The primary key is always returned whether or not Fields names
+	// it - an entity without its identity cannot be patched, deleted, or linked.
+	//
+	// Mutually exclusive with [Query.ExcludeFields], which is its mirror image;
+	// see there for the shared caveats.
+	Fields Fields
+
 	// ExcludeFields is the subtractive projection: return every queryable field
 	// EXCEPT these. It answers "everything but the fat blob", which an additive
-	// [Fields] list can only express by enumerating the rest - and by silently
-	// dropping any column added later. Build it with [Exclude].
+	// [Query.Fields] list can only express by enumerating the rest - and by
+	// silently dropping any column added later. Build it with [Exclude].
 	//
 	// Mutually exclusive with Fields: setting both is [ErrProjectionConflict],
 	// since a projection cannot be additive and subtractive at once (MongoDB
-	// rejects the mixed form outright). The primary key is never excluded, the
-	// mirror of Fields always including it - an entity without its identity
-	// cannot be patched, deleted, or linked.
+	// rejects the mixed form outright). [Query.MergeWith] is the one exception -
+	// there the higher-precedence layer picks the form. The primary key is never
+	// excluded, the mirror of Fields always including it.
+	//
+	// A projected entity is NOT safe to write back. Update and Upsert persist
+	// every mutable field of the value they are given, so an entity read without
+	// a column and then passed to Update stores that column's zero value. Read
+	// unprojected (or use Patch, which writes only the named fields) whenever the
+	// value is going back to the store. The same caution applies to Fields.
 	ExcludeFields Fields
 
 	// GroupBy, Buckets, Aggregates, and Having describe an aggregation honored
@@ -54,8 +71,9 @@ func NewQuery() Query { return Query{} }
 func DefaultQuery() Query { q := NewQuery(); q.Pagination = DefaultPagination(); return q }
 
 // MergeWith returns a new Query combining q with other (no mutation). Fields,
-// ExcludeFields, Filters, and Preloads accumulate (union). Sorts and Pagination OVERRIDE - other
-// is the higher-precedence layer, typically a per-call query over a repo's defaults.
+// ExcludeFields, Filters, and Preloads accumulate (union). Sorts and Pagination
+// OVERRIDE - other is the higher-precedence layer, typically a per-call query
+// over a repo's defaults.
 func (q Query) MergeWith(other Query) Query {
 	result := q.Clone()
 
@@ -63,6 +81,19 @@ func (q Query) MergeWith(other Query) Query {
 	result.ExcludeFields = result.ExcludeFields.MergeWith(other.ExcludeFields)
 	result.Filters = result.Filters.MergeWith(other.Filters)
 	result.Preloads = result.Preloads.MergeWith(other.Preloads)
+
+	// The two projection forms union within a form but cannot coexist across
+	// them, so when the layers disagree on the form, other wins - the same
+	// higher-precedence rule Sorts and Pagination follow. Without it a repo
+	// default naming Fields would turn every per-call Exclude into an
+	// unavoidable [ErrProjectionConflict]. Other naming both is the caller's own
+	// conflict, left intact so validation reports it.
+	switch {
+	case len(other.Fields) > 0 && len(other.ExcludeFields) == 0:
+		result.ExcludeFields = nil
+	case len(other.ExcludeFields) > 0 && len(other.Fields) == 0:
+		result.Fields = nil
+	}
 
 	// Sorts OVERRIDE rather than accumulate: appending would keep the default sort
 	// as the primary key and demote the requested one to a tie-breaker (a default
@@ -110,6 +141,48 @@ func (q Query) MergeWith(other Query) Query {
 	}
 
 	return result
+}
+
+// ValidateProjection checks the structural rule both projection forms share: a
+// query names fields to keep or fields to drop, never both. Engines call it
+// before lowering a projection, so the conflict surfaces as a typed error rather
+// than as a backend complaint about a mixed projection document.
+//
+// It knows nothing about the model, so it cannot catch a name that matches no
+// field; engines pair it with their own field lookup (see
+// [Schema.ValidateQuery]).
+func (q Query) ValidateProjection() error {
+	if len(q.Fields) > 0 && len(q.ExcludeFields) > 0 {
+		return ErrProjectionConflict
+	}
+	return nil
+}
+
+// ValidateProjectionAgainst is [Query.ValidateProjection] plus the check that
+// every excluded field is one the backend actually stores, given its field or
+// column names. Engines whose read path does not run [Schema.ValidateQuery] call
+// this with their own reflected names, which is the authority on what the store
+// holds (a Mongo model names its fields via `bson` tags, a file-backed one via
+// `json`, neither of which [SchemaOf] reads).
+//
+// An excluded name matching nothing drops nothing, so without this a typo passes
+// silently and hands back the very field the caller asked to leave behind - the
+// one mistake the subtractive form exists to prevent. Names in Fields are not
+// checked: an unrecognized one there is visibly absent from the result.
+// Dotted relation paths are skipped, as elsewhere in the query validators.
+func (q Query) ValidateProjectionAgainst(known []string) error {
+	if err := q.ValidateProjection(); err != nil {
+		return err
+	}
+	for _, name := range FieldsToStrings(q.ExcludeFields) {
+		if name == "" || strings.Contains(name, ".") {
+			continue
+		}
+		if !slices.Contains(known, name) {
+			return fmt.Errorf("%w: %q", ErrUnknownField, name)
+		}
+	}
+	return nil
 }
 
 // Clone clones the query.

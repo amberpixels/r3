@@ -72,8 +72,13 @@ func (r *GoPgCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 	var entities []T
 	query := r.db.ModelContext(ctx, &entities)
 
-	if fieldCols := r3.FieldsToStrings(prep.Query.Fields); len(fieldCols) > 0 {
-		query = query.Column(fieldCols...)
+	meta := enginesql.GetStructMeta[T]()
+	selectCols, err := meta.SelectColumns(prep.Query)
+	if err != nil {
+		return nil, 0, err
+	}
+	if len(selectCols) > 0 {
+		query = query.Column(selectCols...)
 	}
 
 	for _, preload := range prep.Query.Preloads {
@@ -220,8 +225,12 @@ func (r *GoPgCRUD[T, ID]) Get(ctx context.Context, id ID, qarg ...r3.Query) (T, 
 	meta := enginesql.GetStructMeta[T]()
 	query := r.db.ModelContext(ctx, &entity).Where("? = ?", pg.Ident(meta.PKColumn), id)
 
-	if fieldCols := r3.FieldsToStrings(q.Fields); len(fieldCols) > 0 {
-		query = query.Column(fieldCols...)
+	selectCols, err := meta.SelectColumns(q)
+	if err != nil {
+		return entity, err
+	}
+	if len(selectCols) > 0 {
+		query = query.Column(selectCols...)
 	}
 
 	for _, preload := range q.Preloads {

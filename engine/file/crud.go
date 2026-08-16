@@ -158,6 +158,10 @@ func (r *BaseCRUD[T, ID]) Get(_ context.Context, id ID, qarg ...r3.Query) (T, er
 	defer r.mu.RUnlock()
 
 	q := r.MergeGetQuery(qarg...)
+	if err := r.Meta.ValidateProjection(q); err != nil {
+		var zero T
+		return zero, err
+	}
 
 	entities, err := r.loadAll()
 	if err != nil {
@@ -179,10 +183,6 @@ func (r *BaseCRUD[T, ID]) Get(_ context.Context, id ID, qarg ...r3.Query) (T, er
 		return zero, errNotFound
 	}
 
-	if err := q.ValidateProjection(); err != nil {
-		var zero T
-		return zero, err
-	}
 	one := []T{entity}
 	projectEntities(one, &r.Meta, q)
 
@@ -196,7 +196,7 @@ func (r *BaseCRUD[T, ID]) List(_ context.Context, qarg ...r3.Query) ([]T, int64,
 
 	q := r.MergeListQuery(qarg...)
 
-	if err := q.ValidateProjection(); err != nil {
+	if err := r.Meta.ValidateProjection(q); err != nil {
 		return nil, 0, err
 	}
 
