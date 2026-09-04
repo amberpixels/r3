@@ -27,6 +27,12 @@ jobs:
       - uses: extractions/setup-just@v3
 
       - name: Lint
+        # standardgo is a tool built in its own module context, not a dependency:
+        # its go directive has nothing to do with this library's floor. setup-go
+        # pins GOTOOLCHAIN=local, so `go run` would refuse to fetch the toolchain
+        # standardgo asks for. The floor job still guards the real promise.
+        env:
+          GOTOOLCHAIN: auto
         run: just lint
 
       - name: Test (short, no Docker)

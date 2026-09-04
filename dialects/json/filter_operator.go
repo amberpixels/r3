@@ -14,7 +14,9 @@ var ErrInvalidFilterOperator = errors.New("invalid filter operator")
 
 // JSONFilterOperator represents a filter operator in JSON format.
 //
-//nolint:recvcheck // codec pattern: value receivers marshal, pointer receivers unmarshal; pointer-only would stop values satisfying json/text Marshaler
+// The receivers are deliberately mixed, as a codec pattern: value receivers
+// marshal, pointer receivers unmarshal. Making them pointer-only would stop
+// values from satisfying the json and text Marshaler interfaces.
 type JSONFilterOperator int8
 
 // JSON filter operator constants.

@@ -8,7 +8,7 @@
 # repo holds no lint config of its own. It is run via `go run`, not a go.mod tool
 # directive, to keep it out of this library's dependency graph.
 # The fmt/lint/fix fences are removed for the same reason - they must not resync.
-standardgo := "github.com/amberpixels/standardgo/cmd/standardgo@v0.1.1"
+standardgo := "github.com/amberpixels/standardgo/cmd/standardgo@v0.2.1"
 
 # The floor this library promises to support. Keep in sync with the `go` directive
 # in go.mod - that is the number consumers actually see. CI passes FLOOR_GO=local,
