@@ -65,12 +65,13 @@ func TestGormProjection(t *testing.T) {
 		assert.Empty(t, got.Blob)
 	})
 
-	t.Run("Fields still keeps only what it names", func(t *testing.T) {
+	t.Run("Fields still keeps only what it names, plus the PK", func(t *testing.T) {
 		got, _, err := setupBlobbed(t).List(ctx, r3.Query{Fields: r3.Include("name")})
 		require.NoError(t, err)
 		require.Len(t, got, 2)
 		assert.NotEmpty(t, got[0].Name)
 		assert.Empty(t, got[0].Blob)
+		assert.NotZero(t, got[0].ID, "the PK survives every projection")
 	})
 
 	t.Run("an unknown excluded column is a typo, not a no-op", func(t *testing.T) {

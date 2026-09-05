@@ -56,12 +56,28 @@ func TestResolveProjection(t *testing.T) {
 }
 
 // An entity handed back without its identity cannot be patched, deleted, or
-// linked - and the identity is not always called _id.
+// linked - and the identity is not always called _id. Both projection forms owe
+// the same guarantee: the dialect's blanket "_id is always included, never
+// excluded" covers neither case here.
 func TestResolveProjection_KeepsAliasedIdentity(t *testing.T) {
 	meta := enginemongo.GetStructMeta[aliasedID]()
 	be.RequireThat(t, meta.IDField, be.Eq("code"))
 
-	got, err := meta.ResolveProjection(r3.Query{ExcludeFields: r3.Exclude("code", "blob")})
-	be.NoError(t, err)
-	be.AssertThat(t, r3.FieldsToStrings(got.ExcludeFields), be.Eq([]string{"blob"}))
+	t.Run("an exclusion cannot drop it", func(t *testing.T) {
+		got, err := meta.ResolveProjection(r3.Query{ExcludeFields: r3.Exclude("code", "blob")})
+		be.NoError(t, err)
+		be.AssertThat(t, r3.FieldsToStrings(got.ExcludeFields), be.Eq([]string{"blob"}))
+	})
+
+	t.Run("a selection that omits it gets it back", func(t *testing.T) {
+		got, err := meta.ResolveProjection(r3.Query{Fields: r3.Include("blob")})
+		be.NoError(t, err)
+		be.AssertThat(t, r3.FieldsToStrings(got.Fields), be.Eq([]string{"blob", "code"}))
+	})
+
+	t.Run("a selection already naming it gets no duplicate", func(t *testing.T) {
+		got, err := meta.ResolveProjection(r3.Query{Fields: r3.Include("code", "blob")})
+		be.NoError(t, err)
+		be.AssertThat(t, r3.FieldsToStrings(got.Fields), be.Eq([]string{"code", "blob"}))
+	})
 }

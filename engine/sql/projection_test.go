@@ -27,10 +27,16 @@ func TestSelectColumns(t *testing.T) {
 		be.AssertThat(t, len(cols), be.Eq(0))
 	})
 
-	t.Run("Fields pass through as named", func(t *testing.T) {
+	t.Run("Fields pass through as named, with the PK added back", func(t *testing.T) {
 		cols, err := meta.SelectColumns(r3.Query{Fields: r3.Include("name")})
 		be.NoError(t, err)
-		be.AssertThat(t, cols, be.Eq([]string{"name"}))
+		be.AssertThat(t, cols, be.Eq([]string{"id", "name"}))
+	})
+
+	t.Run("Fields naming the PK gets no duplicate", func(t *testing.T) {
+		cols, err := meta.SelectColumns(r3.Query{Fields: r3.Include("id", "name")})
+		be.NoError(t, err)
+		be.AssertThat(t, cols, be.Eq([]string{"id", "name"}))
 	})
 
 	t.Run("ExcludeFields resolve to every other column, PK included", func(t *testing.T) {
