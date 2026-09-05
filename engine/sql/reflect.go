@@ -3,6 +3,7 @@ package enginesql
 import (
 	"fmt"
 	"reflect"
+	"slices"
 	"sync"
 
 	"github.com/amberpixels/r3"
@@ -322,18 +323,18 @@ func (m *StructMeta) ProjectionColumns(q r3.Query) ([]string, []int) {
 // through [StructMeta.ProjectionColumns]. It returns nil when the query requests
 // no projection, so the driver leaves the ORM's own column choice alone.
 //
-// The additive form passes the caller's names through untouched - the ORM
-// resolves them. The subtractive form is resolved here against the model's
-// columns, and an excluded name matching no column is an error: it would drop
-// nothing and return the full row, the one mistake the exclusion form exists to
-// prevent.
+// The additive form passes the caller's names through to the ORM, which resolves
+// them, plus the primary key. The subtractive form is resolved here against the
+// model's columns, and an excluded name matching no column is an error: it would
+// drop nothing and return the full row, the one mistake the exclusion form
+// exists to prevent.
 func (m *StructMeta) SelectColumns(q r3.Query) ([]string, error) {
 	if err := q.ValidateProjectionAgainst(m.Columns); err != nil {
 		return nil, err
 	}
 	switch {
 	case len(q.Fields) > 0:
-		return FieldsToColumns(q.Fields), nil
+		return m.withPKColumn(FieldsToColumns(q.Fields)), nil
 	case len(q.ExcludeFields) > 0:
 		columns, _ := m.FieldIndicesExcludingColumns(FieldsToColumns(q.ExcludeFields))
 		return columns, nil
@@ -429,4 +430,16 @@ func (m *StructMeta) ValidatePatchColumns(columns []string) ([]string, error) {
 	}
 
 	return columns, nil
+}
+
+// withPKColumn prepends the primary key to an additive projection that does not
+// already name it, in declaration order so the result matches what
+// [StructMeta.ProjectionColumns] resolves for the same query. The subtractive
+// form gets the same guarantee from [StructMeta.FieldIndicesExcludingColumns]:
+// an entity returned without its identity cannot be patched, deleted, or linked.
+func (m *StructMeta) withPKColumn(cols []string) []string {
+	if m.PKColumn == "" || slices.Contains(cols, m.PKColumn) {
+		return cols
+	}
+	return append([]string{m.PKColumn}, cols...)
 }
