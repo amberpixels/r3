@@ -3,12 +3,11 @@ package r3mongo_test
 import (
 	"testing"
 
+	"github.com/amberpixels/r3"
+	r3mongo "github.com/amberpixels/r3/drivers/mongo"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"go.mongodb.org/mongo-driver/v2/bson"
-
-	"github.com/amberpixels/r3"
-	r3mongo "github.com/amberpixels/r3/drivers/mongo"
 )
 
 // Run is the shape projection exists for: a few columns a listing renders,

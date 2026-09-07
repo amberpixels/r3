@@ -3,14 +3,15 @@ package r3gorm_test
 import (
 	"testing"
 
+	"github.com/amberpixels/r3"
+	r3gorm "github.com/amberpixels/r3/drivers/gorm"
+	. "github.com/amberpixels/r3/internal/testing"
 	"github.com/pressly/goose"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
-	"github.com/amberpixels/r3"
-	r3gorm "github.com/amberpixels/r3/drivers/gorm"
-	. "github.com/amberpixels/r3/internal/testing"
+	"github.com/amberpixels/r3/e2e/harness"
 )
 
 func TestGormRepository(t *testing.T) {
@@ -37,7 +38,7 @@ func TestGormRepository(t *testing.T) {
 	}()
 
 	const autoMigrate = false
-	const pathToMigrations = "../../internal/testing/migrations"
+	pathToMigrations := harness.MigrationsDir("")
 
 	// Migrate the new models
 	if autoMigrate {

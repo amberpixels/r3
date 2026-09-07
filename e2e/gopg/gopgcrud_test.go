@@ -6,14 +6,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/amberpixels/r3"
+	r3gopg "github.com/amberpixels/r3/drivers/gopg"
 	"github.com/go-pg/pg/v10/orm"
 	_ "github.com/lib/pq" // PostgreSQL driver for database/sql (used by goose)
 	"github.com/pressly/goose"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/amberpixels/r3"
-	r3gopg "github.com/amberpixels/r3/drivers/gopg"
+	"github.com/amberpixels/r3/e2e/harness"
 )
 
 // --- go-pg specific test models ---
@@ -143,7 +144,7 @@ func TestGoPgRepository(t *testing.T) {
 		_ = container.Terminate(t.Context())
 	}()
 
-	const pathToMigrations = "../../internal/testing/migrations"
+	pathToMigrations := harness.MigrationsDir("")
 
 	// Open a standard database/sql connection for goose migrations
 	// (go-pg uses its own connection pool, not database/sql)
