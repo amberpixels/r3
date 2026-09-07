@@ -53,8 +53,12 @@ build:
     go build ./...
 # <<< justx:build
 
+# assert no r3 package leaks a backend into consumers via its tests
+leak-check:
+    ./scripts/leak-check.sh
+
 # run all checks - read-only, safe for CI
-ci: lint test floor
+ci: lint test floor leak-check
 
 # Integration tests for CI: the container-backed suites live in the e2e module,
 # which is why importing an r3 driver never drags testcontainers into a consumer's

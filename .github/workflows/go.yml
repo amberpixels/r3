@@ -39,6 +39,12 @@ jobs:
       - name: Test (short, no Docker)
         run: just test-short
 
+      # Guards the property the e2e module exists for: `go mod tidy` pulls in the
+      # tests of packages you import, so one stray test import puts a whole
+      # backend into every consumer's go.sum. Empirical, not a rule about imports.
+      - name: Dependency leak check
+        run: just leak-check
+
   # The floor check runs on its own so it never drags a second toolchain into the
   # ci job's cache. The version comes from the justfile, NOT from go.mod: go.mod is
   # the thing under test, so deriving from it would make the check self-fulfilling -

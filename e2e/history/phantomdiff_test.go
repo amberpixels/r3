@@ -6,12 +6,11 @@ import (
 	"testing"
 	"time"
 
+	r3gorm "github.com/amberpixels/r3/drivers/gorm"
+	"github.com/amberpixels/r3/features/history"
 	"github.com/expectto/be"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
-
-	r3gorm "github.com/amberpixels/r3/drivers/gorm"
-	"github.com/amberpixels/r3/features/history"
 )
 
 // Ticket carries a system-managed created_at, the shape that surfaced the
@@ -25,14 +24,14 @@ type Ticket struct {
 
 // A driver-backed history test: the phantom diff only appears against a backend
 // that shapes its writes, which no in-memory mock does.
-func setupTicketRepo(t *testing.T) (*history.CRUD[Ticket, int64], *memoryChangeRecordCRUD) {
+func setupTicketRepo(t *testing.T) (*history.CRUD[Ticket, int64], *changeRecordStore) {
 	t.Helper()
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	be.NoError(t, err)
 	be.NoError(t, db.AutoMigrate(&Ticket{}))
 
-	store := newMemoryChangeRecordCRUD()
+	store := newChangeRecordStore()
 	repo := history.WithHistory[Ticket, int64](
 		r3gorm.NewGormCRUD[Ticket, int64](db), store,
 		history.WithIDFunc[Ticket, int64](func(tk Ticket) int64 { return tk.ID }),
@@ -60,9 +59,8 @@ func TestCRUD_UpdateFromPartialModelRecordsNoPhantomDiff(t *testing.T) {
 	be.AssertThat(t, updated.Title, be.Eq("b"))
 	be.AssertThat(t, updated.CreatedAt.IsZero(), be.False())
 
-	records, count, err := listForRecord(ctx, store, "tickets", strconv.FormatInt(created.ID, 10))
-	be.NoError(t, err)
-	be.RequireThat(t, count, be.Eq(int64(2)))
+	records := store.forRecord("tickets", strconv.FormatInt(created.ID, 10))
+	be.RequireThat(t, len(records), be.Eq(2))
 
 	changed := make([]string, 0, len(records[1].Changes.Val))
 	for _, c := range records[1].Changes.Val {
