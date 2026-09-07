@@ -4,13 +4,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/amberpixels/r3"
+	r3bun "github.com/amberpixels/r3/drivers/bun"
 	"github.com/pressly/goose"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/uptrace/bun"
 
-	"github.com/amberpixels/r3"
-	r3bun "github.com/amberpixels/r3/drivers/bun"
+	"github.com/amberpixels/r3/e2e/harness"
 )
 
 // --- Bun-specific test models ---
@@ -140,7 +141,7 @@ func TestBunRepository(t *testing.T) {
 		_ = container.Terminate(t.Context())
 	}()
 
-	const pathToMigrations = "../../internal/testing/migrations"
+	pathToMigrations := harness.MigrationsDir("")
 
 	// Run migrations using Goose (Bun wraps database/sql, so sqlDB is available directly).
 	err = goose.Up(sqlDB, pathToMigrations)

@@ -2,99 +2,44 @@ package petstore_test
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
-	"time"
 
-	dockerclient "github.com/moby/moby/client"
+	petstore "github.com/amberpixels/r3/examples/02petstore"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
 
-	petstore "github.com/amberpixels/r3/examples/02petstore"
+	"github.com/amberpixels/r3/e2e/harness"
 )
 
-// isDockerAvailable checks if Docker (or OrbStack) is reachable.
-func isDockerAvailable() bool {
-	defer func() { recover() }()
+func isDockerAvailable() bool { return harness.DockerAvailable() }
 
-	if os.Getenv("DOCKER_HOST") == "" {
-		orbstackSocket := "unix:///Users/" + os.Getenv("USER") + "/.orbstack/run/docker.sock"
-		os.Setenv("DOCKER_HOST", orbstackSocket)
-	}
-
-	ctx := context.Background()
-	dc, err := testcontainers.NewDockerClientWithOpts(ctx)
-	if err != nil {
-		return false
-	}
-	defer dc.Close()
-
-	_, err = dc.Ping(ctx, dockerclient.PingOptions{})
-	return err == nil
-}
-
-// setupPostgresContainer starts a PostgreSQL container and returns a connected gorm.DB.
+// setupPostgresContainer starts Postgres and opens it through gorm, with the
+// example's own tables auto-migrated.
 func setupPostgresContainer(t *testing.T) (testcontainers.Container, *gorm.DB) {
 	t.Helper()
 
-	ctx := t.Context()
-
-	req := testcontainers.ContainerRequest{
-		Image:        "postgres:18-alpine",
-		ExposedPorts: []string{"5432/tcp"},
-		Env: map[string]string{
-			"POSTGRES_USER":     "test",
-			"POSTGRES_PASSWORD": "test",
-			"POSTGRES_DB":       "petstore",
-		},
-		// The Postgres entrypoint boots a throwaway server for initdb before the
-		// real one, and Docker's port proxy accepts connections before the DB is
-		// up, so wait for the second "ready" log line, not just the open port.
-		WaitingFor: wait.ForAll(
-			wait.ForLog("database system is ready to accept connections").WithOccurrence(2),
-			wait.ForListeningPort("5432/tcp"),
-		).WithDeadline(60 * time.Second),
-	}
-
-	container, err := testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-		ContainerRequest: req,
-		Started:          true,
-	})
-	require.NoError(t, err, "failed to start postgres container")
-
-	host, err := container.Host(ctx)
+	pg, err := harness.StartPostgres(t.Context())
 	require.NoError(t, err)
 
-	port, err := container.MappedPort(ctx, "5432")
-	require.NoError(t, err)
-
-	dsn := fmt.Sprintf("host=%s port=%s user=test password=test dbname=petstore sslmode=disable", host, port.Port())
-	slog.Info("PostgreSQL DSN", "dsn", dsn)
-
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+	db, err := gorm.Open(postgres.Open(pg.KeywordDSN()), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Warn),
 	})
 	if err != nil {
-		_ = container.Terminate(ctx)
+		pg.Terminate()
 		t.Fatalf("failed to connect to postgres: %v", err)
 	}
 
-	// Auto-migrate tables for the example
-	err = db.AutoMigrate(&petstore.Species{}, &petstore.Pet{})
-	require.NoError(t, err, "failed to migrate models")
+	require.NoError(t, db.AutoMigrate(&petstore.Species{}, &petstore.Pet{}), "failed to migrate models")
 
-	return container, db
+	return pg.Container, db
 }
 
 // seedData inserts test species and pets.

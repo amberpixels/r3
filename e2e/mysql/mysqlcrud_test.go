@@ -1,18 +1,19 @@
-package r3pq_test
+package r3mysql_test
 
 import (
 	"testing"
 	"time"
 
+	"github.com/amberpixels/r3"
+	r3mysql "github.com/amberpixels/r3/drivers/mysql"
 	"github.com/pressly/goose"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/amberpixels/r3"
-	r3pq "github.com/amberpixels/r3/drivers/pq"
+	"github.com/amberpixels/r3/e2e/harness"
 )
 
-// --- lib/pq-specific test models ---
+// --- MySQL-specific test models ---
 // These use `db` struct tags for column mapping with the raw SQL driver.
 // Relation fields (pointers, slices) are omitted since there's no ORM layer.
 
@@ -50,7 +51,7 @@ type Artist struct {
 	Name string `db:"name"`
 }
 
-func TestPqRepository(t *testing.T) {
+func TestMysqlRepository(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
 	}
@@ -58,25 +59,29 @@ func TestPqRepository(t *testing.T) {
 	// Check if Docker is available before attempting to use it
 	if !isDockerAvailable() {
 		t.Skip(
-			"Docker not available - integration test requires Docker to spin up PostgreSQL container. Ensure Docker/OrbStack is running and accessible.",
+			"Docker not available - integration test requires Docker to spin up MySQL container. Ensure Docker/OrbStack is running and accessible.",
 		)
 	}
 
 	ctx := t.Context()
 
-	// Set up the PostgreSQL container
-	container, db, err := setupPostgresContainer()
+	// Set up the MySQL container
+	container, db, err := setupMySQLContainer()
 	if err != nil {
-		t.Skipf("Failed to setup PostgreSQL container: %v", err)
+		t.Skipf("Failed to setup MySQL container: %v", err)
 	}
 	defer func() {
 		_ = db.Close()
 		_ = container.Terminate(t.Context())
 	}()
 
-	const pathToMigrations = "../../internal/testing/migrations"
+	pathToMigrations := harness.MigrationsDir("mysql")
 
-	// Run migrations using Goose (database/sql is native here).
+	// Set goose dialect to mysql.
+	err = goose.SetDialect("mysql")
+	require.NoError(t, err, "failed to set goose dialect")
+
+	// Run migrations using Goose.
 	err = goose.Up(db, pathToMigrations)
 	require.NoError(t, err, "failed to run migrations")
 
@@ -88,10 +93,10 @@ func TestPqRepository(t *testing.T) {
 	}()
 
 	// Create repositories for each model
-	cityRepo := r3pq.NewPqCRUD[City, int64](db)
-	locRepo := r3pq.NewPqCRUD[Location, int64](db)
-	eventRepo := r3pq.NewPqCRUD[Event, int64](db)
-	artistRepo := r3pq.NewPqCRUD[Artist, int64](db)
+	cityRepo := r3mysql.NewMysqlCRUD[City, int64](db)
+	locRepo := r3mysql.NewMysqlCRUD[Location, int64](db)
+	eventRepo := r3mysql.NewMysqlCRUD[Event, int64](db)
+	artistRepo := r3mysql.NewMysqlCRUD[Artist, int64](db)
 
 	_ = artistRepo
 
@@ -229,7 +234,7 @@ func TestPqRepository(t *testing.T) {
 
 	t.Run("Raw query", func(t *testing.T) {
 		results, err := locRepo.Raw().Query(ctx,
-			"SELECT id, name, slug, city_id, popularity, visible FROM locations WHERE visible = $1 AND city_id = $2 ORDER BY popularity DESC",
+			"SELECT id, name, slug, city_id, popularity, visible FROM locations WHERE visible = ? AND city_id = ? ORDER BY popularity DESC",
 			true, 1,
 		)
 		require.NoError(t, err, "failed to run raw query")

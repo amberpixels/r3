@@ -21,14 +21,17 @@ default: fmt
 # format Go code - rewrites to canonical form
 fmt:
     go run {{ standardgo }} fmt ./...
+    cd e2e && go run {{ standardgo }} fmt ./...
 
 # lint Go code - reports findings, changes nothing
 lint:
     go run {{ standardgo }} ./...
+    cd e2e && go run {{ standardgo }} ./...
 
 # auto-fix what can be fixed - run on a clean tree and read the diff
 fix:
     go run {{ standardgo }} ./... --fix
+    cd e2e && go run {{ standardgo }} ./... --fix
 
 # >>> justx:test (managed) — `j @upgrade` re-syncs; remove these fences to take over
 # run tests
@@ -41,6 +44,8 @@ test:
 floor:
     GOWORK=off GOTOOLCHAIN={{ floor_go }} go build ./...
     GOWORK=off GOTOOLCHAIN={{ floor_go }} go vet ./...
+    cd e2e && GOWORK=off GOTOOLCHAIN={{ floor_go }} go build ./...
+    cd e2e && GOWORK=off GOTOOLCHAIN={{ floor_go }} go vet ./...
 
 # >>> justx:build (managed) — `j @upgrade` re-syncs; remove these fences to take over
 # build
@@ -51,12 +56,13 @@ build:
 # run all checks - read-only, safe for CI
 ci: lint test floor
 
-# Integration tests for CI: serialize packages with `-p 1` so the
-# testcontainers-backed suites (pq/pgx/mysql/gorm/bun/gopg + the petstore
-# Postgres) don't all spin up DB containers at once and exhaust the runner —
-# the source of intermittent "failed to connect" flakes. Slower but deterministic.
+# Integration tests for CI: the container-backed suites live in the e2e module,
+# which is why importing an r3 driver never drags testcontainers into a consumer's
+# go.sum. Serialize packages with `-p 1` so pq/pgx/mysql/gorm/bun/gopg/mongo and
+# the petstore Postgres don't all spin up DB containers at once and exhaust the
+# runner - the source of intermittent "failed to connect" flakes.
 test-integration:
-    go test -p 1 ./...
+    cd e2e && go test -p 1 ./...
 
 # Test only short tests (skip integration tests requiring Docker)
 test-short:

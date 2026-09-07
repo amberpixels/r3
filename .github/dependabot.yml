@@ -10,6 +10,16 @@ updates:
     commit-message:
       prefix: "deps"
 
+  # The e2e module owns the container stack (testcontainers, moby, the backend
+  # drivers the integration suite opens). It is a separate module precisely so
+  # none of that reaches consumers, which also means it needs its own entry here.
+  - package-ecosystem: gomod
+    directory: /e2e
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "deps"
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

@@ -4,12 +4,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/amberpixels/r3"
+	r3pgx "github.com/amberpixels/r3/drivers/pgx"
 	"github.com/pressly/goose"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/amberpixels/r3"
-	r3pgx "github.com/amberpixels/r3/drivers/pgx"
+	"github.com/amberpixels/r3/e2e/harness"
 )
 
 // --- pgx-specific test models ---
@@ -74,7 +75,7 @@ func TestPgxRepository(t *testing.T) {
 		_ = container.Terminate(t.Context())
 	}()
 
-	const pathToMigrations = "../../internal/testing/migrations"
+	pathToMigrations := harness.MigrationsDir("")
 
 	// Run migrations using Goose (database/sql is native here).
 	err = goose.Up(db, pathToMigrations)
