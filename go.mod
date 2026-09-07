@@ -1,11 +1,11 @@
 module github.com/amberpixels/r3
 
-go 1.25.0
+go 1.26.0
 
 require (
-	github.com/amberpixels/k1 v0.2.3
+	github.com/amberpixels/k1 v0.3.0
 	github.com/d3rty/json v0.0.2
-	github.com/expectto/be v1.0.0-rc.9
+	github.com/expectto/be v1.0.0-rc.10
 	github.com/go-pg/pg/v10 v10.15.1
 	github.com/go-sql-driver/mysql v1.10.1
 	github.com/google/uuid v1.6.0
@@ -68,7 +68,7 @@ require (
 	github.com/moby/sys/user v0.4.0 // indirect
 	github.com/moby/sys/userns v0.1.0 // indirect
 	github.com/moby/term v0.5.2 // indirect
-	github.com/onsi/gomega v1.42.1 // indirect
+	github.com/onsi/gomega v1.43.0 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
@@ -98,6 +98,6 @@ require (
 	golang.org/x/net v0.57.0 // indirect
 	golang.org/x/sync v0.22.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.40.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 	mellium.im/sasl v0.3.1 // indirect
 )

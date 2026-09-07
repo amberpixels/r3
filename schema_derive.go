@@ -81,9 +81,7 @@ func resolveSchemaConfig(opts []SchemaOption) schemaConfig {
 // classification so the logical schema stays 1:1 with the physical columns.
 func deriveSchema(typ reflect.Type, cfg schemaConfig) Schema {
 	var attrs []Attribute
-	// Not typ.Fields(): that iterator needs go1.26.
-	for i := range typ.NumField() {
-		field := typ.Field(i)
+	for field := range typ.Fields() {
 		if !field.IsExported() {
 			continue
 		}

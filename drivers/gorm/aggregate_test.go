@@ -47,29 +47,24 @@ func day(d int) time.Time {
 	return time.Date(2026, 1, d, 12, 0, 0, 0, time.UTC)
 }
 
-// id64 is the pre-go1.26 spelling of new(int64(v)).
-func id64(v int64) *int64 {
-	return &v
-}
-
 func TestGormAggregate_RaidStatsByLocation(t *testing.T) {
 	db := setupAggDB(t)
 	repo := r3gorm.NewGormCRUD[aggRaid, int64](db)
 	ctx := context.Background()
 
 	seed := []aggRaid{
-		{LocationID: id64(1), SquadID: id64(10), Date: day(1)},
-		{LocationID: id64(1), SquadID: id64(10), Date: day(5)},
-		{LocationID: id64(1), SquadID: id64(20), Date: day(3)},
-		{LocationID: id64(2), SquadID: id64(10), Date: day(2)},
-		{LocationID: nil, SquadID: id64(20), Date: day(4)}, // no location — excluded by filter
+		{LocationID: new(int64(1)), SquadID: new(int64(10)), Date: day(1)},
+		{LocationID: new(int64(1)), SquadID: new(int64(10)), Date: day(5)},
+		{LocationID: new(int64(1)), SquadID: new(int64(20)), Date: day(3)},
+		{LocationID: new(int64(2)), SquadID: new(int64(10)), Date: day(2)},
+		{LocationID: nil, SquadID: new(int64(20)), Date: day(4)}, // no location — excluded by filter
 	}
 	for _, raid := range seed {
 		_, err := repo.Create(ctx, raid)
 		require.NoError(t, err)
 	}
 	// A soft-deleted raid must not count.
-	deleted, err := repo.Create(ctx, aggRaid{LocationID: id64(1), SquadID: id64(10), Date: day(9)})
+	deleted, err := repo.Create(ctx, aggRaid{LocationID: new(int64(1)), SquadID: new(int64(10)), Date: day(9)})
 	require.NoError(t, err)
 	require.NoError(t, repo.Delete(ctx, deleted.ID))
 
@@ -132,9 +127,9 @@ func TestGormAggregate_GroupCountPerSquad(t *testing.T) {
 	ctx := context.Background()
 
 	for _, raid := range []aggRaid{
-		{SquadID: id64(10), Date: day(1)},
-		{SquadID: id64(10), Date: day(2)},
-		{SquadID: id64(20), Date: day(3)},
+		{SquadID: new(int64(10)), Date: day(1)},
+		{SquadID: new(int64(10)), Date: day(2)},
+		{SquadID: new(int64(20)), Date: day(3)},
 		{SquadID: nil, Date: day(4)}, // NULL squad — excluded, like p44's groupCount
 	} {
 		_, err := repo.Create(ctx, raid)
@@ -171,7 +166,7 @@ func TestGormAggregate_DefaultSortIsDropped(t *testing.T) {
 		Sorts: r3.Sorts{r3.NewSortDescSpec(r3.NewFieldSpec("date"))},
 	})
 
-	_, err := repo.Create(ctx, aggRaid{SquadID: id64(10), Date: day(1)})
+	_, err := repo.Create(ctx, aggRaid{SquadID: new(int64(10)), Date: day(1)})
 	require.NoError(t, err)
 
 	rows, err := repo.Aggregate(ctx, r3.Query{

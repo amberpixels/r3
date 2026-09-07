@@ -13,7 +13,7 @@ standardgo := "github.com/amberpixels/standardgo/cmd/standardgo@v0.2.1"
 # The floor this library promises to support. Keep in sync with the `go` directive
 # in go.mod - that is the number consumers actually see. CI passes FLOOR_GO=local,
 # having already installed the floor toolchain, so it never downloads a second one.
-floor_go := env("FLOOR_GO", "go1.25.0")
+floor_go := env("FLOOR_GO", "go1.26.0")
 
 # Default recipe: format (rewrites, decides nothing; `just fix` is the mutable one)
 default: fmt
