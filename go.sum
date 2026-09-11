@@ -4,8 +4,8 @@ github.com/Masterminds/semver/v3 v3.5.0 h1:kQceYJfbupGfZOKZQg0kou0DgAKhzDg2NZPAw
 github.com/Masterminds/semver/v3 v3.5.0/go.mod h1:4V+yj/TJE1HU9XfppCwVMZq3I84lprf4nC11bSS5beM=
 github.com/amberpixels/k1 v0.3.0 h1:RlbmRIAYCpGjfNYvmskEV3Ku/GLyntzMgn9ZmDRxZG0=
 github.com/amberpixels/k1 v0.3.0/go.mod h1:FbxSAe8H+aQ9RVburxYwd07jcSxw6UE4AmOMsHrU0dI=
-github.com/amberpixels/years v0.4.0 h1:/CnfMkKfLkHKocNS79s2QCT/Tmxzk8Zc3zBPE6yei38=
-github.com/amberpixels/years v0.4.0/go.mod h1:tAa93YwahEx8zRtrIeV+xRO466gQB+0rQlK2HqVKgoc=
+github.com/amberpixels/years v0.5.0 h1:NppdjW79LJcu0Y3qXH0QmXfKJPplgK71HbV5MboVeDI=
+github.com/amberpixels/years v0.5.0/go.mod h1:h5s0qM+KCvW+npyLC9nU5vHLMcEtCFzOsHlu4C1BmyU=
 github.com/d3rty/json v0.0.2 h1:v81wyLFlnciBpTQjGCesexUgopYE56oE4Ax+5SckUqo=
 github.com/d3rty/json v0.0.2/go.mod h1:klbuU0ltcK3P/r/u+LMfZYIY+LPKzNdYophDttefCIA=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
