@@ -8,7 +8,7 @@ require (
 	github.com/expectto/be v1.0.0-rc.10
 	github.com/go-pg/pg/v10 v10.15.1
 	github.com/go-sql-driver/mysql v1.10.1
-	github.com/jackc/pgx/v5 v5.10.0
+	github.com/jackc/pgx/v5 v5.11.0
 	github.com/lib/pq v1.12.3
 	github.com/moby/moby/client v0.6.0
 	github.com/pressly/goose v2.7.0+incompatible
