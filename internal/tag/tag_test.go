@@ -147,3 +147,47 @@ func TestParseColumnTag_PreservesExistingBehavior(t *testing.T) {
 	del := r3tag.ParseColumnTag(fieldByName(t, "Del"))
 	be.AssertThat(t, del, be.HaveFields(map[string]any{"Column": "deleted_at", "SoftDelete": true}))
 }
+
+type declaresChild struct{ ID string }
+
+// declaresModel covers the ways a field can, and cannot, declare a relation.
+type declaresModel struct {
+	Tags       []string        `bson:"tags"`
+	Nested     declaresChild   `bson:"nested"`
+	Rel        []declaresChild `              r3:"rel:has-many,fk:owner_id"`
+	NamedRel   []declaresChild `              r3:"items,rel:has-many,fk:owner_id"`
+	Incomplete []declaresChild `              r3:"rel:has-many"`
+	GormRel    []declaresChild `                                                  gorm:"foreignKey:OwnerID"`
+	GormM2M    []declaresChild `                                                  gorm:"many2many:owner_children"`
+	GormColumn string          `                                                  gorm:"column:name"`
+	ScalarGorm string          `                                                  gorm:"foreignKey:OwnerID"`
+}
+
+func declaresFieldByName(t *testing.T, name string) reflect.StructField {
+	t.Helper()
+	f, ok := reflect.TypeFor[declaresModel]().FieldByName(name)
+	be.RequireThat(t, ok, be.True(), "field %q not found", name)
+	return f
+}
+
+// TestDeclaresRelation covers the gate the document-store engines use: there a
+// slice, a map and a subdocument are native values, so only a declaration makes a
+// field a relation.
+func TestDeclaresRelation(t *testing.T) {
+	cases := map[string]bool{
+		"Tags":       false, // a value slice is stored, not joined
+		"Nested":     false,
+		"GormColumn": false,
+		"ScalarGorm": false, // a scalar carrying a stray gorm option is still a column
+		"Rel":        true,
+		"NamedRel":   true, // the ",rel:" form, with a column name in front
+		"Incomplete": true, // declared but unusable: skipped, never stored
+		"GormRel":    true,
+		"GormM2M":    true,
+	}
+	for name, want := range cases {
+		t.Run(name, func(t *testing.T) {
+			be.AssertThat(t, r3tag.DeclaresRelation(declaresFieldByName(t, name)), be.Eq(want))
+		})
+	}
+}

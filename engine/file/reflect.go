@@ -4,15 +4,11 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
-	"time"
 
 	"github.com/amberpixels/r3"
 	r3tag "github.com/amberpixels/r3/internal/tag"
 	r3utils "github.com/amberpixels/r3/internal/utils"
 )
-
-// timeType is used to distinguish time.Time from other structs during reflection.
-var timeType = reflect.TypeFor[time.Time]()
 
 // StructMeta holds reflection-based metadata about a struct type T for file storage.
 type StructMeta struct {
@@ -61,8 +57,9 @@ func buildStructMeta(typ reflect.Type) StructMeta {
 			continue
 		}
 
-		// Relation-type fields aren't stored (see isRelationType).
-		if isRelationType(field.Type) {
+		// An embedded struct is the encoders' business: encoding/json flattens it and
+		// bson wants an explicit ",inline", so no single flat field name describes it.
+		if field.Anonymous && r3utils.IsRelationType(field.Type) {
 			continue
 		}
 
@@ -98,8 +95,9 @@ func parseFileFieldTag(field reflect.StructField) (string, bool, bool, bool) {
 		return "", false, false, true
 	}
 
-	// Relation fields are handled elsewhere, never stored.
-	if strings.HasPrefix(r3Raw, "rel:") || strings.Contains(r3Raw, ",rel:") {
+	// A relation is declared, never inferred from the Go type: an untagged slice,
+	// map or nested struct is a native value in JSON/YAML, so it is stored.
+	if r3tag.DeclaresRelation(field) {
 		return "", false, false, true
 	}
 
@@ -154,21 +152,6 @@ func isOnlyFlags(raw string) bool {
 		}
 	}
 	return true
-}
-
-// isRelationType returns true if the Go type represents a relation field
-// (slice, map, pointer-to-struct, or struct - except time.Time).
-func isRelationType(t reflect.Type) bool {
-	switch t.Kind() {
-	case reflect.Slice, reflect.Map:
-		return true
-	case reflect.Pointer:
-		return t.Elem().Kind() == reflect.Struct && t.Elem() != timeType
-	case reflect.Struct:
-		return t != timeType
-	default:
-		return false
-	}
 }
 
 // PKValue extracts the primary key value from an entity.

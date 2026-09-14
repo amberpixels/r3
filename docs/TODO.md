@@ -44,6 +44,18 @@ move it into the relevant plan/parity doc if that becomes its home).
   scans `RETURNING`. The fix is one `refreshPersisted` call per driver (the
   helper H11 added), at the cost of one extra SELECT per `Create`.
 
+### Field discovery
+
+- **`engine/sql` still drops an untagged relation-typed field silently.** A
+  `[]string` or a nested struct with no `r3:"rel:"` tag is neither a column nor a
+  relation, so it is skipped without a word; `r3.JSONColumn[T]` is the way to
+  store one. That is correct for SQL - such a field cannot be one column - but the
+  silence is what made the same behaviour cost real data on Mongo (issue #22,
+  fixed by classifying relations from the declaration on the document-store
+  engines). Making it loud was considered and declined: every gorm-tagged
+  association slice, `internal/testing/models.go` included, would fail at
+  construction. Documented in `r3utils.IsRelationType` and the readme instead.
+
 ### Field value codecs (`r3:"codec:…"`)
 
 Full status in [`plan-field-codecs.md`](./plan-field-codecs.md); parity rows in

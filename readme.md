@@ -618,6 +618,14 @@ The `where:` and `order:` tag keywords are GORM-only - on Mongo the same predica
 declared with `r3.RelationWhere`. See
 [`docs/backend-parity.md`](docs/backend-parity.md) for the tracked gap list.
 
+**A relation is declared, never inferred from the Go type.** Only an
+`r3:"rel:..."` tag - or a `gorm` association tag, on a model shared with the GORM
+driver - makes a field a relation. On the document-store backends an untagged
+slice, map or nested struct is a native value and is stored as one: a BSON array
+or subdocument, a JSON/YAML array or object, written and read back through the
+same query. SQL backends cannot store such a field in one column, so they do not
+persist it at all; wrap it in `r3.JSONColumn[T]` to keep it in a JSON column.
+
 ## Transactions
 
 ```go

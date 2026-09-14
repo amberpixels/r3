@@ -25,6 +25,13 @@ var (
 // the type and its pointer, since Scan's receiver is conventionally a pointer)
 // is a scalar-like column, not a relation — this is what makes r3.JSONColumn
 // persist as a JSON column instead of being silently dropped.
+//
+// This is the SQL-shaped classification: what cannot be one SQL column without
+// serialisation. It gates engine/sql and r3.SchemaOf, where an untagged slice or
+// struct field is therefore not persisted at all. The document-store engines
+// (engine/mongo, engine/file) classify by declaration instead - see
+// r3tag.DeclaresRelation - because there an array or a subdocument is the native
+// representation of such a field.
 func IsRelationType(t reflect.Type) bool {
 	if isColumnValuer(t) {
 		return false
