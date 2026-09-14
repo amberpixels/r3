@@ -33,7 +33,7 @@ type docPlace struct {
 	Items  []docCoords             `json:"items"  r3:"rel:has-many,fk:place_id"`
 }
 
-// TestStructMeta_UntaggedValueFieldsAreStored pins GH-22 for the file engine: a
+// TestStructMeta_UntaggedValueFieldsAreStored pins issue #22 for the file engine: a
 // value slice, map or nested struct is a native JSON/YAML value, so it belongs
 // to the meta; only a declared relation stays out.
 func TestStructMeta_UntaggedValueFieldsAreStored(t *testing.T) {
@@ -95,4 +95,30 @@ func TestPatch_ValueSlice(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, []string{"port"}, got.Tags)
 	assert.Equal(t, map[string]string{"tier": "a"}, got.Labels)
+}
+
+// AuditBase is embedded rather than named, which encoding/json flattens into the
+// record. A flat field name cannot describe that, so it stays out of the meta.
+type AuditBase struct {
+	CreatedBy string `json:"created_by"`
+}
+
+// Code is an embedded scalar, which has always been an ordinary field.
+type Code string
+
+type embeddingPlace struct {
+	AuditBase
+	Code
+
+	ID   int    `json:"id"   r3:"id,pk"`
+	Name string `json:"name"`
+}
+
+func TestStructMeta_EmbeddedStructIsLeftToTheEncoder(t *testing.T) {
+	meta := enginefile.GetStructMeta[embeddingPlace]()
+
+	assert.False(t, slices.Contains(meta.Fields, "audit_base"),
+		"an embedded struct was given a flat field name: %v", meta.Fields)
+	assert.True(t, slices.Contains(meta.Fields, "code"),
+		"an embedded scalar is an ordinary field: %v", meta.Fields)
 }

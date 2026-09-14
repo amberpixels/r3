@@ -16,7 +16,7 @@ type PlanStep struct {
 	Reps int    `bson:"reps"`
 }
 
-// TrainingPlan is GH-22's repro shape: a plain value slice and a slice of
+// TrainingPlan is the repro shape from issue #22: a plain value slice and a slice of
 // structs, neither of them a relation. Both used to be dropped on write while the
 // bson decoder still populated them on read, so the type round-tripped one way
 // only and nothing surfaced until another process re-read the document.

@@ -76,7 +76,7 @@ type docFields struct {
 	Hidden  []string          `               r3:"-"`
 }
 
-// TestStructMeta_UntaggedValueFieldsAreStored pins GH-22: an untagged slice, map
+// TestStructMeta_UntaggedValueFieldsAreStored pins issue #22: an untagged slice, map
 // or subdocument reaches Fields, so ToBSONDoc writes it. It used to be dropped on
 // write while the bson decoder still populated it on read, so the type
 // round-tripped one way only.
@@ -141,7 +141,7 @@ type gormOwner struct {
 	Children []gormChild `                    gorm:"foreignKey:OwnerID"`
 }
 
-// TestStructMeta_DeclaredRelationsStayRelations is the other side of GH-22: a
+// TestStructMeta_DeclaredRelationsStayRelations is the other side of issue #22: a
 // declared relation is still a relation, never a stored array.
 func TestStructMeta_DeclaredRelationsStayRelations(t *testing.T) {
 	t.Run("r3 rel tag", func(t *testing.T) {
@@ -187,4 +187,34 @@ func TestStructMeta_MutualRelationsTerminate(t *testing.T) {
 	be.AssertThat(t, meta.Relations[0].TargetMeta.CollectionName, be.Eq("cycle_books"))
 	be.AssertThat(t, len(meta.Relations[0].TargetMeta.Relations), be.Eq(0),
 		"relation targets must not carry their own relations")
+}
+
+// AuditBase is embedded rather than named. encoding/json flattens such a field
+// and the bson decoder wants an explicit ",inline", so no single flat field name
+// describes it and it stays out of the meta.
+type AuditBase struct {
+	CreatedBy string `bson:"created_by"`
+}
+
+// Code is an embedded scalar, which has always been an ordinary field.
+type Code string
+
+type embeddingDoc struct {
+	AuditBase
+	Code
+
+	ID   string `bson:"_id"  r3:"pk"`
+	Name string `bson:"name"`
+}
+
+// TestStructMeta_EmbeddedStructIsLeftToTheEncoder pins the one shape that must
+// not fall through: naming it flatly would write a subdocument under a key the
+// bson decoder never reads back.
+func TestStructMeta_EmbeddedStructIsLeftToTheEncoder(t *testing.T) {
+	meta := enginemongo.GetStructMeta[embeddingDoc]()
+
+	be.AssertThat(t, slices.Contains(meta.Fields, "audit_base"), be.False(),
+		"an embedded struct was given a flat field name: %v", meta.Fields)
+	be.AssertThat(t, slices.Contains(meta.Fields, "code"), be.True(),
+		"an embedded scalar is an ordinary field: %v", meta.Fields)
 }

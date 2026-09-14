@@ -106,6 +106,12 @@ func buildStructMeta(typ reflect.Type, parseRelations bool) StructMeta {
 			continue
 		}
 
+		// An embedded struct is the encoders' business: encoding/json flattens it and
+		// bson wants an explicit ",inline", so no single flat field name describes it.
+		if field.Anonymous && r3utils.IsRelationType(field.Type) {
+			continue
+		}
+
 		// A relation is declared, never inferred from the Go type: in a document
 		// store an untagged slice, map or subdocument is a native value, so it
 		// falls through and is stored instead of being dropped. Relation metadata

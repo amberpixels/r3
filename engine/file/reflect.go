@@ -57,6 +57,12 @@ func buildStructMeta(typ reflect.Type) StructMeta {
 			continue
 		}
 
+		// An embedded struct is the encoders' business: encoding/json flattens it and
+		// bson wants an explicit ",inline", so no single flat field name describes it.
+		if field.Anonymous && r3utils.IsRelationType(field.Type) {
+			continue
+		}
+
 		fieldName, isPK, isSoftDelete, skip := parseFileFieldTag(field)
 		if skip {
 			continue
