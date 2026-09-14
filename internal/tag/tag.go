@@ -254,6 +254,50 @@ type RelationTag struct {
 	Owned       bool // if true, children are lifecycle-bound to parent (delete orphans on update)
 }
 
+// HasRelationTag reports whether a field's `r3` tag carries a `rel:` part, i.e.
+// declares a relation - complete or not. [ParseRelationTag] is the stricter test
+// that also requires a foreign key before the relation can be used.
+func HasRelationTag(field reflect.StructField) bool {
+	raw := field.Tag.Get("r3")
+	return strings.HasPrefix(raw, "rel:") || strings.Contains(raw, ",rel:")
+}
+
+// HasGormAssociationTag reports whether a field's `gorm` tag declares an
+// association (foreignKey / references / many2many) rather than a column.
+func HasGormAssociationTag(field reflect.StructField) bool {
+	raw := field.Tag.Get("gorm")
+	if raw == "" {
+		return false
+	}
+	for part := range strings.SplitSeq(raw, ";") {
+		switch lower := strings.ToLower(strings.TrimSpace(part)); {
+		case strings.HasPrefix(lower, "foreignkey:"),
+			strings.HasPrefix(lower, "references:"),
+			strings.HasPrefix(lower, "many2many:"):
+			return true
+		}
+	}
+	return false
+}
+
+// DeclaresRelation reports whether a field is a relation because it says so -
+// through its own `rel:` tag or a gorm association tag - as opposed to merely
+// having a relation-shaped Go type.
+//
+// This is the gate the document-store engines use. There a slice, a map and a
+// subdocument are native values, so only a declaration makes a field a relation;
+// everything else is stored. [r3utils.IsRelationType] stays the gate for SQL,
+// where a relation-shaped field cannot be one column.
+//
+// A gorm association is only ever declared on a relation-shaped field, so that
+// form keeps the type guard: a scalar carrying a stray gorm option is a column.
+func DeclaresRelation(field reflect.StructField) bool {
+	if HasRelationTag(field) {
+		return true
+	}
+	return r3utils.IsRelationType(field.Type) && HasGormAssociationTag(field)
+}
+
 // ParseRelationTag parses the `r3` struct tag on a relation field.
 // Returns a RelationTag and true if the tag declares a valid relation.
 func ParseRelationTag(field reflect.StructField) (RelationTag, bool) {

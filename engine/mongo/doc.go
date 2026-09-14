@@ -9,4 +9,8 @@
 //   - [PreparedListQuery]: pre-computed BSON filter/sort/pagination from an r3.Query
 //
 // Field mapping reads `bson` or `r3` struct tags; the primary key defaults to `_id`.
+//
+// A relation is declared by an r3 "rel:" tag (or a gorm association tag), never
+// inferred from the Go type: an untagged slice, map or nested struct is a native
+// BSON array or subdocument, so it is stored as an ordinary field.
 package enginemongo

@@ -14,5 +14,9 @@
 //	    enginefile.WithIDGenerator(enginefile.IncrementIDGen[int]()),
 //	)
 //
+// A relation is declared by an r3 "rel:" tag (or a gorm association tag), never
+// inferred from the Go type: an untagged slice, map or nested struct is a native
+// JSON/YAML value, so it is an ordinary field of the stored record.
+//
 // Codecs can wrap an alternative JSON library via [NewCodec].
 package enginefile

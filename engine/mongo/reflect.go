@@ -106,9 +106,13 @@ func buildStructMeta(typ reflect.Type, parseRelations bool) StructMeta {
 			continue
 		}
 
-		// Relation fields are detected by Go type.
-		if r3utils.IsRelationType(field.Type) {
-			if parseRelations {
+		// A relation is declared, never inferred from the Go type: in a document
+		// store an untagged slice, map or subdocument is a native value, so it
+		// falls through and is stored instead of being dropped. Relation metadata
+		// stays behind parseRelations, which is what stops the walk into a target's
+		// own relations from recursing.
+		if r3tag.DeclaresRelation(field) {
+			if parseRelations && r3utils.IsRelationType(field.Type) {
 				if rel, ok := buildRelationMeta(field, i); ok {
 					meta.Relations = append(meta.Relations, rel)
 				}
@@ -170,7 +174,7 @@ func parseMongoFieldTag(field reflect.StructField) (string, bool, bool, bool) {
 	}
 
 	// Relation fields are handled elsewhere.
-	if strings.HasPrefix(r3Raw, "rel:") || strings.Contains(r3Raw, ",rel:") {
+	if r3tag.DeclaresRelation(field) {
 		return "", false, false, true
 	}
 
