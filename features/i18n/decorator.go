@@ -15,10 +15,11 @@ import (
 // r3.CRUD[Translation, string]. Wrap read-facing repos only - see the package
 // doc's read-modify-write warning.
 type CRUD[T any, ID comparable] struct {
-	inner  r3.CRUD[T, ID]
-	store  r3.CRUD[Translation, string]
-	opts   Options[T, ID]
-	fields map[string]int // storage field name -> struct field index on T
+	inner    r3.CRUD[T, ID]
+	store    r3.CRUD[Translation, string]
+	opts     Options[T, ID]
+	fields   map[string]int // storage field name -> struct field index on T
+	preloads []Translated   // declared translatable relations, validated against T
 }
 
 var (
@@ -52,8 +53,12 @@ func WithTranslations[T any, ID comparable](
 	if err != nil {
 		panic(err)
 	}
+	preloads, err := resolvePreloads[T](opts.Preloads)
+	if err != nil {
+		panic(err)
+	}
 
-	return &CRUD[T, ID]{inner: inner, store: store, opts: opts, fields: fields}
+	return &CRUD[T, ID]{inner: inner, store: store, opts: opts, fields: fields, preloads: preloads}
 }
 
 // Inner returns the underlying CRUD repository (unwrapped).
@@ -66,7 +71,9 @@ func (c *CRUD[T, ID]) Unwrap() r3.CRUD[T, ID] { return c.inner }
 // Rewrap rebuilds this decorator around inner, re-applying the i18n layer on top
 // of a transaction-bound CRUD.
 func (c *CRUD[T, ID]) Rewrap(inner r3.CRUD[T, ID]) r3.CRUD[T, ID] {
-	return &CRUD[T, ID]{inner: inner, store: c.store, opts: c.opts, fields: c.fields}
+	return &CRUD[T, ID]{
+		inner: inner, store: c.store, opts: c.opts, fields: c.fields, preloads: c.preloads,
+	}
 }
 
 // Translations returns the translation store for querying or writing rows
@@ -190,26 +197,9 @@ func (c *CRUD[T, ID]) overlay(ctx context.Context, items []T, single *T) {
 		c.handleError(ctx, fmt.Errorf("i18n: overlay read for %s failed: %w", c.opts.EntityType, err))
 		return
 	}
-	if len(translations) == 0 {
-		return
-	}
-
-	// entity_id -> field -> value, skipping empties and (optionally) stale.
-	values := make(map[string]map[string]string)
-	for _, tr := range translations {
-		if tr.Value == "" || (tr.Stale && c.opts.ExcludeStale) {
-			continue
-		}
-		if _, ok := c.fields[tr.Field]; !ok {
-			continue // a field this decorator does not manage
-		}
-		m := values[tr.EntityID]
-		if m == nil {
-			m = make(map[string]string, len(c.fields))
-			values[tr.EntityID] = m
-		}
-		m[tr.Field] = tr.Value
-	}
+	// No early return on an empty result: an entity with no translations of its
+	// own can still carry preloaded children that have them.
+	values := indexTranslations(translations, c.fields, c.opts.ExcludeStale)
 
 	apply := func(e *T) {
 		for field, val := range values[c.entityID(*e)] {
@@ -218,11 +208,109 @@ func (c *CRUD[T, ID]) overlay(ctx context.Context, items []T, single *T) {
 	}
 	if single != nil {
 		apply(single)
+	} else {
+		for i := range items {
+			apply(&items[i])
+		}
+	}
+
+	c.overlayPreloads(ctx, items, single, locale)
+}
+
+// overlayPreloads localizes the declared preloaded relations. Each relation is
+// one store query for the whole page, never one per child.
+func (c *CRUD[T, ID]) overlayPreloads(ctx context.Context, items []T, single *T, locale string) {
+	if len(c.preloads) == 0 {
 		return
 	}
-	for i := range items {
-		apply(&items[i])
+
+	// Reach the parents through pointers, so every child below stays settable.
+	var parents []reflect.Value
+	if single != nil {
+		parents = []reflect.Value{reflect.ValueOf(single).Elem()}
+	} else {
+		parents = make([]reflect.Value, len(items))
+		for i := range items {
+			parents[i] = reflect.ValueOf(&items[i]).Elem()
+		}
 	}
+	if len(parents) == 0 {
+		return
+	}
+
+	for _, rel := range c.preloads {
+		c.overlayRelation(ctx, rel, parents, locale)
+	}
+}
+
+// overlayRelation gathers one relation's children across the whole page, reads
+// their translations in a single store query, and writes the values back.
+func (c *CRUD[T, ID]) overlayRelation(
+	ctx context.Context, rel Translated, parents []reflect.Value, locale string,
+) {
+	var found []locatedChild
+	var ids []string
+	seen := make(map[string]bool)
+
+	for _, parent := range parents {
+		for _, child := range relationChildren(parent.Field(rel.fieldIndex)) {
+			id := rel.idOf(child)
+			if id == "" {
+				continue
+			}
+			found = append(found, locatedChild{value: child, id: id})
+			// The same child can hang off many parents; ask for it once.
+			if !seen[id] {
+				seen[id] = true
+				ids = append(ids, id)
+			}
+		}
+	}
+	if len(ids) == 0 {
+		return
+	}
+
+	translations, _, err := c.store.List(ctx, QueryForBatch(rel.entityType, locale, ids))
+	if err != nil {
+		c.handleError(ctx, fmt.Errorf(
+			"i18n: overlay read for preloaded %s failed: %w", rel.entityType, err,
+		))
+		return
+	}
+	if len(translations) == 0 {
+		return
+	}
+
+	values := indexTranslations(translations, rel.fields, c.opts.ExcludeStale)
+	for _, child := range found {
+		for field, val := range values[child.id] {
+			setFieldOn(child.value, rel.fields[field], val)
+		}
+	}
+}
+
+// indexTranslations folds translation rows into entity_id -> field -> value,
+// dropping empty values, (optionally) stale ones, and any field the caller does
+// not manage. Shared by the entity pass and the preloaded-child pass.
+func indexTranslations(
+	translations []Translation, fields map[string]int, excludeStale bool,
+) map[string]map[string]string {
+	values := make(map[string]map[string]string)
+	for _, tr := range translations {
+		if tr.Value == "" || (tr.Stale && excludeStale) {
+			continue
+		}
+		if _, ok := fields[tr.Field]; !ok {
+			continue // a field this decorator does not manage
+		}
+		m := values[tr.EntityID]
+		if m == nil {
+			m = make(map[string]string, len(fields))
+			values[tr.EntityID] = m
+		}
+		m[tr.Field] = tr.Value
+	}
+	return values
 }
 
 // markStale patches Stale=true on translations whose SourceHash no longer matches

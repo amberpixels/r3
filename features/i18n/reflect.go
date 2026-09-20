@@ -53,5 +53,12 @@ func fieldValue[T any](entity T, idx int) string {
 
 // setFieldValue writes val into the struct field at idx via the pointer.
 func setFieldValue[T any](entity *T, idx int, val string) {
-	reflect.ValueOf(entity).Elem().Field(idx).SetString(val)
+	setFieldOn(reflect.ValueOf(entity).Elem(), idx, val)
+}
+
+// setFieldOn writes val into field idx of an addressable struct value. The
+// child overlay reaches its entities through reflection, so it has a
+// reflect.Value where the parent pass has a *T.
+func setFieldOn(structVal reflect.Value, idx int, val string) {
+	structVal.Field(idx).SetString(val)
 }

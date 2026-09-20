@@ -91,8 +91,11 @@ These are feature gaps (not backend-parity gaps) tracked in the p44 feedback log
   `MAX(person.age)` per group) is not yet supported: aggregate/group columns
   resolve against the related base table, and the target is joined only to
   exclude soft-deleted rows.
-- **R3-012 (i18n overlay on preloads)** - unrelated to relation resolution;
-  still open.
+- **R3-012 (i18n overlay on preloads)** - *shipped*. `features/i18n`
+  `WithPreloads` declares which preloaded relations carry translatable text, and
+  overlays a page's children in one store query per relation. Unrelated to
+  relation resolution: it reads whatever the driver already preloaded, so it works
+  on every backend.
 - **M2M order column (`order:<col>`)** - GORM only. When a many-to-many relation
   tag names an integer join-table column, the driver persists the relation
   slice's order (`syncM2M` writes each element's index, `preloadM2M` orders by
