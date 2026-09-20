@@ -95,10 +95,27 @@ copied here so they are visible from the r3 repo. Update both when one is closed
   Get/Delete fix is verified by p44's sqlite suite; add a string-PK case to R3's
   own Postgres gorm fixture suite for in-repo CI coverage.
 
-## Downstream adoption, unblocked
+## From the runwell consumer
 
-- **runwell** can drop its hand-rolled `unixts` GORM serializer, switch entity
-  tags from `gorm:"serializer:unixts"` to `r3:"…,codec:unixtime"`, and pass
-  `time.Time` bounds to `NeighborOf` (r3 now encodes filter args). The release
-  this was waiting on shipped as **v0.5.2**, which carries the field-codec core
-  and the GORM bridge, so this is actionable now.
+runwell is on **mongo**, not GORM. An earlier version of this file described it as
+carrying a hand-rolled `gorm:"serializer:unixts"` to be replaced by
+`codec:unixtime`; that was true of an older runwell and is not true now. It has no
+GORM at all, its `StartedAt` is a native BSON date needing no codec, and
+`NeighborOf` already passes `time.Time` bounds. Nothing about the field-codec
+rollout is downstream work for runwell. Its r3 surface is core, `dialects/when`,
+`drivers/mongo` and `features/history`.
+
+What it actually still needs the raw mongo driver for, both audited and both
+currently justified:
+
+- **Atomic increment on upsert** (`llmusage.go`, a `$inc` counter). `Upserter`
+  overwrites the columns it is given; it cannot express "add to the existing
+  value". This is the one that is a real r3 gap: `n = n + ?` is expressible on
+  every backend r3 supports (SQL `ON CONFLICT DO UPDATE SET n = t.n + EXCLUDED.n`,
+  mongo `$inc`, an in-memory add for file), so it would fit as an `UpsertOption`
+  beside `OnConflict` / `UpdateOnConflict`. Not built; no issue filed yet.
+- **Pipeline-expression updates** (`UpdateSlug`, a `$setDifference` over the
+  document's own array field). Updating a field from an expression over other
+  fields has no flavour-neutral form - array set-difference is not SQL without
+  JSON functions - so the raw-driver escape hatch is the right answer and is
+  documented as such on the runwell side. Not an r3 gap.
