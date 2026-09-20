@@ -81,7 +81,7 @@ func (r *GormCRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.Upser
 
 // incrementAssignments renders the conflict branch when some columns accumulate:
 // plain overwrites stay `col = EXCLUDED.col`, incremented ones become
-// `col = col + EXCLUDED.col`. The right-hand reference to the proposed row is
+// `col = table.col + EXCLUDED.col`. The right-hand reference to the proposed row is
 // dialect-specific, so it comes from the same gormFlavor mapping the bucket path
 // uses - and an unrecognized dialect degrades loudly there for the same reason,
 // rather than emitting SQL that silently overwrites a counter.

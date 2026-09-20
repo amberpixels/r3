@@ -225,9 +225,11 @@ func (f Flavor) WhereEq(column string, nextIdx int) string {
 // or `ON DUPLICATE KEY UPDATE col = VALUES(col), ...` (MySQL). conflictCols is the
 // target (MySQL ignores it, keying off any unique index).
 //
-// incrementCols are added to rather than overwritten (`col = col + EXCLUDED.col`),
-// the counter case behind [r3.IncrementOnConflict]. The unqualified left-hand name
-// resolves to the target table on every flavor, so no table name is needed.
+// incrementCols are added to rather than overwritten
+// (`col = tbl.col + EXCLUDED.col`), the counter case behind
+// [r3.IncrementOnConflict]. table qualifies the stored value: Postgres rejects a
+// bare name there as ambiguous against EXCLUDED, and it is ignored when nothing
+// accumulates.
 //
 // Both sets empty yields DO NOTHING (a self-assign no-op on MySQL), leaving the
 // existing row untouched.
