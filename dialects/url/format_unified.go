@@ -42,13 +42,21 @@ func formatUnified(q r3.Query, cfg Config) (url.Values, error) {
 func convertQueryToUnified(q r3.Query) (*unifiedQuery, error) {
 	uq := &unifiedQuery{}
 
-	// Fields
+	// Fields (additive) / ExcludeFields (subtractive). A valid query carries at
+	// most one, so this never writes both.
 	if len(q.Fields) > 0 {
 		fields := make(r3json.JSONFields, len(q.Fields))
 		for i, f := range q.Fields {
 			fields[i] = r3json.FieldToJSON(f)
 		}
 		uq.Fields = fields
+	}
+	if len(q.ExcludeFields) > 0 {
+		fields := make(r3json.JSONFields, len(q.ExcludeFields))
+		for i, f := range q.ExcludeFields {
+			fields[i] = r3json.FieldToJSON(f)
+		}
+		uq.ExcludeFields = fields
 	}
 
 	// Filters

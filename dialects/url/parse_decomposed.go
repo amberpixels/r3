@@ -11,7 +11,8 @@ import (
 func parseDecomposed(values url.Values, cfg Config) (r3.Query, error) {
 	q := r3.NewQuery()
 
-	// Fields
+	// Fields (additive) and ExcludeFields (subtractive). Both are r3.Fields, so
+	// one parser serves them; naming both is a conflict, caught below.
 	rawFields := values.Get(cfg.ParamNames.Fields)
 	if rawFields != "" {
 		fields, err := ParseFields(rawFields)
@@ -19,6 +20,14 @@ func parseDecomposed(values url.Values, cfg Config) (r3.Query, error) {
 			return r3.Query{}, err
 		}
 		q.Fields = fields
+	}
+	rawExcludeFields := values.Get(cfg.ParamNames.ExcludeFields)
+	if rawExcludeFields != "" {
+		fields, err := ParseFields(rawExcludeFields)
+		if err != nil {
+			return r3.Query{}, err
+		}
+		q.ExcludeFields = fields
 	}
 
 	// Filters (JSON array)
