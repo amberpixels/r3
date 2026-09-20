@@ -22,6 +22,11 @@ type Options[T any, ID comparable] struct {
 	// IDFunc extracts the primary key from an entity. Required.
 	IDFunc IDFunc[T, ID]
 
+	// Preloads declares which preloaded relations carry translatable text, so the
+	// overlay reaches a parent's children and not just the parent. Empty by
+	// default: a relation is translated only when declared.
+	Preloads []Translated
+
 	// ExcludeStale hides stale translations on reads, falling back to source text.
 	// Default: stale translations are served (usually better than the wrong
 	// language).
@@ -62,6 +67,16 @@ func WithFields[T any, ID comparable](names ...string) Option[T, ID] {
 // Required.
 func WithIDFunc[T any, ID comparable](fn IDFunc[T, ID]) Option[T, ID] {
 	return func(o *Options[T, ID]) { o.IDFunc = fn }
+}
+
+// WithPreloads declares preloaded relations that carry translatable text, built
+// with [TranslatedRelation]. Without it, a preloaded child keeps its source
+// language while its parent is translated.
+//
+// Each declared relation costs one extra store query per read, for the whole
+// page of parents rather than per child.
+func WithPreloads[T any, ID comparable](rels ...Translated) Option[T, ID] {
+	return func(o *Options[T, ID]) { o.Preloads = append(o.Preloads, rels...) }
 }
 
 // WithoutStale hides stale translations on reads (fall back to source text).

@@ -12,7 +12,11 @@
 //   - Locale from context: r3.WithLocale(ctx, "ru") in middleware is the only
 //     per-request wiring; every read localizes itself.
 //   - Batched overlay: List fetches a page's translations in ONE store query
-//     (entity_id IN (...)), never N+1.
+//     (entity_id IN (...)), never N+1. A declared preloaded relation adds one
+//     more query for the whole page, not one per child.
+//   - Preloaded children: by default only the decorated entity is translated, so
+//     a preloaded child keeps its source language. Declare the relations that
+//     carry translatable text with WithPreloads (see below).
 //   - Fallback to source: a field with no (or empty) translation keeps its
 //     original text.
 //   - Staleness via SourceHash: each Translation stores a hash of the source text
@@ -29,6 +33,36 @@
 // through this decorator with a locale set and saves it back, the translated
 // values overwrite the source text. Keep mutation paths on the unwrapped
 // repository (or ensure their contexts carry no locale).
+//
+// WithPreloads widens this from one row to a row plus everything preloaded onto
+// it: saving a parent read under a locale can persist translated child text
+// through whatever association sync the driver performs. With preloads declared,
+// "read-facing only" stops being cautious advice and becomes load-bearing.
+//
+// # Preloaded children
+//
+// Preloads are resolved by the driver, below every decorator, so wrapping the
+// child's own repo in i18n does nothing for a parent's preload - that repo is
+// never consulted. Declare the relation on the parent instead:
+//
+//	repo := i18n.WithTranslations[Location, int64](
+//	    inner, translationStore,
+//	    i18n.WithIDFunc[Location, int64](func(l Location) int64 { return l.ID }),
+//	    i18n.WithFields[Location, int64]("title", "description"),
+//	    i18n.WithPreloads[Location, int64](
+//	        i18n.TranslatedRelation("City", func(c City) int64 { return c.ID }, "name"),
+//	        i18n.TranslatedRelation("Events", func(e Event) int64 { return e.ID }, "name"),
+//	    ),
+//	)
+//
+//	loc, _ := repo.Get(r3.WithLocale(ctx, "ru"), 42) // loc.City.Name is Russian too
+//
+// The relation field may be C, *C, []C or []*C, and is named by its Go field
+// name, the way r3.Preloads names it. Children nest one level: a child's own
+// children are not reached.
+//
+// This is a read overlay only. A parent's Update/Patch never marks a child's
+// translations stale; that belongs to whatever repo owns the child.
 //
 // Usage:
 //
