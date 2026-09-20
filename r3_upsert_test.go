@@ -88,3 +88,26 @@ func TestNewUpsertSpec_Defaults(t *testing.T) {
 	require.Nil(t, spec.ConflictColumns, "default conflict target is empty (means PK)")
 	require.Nil(t, spec.UpdateFields, "default update set is empty (means all mutable)")
 }
+
+// The overlap rule lives in core so all four backends mean the same thing by a
+// malformed spec, rather than each applying whichever assignment lands last.
+func TestUpsertSpecValidate(t *testing.T) {
+	hits := r3.NewFieldSpec("hits")
+	seen := r3.NewFieldSpec("last_seen")
+
+	t.Run("a column in both sets is rejected", func(t *testing.T) {
+		spec := r3.NewUpsertSpec(r3.UpdateOnConflict(hits), r3.IncrementOnConflict(hits))
+		require.ErrorIs(t, spec.Validate(), r3.ErrUpsertIncrementConflict)
+	})
+
+	t.Run("disjoint sets are fine", func(t *testing.T) {
+		spec := r3.NewUpsertSpec(r3.UpdateOnConflict(seen), r3.IncrementOnConflict(hits))
+		require.NoError(t, spec.Validate())
+	})
+
+	t.Run("either set alone is fine", func(t *testing.T) {
+		require.NoError(t, r3.NewUpsertSpec(r3.IncrementOnConflict(hits)).Validate())
+		require.NoError(t, r3.NewUpsertSpec(r3.UpdateOnConflict(hits)).Validate())
+		require.NoError(t, r3.NewUpsertSpec().Validate())
+	})
+}

@@ -144,3 +144,87 @@ func TestGormUpsert_RejectsNonMutableUpdateColumn(t *testing.T) {
 		r3.OnConflict("id"), r3.UpdateOnConflict(r3.NewFieldSpec("population")))
 	require.ErrorIs(t, err, r3.ErrInvalidPatchField, "readonly column rejected")
 }
+
+// usage is the counter shape: a key, a running total, and a column overwritten
+// rather than accumulated on the same write.
+type usage struct {
+	Model    string `r3:"model,pk"  gorm:"primaryKey"`
+	Tokens   int64  `r3:"tokens"`
+	LastSeen string `r3:"last_seen"`
+}
+
+func setupUsage(t *testing.T) *r3gorm.GormCRUD[usage, string] {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&usage{}))
+	return r3gorm.NewGormCRUD[usage, string](db)
+}
+
+func TestGormUpsert_IncrementOnConflict(t *testing.T) {
+	ctx := context.Background()
+	tokens := r3.NewFieldSpec("tokens")
+
+	t.Run("first write stores the incoming value, later writes add to it", func(t *testing.T) {
+		repo := setupUsage(t)
+
+		got, err := repo.Upsert(ctx, usage{Model: "opus", Tokens: 100},
+			r3.OnConflict("model"), r3.IncrementOnConflict(tokens))
+		require.NoError(t, err)
+		require.Equal(t, int64(100), got.Tokens)
+
+		got, err = repo.Upsert(ctx, usage{Model: "opus", Tokens: 50},
+			r3.OnConflict("model"), r3.IncrementOnConflict(tokens))
+		require.NoError(t, err)
+		require.Equal(t, int64(150), got.Tokens, "conflict branch adds rather than overwrites")
+	})
+
+	t.Run("other columns still overwrite on the same write", func(t *testing.T) {
+		repo := setupUsage(t)
+
+		_, err := repo.Upsert(ctx, usage{Model: "opus", Tokens: 1, LastSeen: "monday"},
+			r3.OnConflict("model"), r3.IncrementOnConflict(tokens))
+		require.NoError(t, err)
+		got, err := repo.Upsert(ctx, usage{Model: "opus", Tokens: 1, LastSeen: "tuesday"},
+			r3.OnConflict("model"), r3.IncrementOnConflict(tokens))
+		require.NoError(t, err)
+		require.Equal(t, int64(2), got.Tokens)
+		require.Equal(t, "tuesday", got.LastSeen)
+	})
+
+	t.Run("a column cannot be both overwritten and incremented", func(t *testing.T) {
+		_, err := setupUsage(t).Upsert(ctx, usage{Model: "opus", Tokens: 1},
+			r3.OnConflict("model"),
+			r3.UpdateOnConflict(tokens),
+			r3.IncrementOnConflict(tokens),
+		)
+		require.ErrorIs(t, err, r3.ErrUpsertIncrementConflict)
+	})
+}
+
+// quota names its own table, so GORM writes to "billing_quota" while the
+// reflected meta name would be "quotas". The accumulating assignment qualifies
+// the stored value with a table name, so it has to be the one GORM actually uses.
+type quota struct {
+	Account string `r3:"account,pk" gorm:"primaryKey"`
+	Used    int64  `r3:"used"`
+}
+
+func (quota) TableName() string { return "billing_quota" }
+
+func TestGormUpsert_IncrementOnCustomTableName(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&quota{}))
+	repo := r3gorm.NewGormCRUD[quota, string](db)
+	ctx := context.Background()
+
+	_, err = repo.Upsert(ctx, quota{Account: "acme", Used: 5},
+		r3.OnConflict("account"), r3.IncrementOnConflict(r3.NewFieldSpec("used")))
+	require.NoError(t, err)
+
+	got, err := repo.Upsert(ctx, quota{Account: "acme", Used: 7},
+		r3.OnConflict("account"), r3.IncrementOnConflict(r3.NewFieldSpec("used")))
+	require.NoError(t, err)
+	require.Equal(t, int64(12), got.Used)
+}

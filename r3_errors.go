@@ -17,6 +17,18 @@ var ErrAggregateNotSupported = errors.New("r3: aggregate not supported")
 // decorator in its chain) does not implement [Upserter].
 var ErrUpsertNotSupported = errors.New("r3: upsert not supported")
 
+// ErrUpsertIncrementConflict is returned when one upsert names the same column in
+// both [UpdateOnConflict] and [IncrementOnConflict]. A column is overwritten or
+// added to on conflict, never both.
+var ErrUpsertIncrementConflict = errors.New("r3: upsert column is both overwritten and incremented")
+
+// ErrUpsertIncrementNotSupported is returned when a backend can upsert but cannot
+// lower [IncrementOnConflict] - a GORM repo on a dialect the driver does not
+// recognize, so it has no flavor to render the accumulation with. Loud by design:
+// silently overwriting a counter with the incoming value would reset it, and
+// nothing downstream could tell.
+var ErrUpsertIncrementNotSupported = errors.New("r3: upsert increment not supported by this backend")
+
 // ErrBulkPatchNotSupported is returned by [PatchWhereOf] when the repository (or
 // a decorator in its chain) does not implement [BulkPatcher].
 var ErrBulkPatchNotSupported = errors.New("r3: bulk patch not supported")

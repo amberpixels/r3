@@ -19,6 +19,10 @@ var _ r3.Upserter[any, any] = &BaseCRUD[any, any]{}
 // upsert takes the insert branch.
 const setOnInsertOp = "$setOnInsert"
 
+// incOp is the MongoDB update operator adding to a field's stored value, and
+// creating it at that value when the upsert inserts.
+const incOp = "$inc"
+
 // Upsert inserts entity, or updates the colliding document on a conflict against
 // the conflict target (the _id primary key by default), via UpdateOne with
 // upsert:true.
@@ -32,6 +36,9 @@ const setOnInsertOp = "$setOnInsert"
 // engine/sql/upsert.go.
 func (r *BaseCRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.UpsertOption) (T, error) {
 	spec := r3.NewUpsertSpec(opts...)
+	if err := spec.Validate(); err != nil {
+		return entity, err
+	}
 
 	conflictCols := spec.ConflictColumns
 	if len(conflictCols) == 0 {
@@ -56,7 +63,16 @@ func (r *BaseCRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.Upser
 		filter = append(filter, bson.E{Key: c, Value: conflictVals[i]})
 	}
 
-	updateFields, err := r.upsertUpdateFields(spec, conflictSet)
+	incFields, err := r.upsertIncrementFields(spec)
+	if err != nil {
+		return entity, err
+	}
+	incSet := make(map[string]bool, len(incFields))
+	for _, f := range incFields {
+		incSet[f] = true
+	}
+
+	updateFields, err := r.upsertUpdateFields(spec, conflictSet, incSet)
 	if err != nil {
 		return entity, err
 	}
@@ -74,10 +90,24 @@ func (r *BaseCRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.Upser
 		setDoc = append(setDoc, bson.E{Key: name, Value: vals[i]})
 	}
 
-	// $setOnInsert covers the fields the update branch does not write, so an
-	// inserted document is complete. The conflict columns come from the filter's
-	// equality on insert, and a zero _id is left out so Mongo generates one.
-	setOnInsert, err := r.upsertSetOnInsert(entity, conflictSet, updateSet)
+	// $inc adds to the stored value on conflict, and on insert creates the field
+	// at the incoming value - exactly the documented contract, which is why an
+	// incremented field is left out of $setOnInsert below rather than needing one.
+	incDoc := make(bson.D, 0, len(incFields))
+	incVals := r.Meta.FieldValuesForFields(entity, incFields)
+	if err := r.Meta.encodeWriteValues(incFields, incVals); err != nil {
+		return entity, err
+	}
+	for i, name := range incFields {
+		incDoc = append(incDoc, bson.E{Key: name, Value: incVals[i]})
+	}
+
+	// $setOnInsert covers the fields no other operator writes, so an inserted
+	// document is complete. The conflict columns come from the filter's equality
+	// on insert, and a zero _id is left out so Mongo generates one. Incremented
+	// fields must be excluded: Mongo rejects an update whose operators touch the
+	// same path.
+	setOnInsert, err := r.upsertSetOnInsert(entity, conflictSet, updateSet, incSet)
 	if err != nil {
 		return entity, err
 	}
@@ -85,6 +115,9 @@ func (r *BaseCRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.Upser
 	update := bson.D{}
 	if len(setDoc) > 0 {
 		update = append(update, bson.E{Key: setOp, Value: setDoc})
+	}
+	if len(incDoc) > 0 {
+		update = append(update, bson.E{Key: incOp, Value: incDoc})
 	}
 	if len(setOnInsert) > 0 {
 		update = append(update, bson.E{Key: setOnInsertOp, Value: setOnInsert})
@@ -113,10 +146,25 @@ func (r *BaseCRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.Upser
 	return stored, nil
 }
 
+// upsertIncrementFields returns the Patch-validated BSON field names the conflict
+// branch adds to rather than overwrites. Nil when the caller named none.
+func (r *BaseCRUD[T, ID]) upsertIncrementFields(spec r3.UpsertSpec) ([]string, error) {
+	if len(spec.IncrementFields) == 0 {
+		return nil, nil
+	}
+	return r.Meta.ValidatePatchFields(r3.FieldsToStrings(spec.IncrementFields))
+}
+
 // upsertUpdateFields returns the BSON field names the on-conflict update branch
-// writes: the Patch-validated UpdateFields when set, else every non-ID,
+// overwrites: the Patch-validated UpdateFields when set, else every non-ID,
 // non-conflict field (a full replace).
-func (r *BaseCRUD[T, ID]) upsertUpdateFields(spec r3.UpsertSpec, conflictSet map[string]bool) ([]string, error) {
+//
+// Incremented fields are excluded from the full-replace set on both counts: $set
+// and $inc on one path is an error in Mongo, and overwriting a counter is the
+// opposite of what the caller asked for.
+func (r *BaseCRUD[T, ID]) upsertUpdateFields(
+	spec r3.UpsertSpec, conflictSet, incSet map[string]bool,
+) ([]string, error) {
 	if len(spec.UpdateFields) > 0 {
 		fields, err := r.Meta.ValidatePatchFields(r3.FieldsToStrings(spec.UpdateFields))
 		if err != nil {
@@ -127,7 +175,7 @@ func (r *BaseCRUD[T, ID]) upsertUpdateFields(spec r3.UpsertSpec, conflictSet map
 
 	var fields []string
 	for _, f := range r.Meta.Fields {
-		if f == r.Meta.IDField || conflictSet[f] {
+		if f == r.Meta.IDField || conflictSet[f] || incSet[f] {
 			continue
 		}
 		fields = append(fields, f)
@@ -139,14 +187,16 @@ func (r *BaseCRUD[T, ID]) upsertUpdateFields(spec r3.UpsertSpec, conflictSet map
 // covered by the conflict filter or the $set update, so an inserted document is
 // complete. A zero _id is omitted so Mongo generates one. Codec'd fields are
 // encoded to stored form.
-func (r *BaseCRUD[T, ID]) upsertSetOnInsert(entity T, conflictSet, updateSet map[string]bool) (bson.D, error) {
+func (r *BaseCRUD[T, ID]) upsertSetOnInsert(
+	entity T, conflictSet, updateSet, incSet map[string]bool,
+) (bson.D, error) {
 	doc := bson.D{}
 	all := r.Meta.FieldValues(entity)
 	if err := r.Meta.encodeWriteValues(r.Meta.Fields, all); err != nil {
 		return nil, err
 	}
 	for i, name := range r.Meta.Fields {
-		if conflictSet[name] || updateSet[name] {
+		if conflictSet[name] || updateSet[name] || incSet[name] {
 			continue
 		}
 		if name == r.Meta.IDField && isZeroValue(all[i]) {

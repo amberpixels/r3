@@ -332,6 +332,22 @@ func TestBunRepository(t *testing.T) {
 		assert.Equal(t, "Origland", got.CountryName, "non-updated column must be preserved")
 	})
 
+	// Accumulate on conflict: the counter case. bun's upsert is ON CONFLICT only,
+	// so EXCLUDED is always the right reference.
+	t.Run("Upsert increments instead of overwriting", func(t *testing.T) {
+		seed, err := cityRepo.Create(ctx, City{Name: "IncCity", CountryName: "Origland", Popularity: 10})
+		require.NoError(t, err)
+
+		got, err := r3.UpsertOf(ctx, cityRepo,
+			City{ID: seed.ID, Name: "IncCity", CountryName: "Origland", Popularity: 5},
+			r3.OnConflict("id"),
+			r3.IncrementOnConflict(r3.NewFieldSpec("popularity")),
+		)
+		require.NoError(t, err, "increment upsert failed")
+		assert.Equal(t, 15, got.Popularity, "conflict branch must add, not replace")
+		assert.Equal(t, seed.ID, got.ID)
+	})
+
 	t.Run("List events for a location", func(t *testing.T) {
 		result, _, err := eventRepo.List(ctx, r3.Query{
 			Filters: r3.Filters{

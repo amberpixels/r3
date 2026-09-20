@@ -275,4 +275,20 @@ func TestMysqlRepository(t *testing.T) {
 		assert.Len(t, result, 3, "expected 3 artists")
 		assert.Equal(t, int64(3), total, "expected 3 total artists")
 	})
+	// MySQL is the one flavor whose accumulating conflict clause differs
+	// (ON DUPLICATE KEY UPDATE ... VALUES(col)), so it gets its own execution
+	// check rather than trusting the shared unit test of the rendering.
+	t.Run("Upsert increments instead of overwriting", func(t *testing.T) {
+		seed, err := cityRepo.Create(ctx, City{Name: "IncCity", CountryName: "Origland", Popularity: 10})
+		require.NoError(t, err)
+
+		got, err := r3.UpsertOf(ctx, cityRepo,
+			City{ID: seed.ID, Name: "IncCity", CountryName: "Origland", Popularity: 5},
+			r3.OnConflict("id"),
+			r3.IncrementOnConflict(r3.NewFieldSpec("popularity")),
+		)
+		require.NoError(t, err, "increment upsert failed")
+		assert.Equal(t, 15, got.Popularity, "conflict branch must add, not replace")
+		assert.Equal(t, seed.ID, got.ID)
+	})
 }
