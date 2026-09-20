@@ -19,6 +19,15 @@ type Setting struct {
 	Notes string `bson:"notes"`
 }
 
+// Usage is the counter shape IncrementOnConflict exists for: a running total
+// beside a field that is overwritten rather than accumulated.
+type Usage struct {
+	ID       string `bson:"_id"`
+	Model    string `bson:"model"`
+	Tokens   int64  `bson:"tokens"`
+	LastSeen string `bson:"last_seen"`
+}
+
 func TestMongoUpsertAndBulkPatch(t *testing.T) {
 	if testing.Short() {
 		t.Skip("Skipping integration test in short mode")
@@ -141,5 +150,38 @@ func TestMongoUpsertAndBulkPatch(t *testing.T) {
 			r3.Fields{r3.NewFieldSpec("nonexistent")},
 		)
 		require.ErrorIs(t, err, r3.ErrInvalidPatchField)
+	})
+	// $inc is the operator the raw-driver escape hatch existed for. The trap is
+	// $setOnInsert: an incremented field must not appear there or in $set, since
+	// Mongo rejects an update whose operators touch the same path.
+	t.Run("IncrementOnConflict accumulates instead of overwriting", func(t *testing.T) {
+		repo := r3mongo.NewMongoCRUD[Usage, string](db.Collection("upsert_inc"))
+		tokens := r3.NewFieldSpec("tokens")
+
+		got, err := repo.Upsert(ctx, Usage{ID: "opus", Model: "opus", Tokens: 100, LastSeen: "monday"},
+			r3.IncrementOnConflict(tokens))
+		require.NoError(t, err)
+		assert.Equal(t, int64(100), got.Tokens, "insert branch takes the incoming value")
+		assert.Equal(t, "monday", got.LastSeen)
+
+		got, err = repo.Upsert(ctx, Usage{ID: "opus", Model: "opus", Tokens: 50, LastSeen: "tuesday"},
+			r3.IncrementOnConflict(tokens))
+		require.NoError(t, err)
+		assert.Equal(t, int64(150), got.Tokens, "conflict branch adds rather than overwrites")
+		assert.Equal(t, "tuesday", got.LastSeen, "a non-incremented field is replaced as usual")
+
+		got, err = repo.Upsert(ctx, Usage{ID: "opus", Model: "opus", Tokens: -50, LastSeen: "tuesday"},
+			r3.IncrementOnConflict(tokens))
+		require.NoError(t, err)
+		assert.Equal(t, int64(100), got.Tokens, "a negative increment decrements")
+	})
+
+	t.Run("a field cannot be both overwritten and incremented", func(t *testing.T) {
+		repo := r3mongo.NewMongoCRUD[Usage, string](db.Collection("upsert_inc_conflict"))
+		tokens := r3.NewFieldSpec("tokens")
+
+		_, err := repo.Upsert(ctx, Usage{ID: "opus", Tokens: 1},
+			r3.UpdateOnConflict(tokens), r3.IncrementOnConflict(tokens))
+		require.ErrorIs(t, err, r3.ErrUpsertIncrementConflict)
 	})
 }

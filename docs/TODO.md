@@ -108,12 +108,9 @@ rollout is downstream work for runwell. Its r3 surface is core, `dialects/when`,
 What it actually still needs the raw mongo driver for, both audited and both
 currently justified:
 
-- **Atomic increment on upsert** (`llmusage.go`, a `$inc` counter). `Upserter`
-  overwrites the columns it is given; it cannot express "add to the existing
-  value". This is the one that is a real r3 gap: `n = n + ?` is expressible on
-  every backend r3 supports (SQL `ON CONFLICT DO UPDATE SET n = t.n + EXCLUDED.n`,
-  mongo `$inc`, an in-memory add for file), so it would fit as an `UpsertOption`
-  beside `OnConflict` / `UpdateOnConflict`. Not built; no issue filed yet.
+- ~~**Atomic increment on upsert**~~ - **shipped** as `r3.IncrementOnConflict`
+  (issue #34), so the `$inc` counter in `llmusage.go` no longer needs the raw
+  driver. See the parity doc for the per-backend notes.
 - **Pipeline-expression updates** (`UpdateSlug`, a `$setDifference` over the
   document's own array field). Updating a field from an expression over other
   fields has no flavour-neutral form - array set-difference is not SQL without

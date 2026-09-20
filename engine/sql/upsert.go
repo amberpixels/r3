@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/amberpixels/r3"
@@ -24,13 +25,20 @@ var _ r3.Upserter[any, any] = &BaseCRUD[any, any]{}
 // re-fetch by the conflict target.
 func (r *BaseCRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.UpsertOption) (T, error) {
 	spec := r3.NewUpsertSpec(opts...)
+	if err := spec.Validate(); err != nil {
+		return entity, err
+	}
 
 	conflictCols := spec.ConflictColumns
 	if len(conflictCols) == 0 {
 		conflictCols = []string{r.Meta.PKColumn}
 	}
 
-	updateCols, err := r.upsertUpdateColumns(ctx, &entity, spec)
+	incrementCols, err := r.upsertIncrementColumns(ctx, spec)
+	if err != nil {
+		return entity, err
+	}
+	updateCols, err := r.upsertUpdateColumns(ctx, &entity, spec, incrementCols)
 	if err != nil {
 		return entity, err
 	}
@@ -42,13 +50,13 @@ func (r *BaseCRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.Upser
 		r.Meta.TableName,
 		ColumnsString(insertCols),
 		r.Flavor.Placeholders(len(insertCols), 1),
-		r.Flavor.UpsertClause(conflictCols, updateCols),
+		r.Flavor.UpsertClause(r.Meta.TableName, conflictCols, updateCols, incrementCols),
 	)
 
 	// RETURNING gives the stored row, but only when a DO UPDATE runs: DO NOTHING
 	// returns no row on collision, so fall through to the re-fetch (as does MySQL,
 	// which lacks RETURNING).
-	if r.Flavor.SupportsRETURNING && len(updateCols) > 0 {
+	if r.Flavor.SupportsRETURNING && len(updateCols)+len(incrementCols) > 0 {
 		query := base + " RETURNING " + ColumnsString(r.Meta.Columns)
 		dests := r.Meta.ScanDest(&entity)
 		if err := r.Executor.QueryRowContext(ctx, query, vals...).Scan(dests...); err != nil {
@@ -75,15 +83,42 @@ func (r *BaseCRUD[T, ID]) upsertInsertColumns(ctx context.Context, entityPtr *T)
 	return cols
 }
 
+// upsertIncrementColumns returns the columns the conflict branch adds to rather
+// than overwrites, validated like any other written column (ValidatePatchColumns
+// + RequireMutableColumns). Nil when the caller named none.
+func (r *BaseCRUD[T, ID]) upsertIncrementColumns(
+	ctx context.Context, spec r3.UpsertSpec,
+) ([]string, error) {
+	if len(spec.IncrementFields) == 0 {
+		return nil, nil
+	}
+	cols, err := r.Meta.ValidatePatchColumns(FieldsToColumns(spec.IncrementFields))
+	if err != nil {
+		return nil, err
+	}
+	if err := RequireMutableColumns(ctx, r.Schema, cols); err != nil {
+		return nil, err
+	}
+	// Fail before building a statement that would silently drop the accumulation.
+	if _, err := r.Flavor.UpsertIncrementExpr(r.Meta.TableName, cols[0]); err != nil {
+		return nil, err
+	}
+	return cols, nil
+}
+
 // upsertUpdateColumns returns the columns the on-conflict update branch writes:
 // every mutable column plus managed updated_at (full replace) by default, or -
 // with an explicit UpdateOnConflict set - the Patch-validated columns
 // (ValidatePatchColumns + RequireMutableColumns) plus managed updated_at.
+//
+// Incremented columns are removed from the default full-replace set: assigning a
+// counter both EXCLUDED.col and col + EXCLUDED.col in one clause is invalid SQL,
+// and overwriting it is the opposite of what the caller asked for.
 func (r *BaseCRUD[T, ID]) upsertUpdateColumns(
-	ctx context.Context, entityPtr *T, spec r3.UpsertSpec,
+	ctx context.Context, entityPtr *T, spec r3.UpsertSpec, incrementCols []string,
 ) ([]string, error) {
 	if len(spec.UpdateFields) == 0 {
-		return r.updateColumns(ctx, entityPtr), nil
+		return withoutColumns(r.updateColumns(ctx, entityPtr), incrementCols), nil
 	}
 	cols := FieldsToColumns(spec.UpdateFields)
 	cols, err := r.Meta.ValidatePatchColumns(cols)
@@ -95,6 +130,20 @@ func (r *BaseCRUD[T, ID]) upsertUpdateColumns(
 	}
 	cols = append(cols, r.stampManagedTimestamps(ctx, entityPtr, cols, r3.WriteOpMutate)...)
 	return cols, nil
+}
+
+// withoutColumns returns cols minus every name in drop, preserving order.
+func withoutColumns(cols, drop []string) []string {
+	if len(drop) == 0 {
+		return cols
+	}
+	out := make([]string, 0, len(cols))
+	for _, c := range cols {
+		if !slices.Contains(drop, c) {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // fetchByColumns selects the single row matching cols = vals into a fresh entity,

@@ -51,3 +51,58 @@ func TestQuoteIdentifiers_DottedAndEscaped(t *testing.T) {
 	be.AssertThat(t, enginesql.FlavorMySQL.QuoteIdentifiers(`"users"."name"`), be.Eq("`users`.`name`"))
 	be.AssertThat(t, enginesql.FlavorMySQL.QuoteIdentifiers(`"a""b"`), be.Eq("`a``b`"))
 }
+
+// The accumulating conflict assignment is the one part of an upsert whose
+// rendering differs per flavor, so each gets its own assertion rather than
+// trusting a shared case.
+func TestUpsertIncrementExpr(t *testing.T) {
+	t.Run("ON CONFLICT flavors accumulate against EXCLUDED", func(t *testing.T) {
+		for _, f := range []enginesql.Flavor{enginesql.FlavorPostgres, enginesql.FlavorSQLite} {
+			got, err := f.UpsertIncrementExpr("counters", "hits")
+			be.NoError(t, err)
+			be.AssertThat(t, got, be.Eq("counters.hits + EXCLUDED.hits"),
+				"the stored value is table-qualified: Postgres reads a bare name as ambiguous")
+		}
+	})
+
+	t.Run("MySQL accumulates against VALUES()", func(t *testing.T) {
+		got, err := enginesql.FlavorMySQL.UpsertIncrementExpr("counters", "hits")
+		be.NoError(t, err)
+		be.AssertThat(t, got, be.Eq("counters.hits + VALUES(hits)"))
+	})
+
+	// A zero Flavor is what a driver gets for a dialect it does not recognize.
+	// Silently overwriting a counter there would reset it with nothing to notice.
+	t.Run("a zero flavor degrades loudly", func(t *testing.T) {
+		_, err := enginesql.Flavor{}.UpsertIncrementExpr("counters", "hits")
+		be.AssertThat(t, err, be.Not(be.Nil()))
+	})
+}
+
+func TestUpsertClauseWithIncrements(t *testing.T) {
+	t.Run("postgres renders overwrites then accumulations", func(t *testing.T) {
+		got := enginesql.FlavorPostgres.UpsertClause(
+			"usage", []string{"model"}, []string{"last_seen"}, []string{"hits"})
+		be.AssertThat(t, got, be.Eq(
+			"ON CONFLICT (model) DO UPDATE SET last_seen = EXCLUDED.last_seen, "+
+				"hits = usage.hits + EXCLUDED.hits"))
+	})
+
+	t.Run("mysql renders its own form", func(t *testing.T) {
+		got := enginesql.FlavorMySQL.UpsertClause(
+			"usage", []string{"model"}, []string{"last_seen"}, []string{"hits"})
+		be.AssertThat(t, got, be.Eq(
+			"ON DUPLICATE KEY UPDATE last_seen = VALUES(last_seen), "+
+				"hits = usage.hits + VALUES(hits)"))
+	})
+
+	t.Run("increments alone still produce a DO UPDATE", func(t *testing.T) {
+		got := enginesql.FlavorPostgres.UpsertClause("usage", []string{"model"}, nil, []string{"hits"})
+		be.AssertThat(t, got, be.Eq("ON CONFLICT (model) DO UPDATE SET hits = usage.hits + EXCLUDED.hits"))
+	})
+
+	t.Run("neither set still means DO NOTHING", func(t *testing.T) {
+		got := enginesql.FlavorPostgres.UpsertClause("usage", []string{"model"}, nil, nil)
+		be.AssertThat(t, got, be.Eq("ON CONFLICT (model) DO NOTHING"))
+	})
+}

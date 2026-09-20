@@ -121,6 +121,34 @@ mongo + bun; file/gopg degrade to `ErrUpsertNotSupported`) and `BulkPatcher`
 `ErrBulkPatchNotSupported`). See each capability's doc comment for the
 authoritative per-backend status.
 
+### Increment on upsert - `r3.IncrementOnConflict`
+
+An upsert's conflict branch normally overwrites; `IncrementOnConflict` marks
+columns it adds to instead, which is what a counter needs. On insert the column
+takes the incoming value, so a counter's first write stores it as-is; increment by
+a negative to decrement. Supported everywhere `Upserter` is: `engine/sql` (all
+flavors), gorm, bun and mongo. `engine/file` and gopg decline `Upsert` itself, so
+nothing changes for them.
+
+Two things to know before porting it to a new backend, both of which cost a
+debugging round here:
+
+**The stored value must be qualified.** Postgres rejects `hits = hits +
+EXCLUDED.hits` as ambiguous between the target row and `EXCLUDED`, so the left
+operand carries a table reference. SQLite accepts the bare form, which is exactly
+why an in-process SQLite test passes while Postgres fails - do not take a green
+sqlite run as proof here.
+
+**Which qualifier differs by driver.** `engine/sql` and gorm use the table name;
+bun emits `INSERT INTO "cities" AS "city"` and so needs its own model *alias*,
+which the driver reads from bun's table registry. MySQL takes the table name and
+`VALUES(col)` for the incoming side.
+
+A GORM repo on a dialect the driver does not recognize returns
+`r3.ErrUpsertIncrementNotSupported` rather than emitting SQL, the same loud
+degradation `r3.Bucket` uses there. Silently overwriting a counter would reset it
+with nothing downstream able to tell.
+
 ### Cursor pagination - `Query.Cursor`
 
 Keyset pagination reaches every backend: `engine/sql` (the raw pq/pgx/mysql/sqlite3

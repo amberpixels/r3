@@ -5,6 +5,8 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"reflect"
+	"slices"
 	"strings"
 
 	"github.com/uptrace/bun"
@@ -22,18 +24,31 @@ var _ r3.Upserter[any, any] = &BunCRUD[any, any]{}
 // The conflict target defaults to the primary key; the update set defaults to
 // every column except the primary key, the conflict columns, and created_at
 // (never overwritten). An explicit UpdateOnConflict set is validated like Patch
-// (unknown/PK/soft-delete columns are rejected). Timestamp bumping on the update
-// branch is left to the database (default/trigger), matching this driver's
-// create/update behavior. Requires a dialect with ON CONFLICT and RETURNING
-// (Postgres, SQLite).
+// (unknown/PK/soft-delete columns are rejected). Columns named by
+// [r3.IncrementOnConflict] are added to rather than overwritten, and leave the
+// default update set. Timestamp bumping on the update branch is left to the
+// database (default/trigger), matching this driver's create/update behavior.
+// Requires a dialect with ON CONFLICT and RETURNING (Postgres, SQLite).
 func (r *BunCRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.UpsertOption) (T, error) {
 	spec := r3.NewUpsertSpec(opts...)
+	if err := spec.Validate(); err != nil {
+		return entity, err
+	}
 	meta := enginesql.GetStructMeta[T]()
 
 	conflictCols := spec.ConflictColumns
 	if len(conflictCols) == 0 {
 		conflictCols = []string{meta.PKColumn}
 	}
+
+	var incrementCols []string
+	if len(spec.IncrementFields) > 0 {
+		var err error
+		if incrementCols, err = meta.ValidatePatchColumns(r3.FieldsToStrings(spec.IncrementFields)); err != nil {
+			return entity, err
+		}
+	}
+
 	updateCols := r3.FieldsToStrings(spec.UpdateFields)
 	if len(updateCols) > 0 {
 		// An explicit UpdateOnConflict set mirrors Patch: unknown, primary-key,
@@ -43,7 +58,12 @@ func (r *BunCRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.Upsert
 			return entity, err
 		}
 	} else {
-		updateCols = defaultUpsertUpdateColumns(meta, r.Config.Naming, conflictCols)
+		// Incremented columns leave the full-replace set: a counter must not be
+		// overwritten by the very upsert that increments it.
+		updateCols = slices.DeleteFunc(
+			defaultUpsertUpdateColumns(meta, r.Config.Naming, conflictCols),
+			func(c string) bool { return slices.Contains(incrementCols, c) },
+		)
 	}
 
 	target, err := quoteIdentList(conflictCols)
@@ -51,10 +71,10 @@ func (r *BunCRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.Upsert
 		return entity, err
 	}
 
-	// With nothing left to update (the conflict target covers every updatable
+	// With nothing left to write (the conflict target covers every updatable
 	// column) DO UPDATE would render an empty SET; degrade to DO NOTHING and
 	// re-fetch the surviving row by the conflict target.
-	if len(updateCols) == 0 {
+	if len(updateCols)+len(incrementCols) == 0 {
 		if _, err := r.db.NewInsert().Model(&entity).
 			On("CONFLICT (?) DO NOTHING", bun.Safe(target)).Exec(ctx); err != nil {
 			return entity, err
@@ -69,11 +89,37 @@ func (r *BunCRUD[T, ID]) Upsert(ctx context.Context, entity T, opts ...r3.Upsert
 		}
 		q = q.Set("? = EXCLUDED.?", bun.Ident(col), bun.Ident(col))
 	}
+	// Accumulating columns add to the stored value instead of replacing it. This
+	// driver's upsert is ON CONFLICT only (Postgres/SQLite), so EXCLUDED is always
+	// the right reference and there is no MySQL form to pick between.
+	//
+	// The stored value must be qualified - Postgres reads a bare name here as
+	// ambiguous against EXCLUDED - and qualified by bun's own model ALIAS, not the
+	// table name: bun emits `INSERT INTO "cities" AS "city"`, so the table name is
+	// not in scope.
+	if len(incrementCols) > 0 {
+		alias := r.modelAlias()
+		for _, col := range incrementCols {
+			if err := r3.ValidateIdentifier(col); err != nil {
+				return entity, fmt.Errorf("r3/bun: upsert increment column %q: %w", col, err)
+			}
+			q = q.Set("? = ?.? + EXCLUDED.?", bun.Ident(col), bun.Ident(alias), bun.Ident(col), bun.Ident(col))
+		}
+	}
 
 	if _, err := q.Returning("*").Exec(ctx); err != nil {
 		return entity, err
 	}
 	return entity, nil
+}
+
+// modelAlias returns the alias bun gives T in its generated SQL, falling back to
+// the reflected table name when bun has no table registered for the type.
+func (r *BunCRUD[T, ID]) modelAlias() string {
+	if table := r.db.Dialect().Tables().Get(reflect.TypeFor[T]()); table != nil && table.Alias != "" {
+		return table.Alias
+	}
+	return enginesql.GetStructMeta[T]().TableName
 }
 
 // getByColumns fetches the single row matching cols (values read from entity),

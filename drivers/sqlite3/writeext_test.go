@@ -123,3 +123,84 @@ func TestSqlite3PatchWhere_RejectsNonMutable(t *testing.T) {
 	)
 	require.ErrorIs(t, err, r3.ErrInvalidPatchField)
 }
+
+// counter is the shape IncrementOnConflict exists for: a key, a running total,
+// and a column that is overwritten rather than accumulated on the same write.
+type counter struct {
+	Key      string `db:"key,pk"`
+	Hits     int64  `db:"hits"`
+	LastSeen string `db:"last_seen"`
+}
+
+func setupCounters(t *testing.T) *r3sqlite3.Sqlite3CRUD[counter, string] {
+	t.Helper()
+	db, err := setupSQLiteDB()
+	require.NoError(t, err)
+	t.Cleanup(func() { _ = db.Close() })
+
+	_, err = db.Exec(`CREATE TABLE counters (
+		key       TEXT PRIMARY KEY,
+		hits      INTEGER NOT NULL DEFAULT 0,
+		last_seen TEXT
+	)`)
+	require.NoError(t, err)
+	return r3sqlite3.NewSqlite3CRUD[counter, string](db)
+}
+
+func TestSqlite3Upsert_IncrementOnConflict(t *testing.T) {
+	ctx := context.Background()
+	hits := r3.NewFieldSpec("hits")
+
+	t.Run("first write stores the incoming value, later writes add to it", func(t *testing.T) {
+		repo := setupCounters(t)
+
+		got, err := repo.Upsert(ctx, counter{Key: "gpt", Hits: 3}, r3.IncrementOnConflict(hits))
+		require.NoError(t, err)
+		require.Equal(t, int64(3), got.Hits, "insert branch takes the incoming value as-is")
+
+		got, err = repo.Upsert(ctx, counter{Key: "gpt", Hits: 4}, r3.IncrementOnConflict(hits))
+		require.NoError(t, err)
+		require.Equal(t, int64(7), got.Hits, "conflict branch adds rather than overwrites")
+
+		n, err := repo.Count(ctx)
+		require.NoError(t, err)
+		require.Equal(t, int64(1), n, "still one row")
+	})
+
+	t.Run("a negative increment decrements", func(t *testing.T) {
+		repo := setupCounters(t)
+
+		_, err := repo.Upsert(ctx, counter{Key: "gpt", Hits: 10}, r3.IncrementOnConflict(hits))
+		require.NoError(t, err)
+		got, err := repo.Upsert(ctx, counter{Key: "gpt", Hits: -4}, r3.IncrementOnConflict(hits))
+		require.NoError(t, err)
+		require.Equal(t, int64(6), got.Hits)
+	})
+
+	t.Run("other columns still overwrite on the same write", func(t *testing.T) {
+		repo := setupCounters(t)
+
+		_, err := repo.Upsert(ctx, counter{Key: "gpt", Hits: 1, LastSeen: "monday"},
+			r3.IncrementOnConflict(hits))
+		require.NoError(t, err)
+		got, err := repo.Upsert(ctx, counter{Key: "gpt", Hits: 1, LastSeen: "tuesday"},
+			r3.IncrementOnConflict(hits))
+		require.NoError(t, err)
+		require.Equal(t, int64(2), got.Hits, "the counter accumulates")
+		require.Equal(t, "tuesday", got.LastSeen, "a non-incremented column is replaced as usual")
+	})
+
+	t.Run("a column cannot be both overwritten and incremented", func(t *testing.T) {
+		_, err := setupCounters(t).Upsert(ctx, counter{Key: "gpt", Hits: 1},
+			r3.UpdateOnConflict(hits),
+			r3.IncrementOnConflict(hits),
+		)
+		require.ErrorIs(t, err, r3.ErrUpsertIncrementConflict)
+	})
+
+	t.Run("an unknown increment column is rejected", func(t *testing.T) {
+		_, err := setupCounters(t).Upsert(ctx, counter{Key: "gpt"},
+			r3.IncrementOnConflict(r3.NewFieldSpec("bogus")))
+		require.Error(t, err)
+	})
+}

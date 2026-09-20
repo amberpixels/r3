@@ -52,6 +52,41 @@ type Flavor struct {
 	// errors loudly (see [Flavor.DateTruncExpr]) instead of silently returning
 	// un-bucketed rows. Set on the predefined flavors; ISO-Monday weeks.
 	BucketExpr func(col string, unit r3.BucketUnit) (string, error)
+
+	// IncrementExpr renders the accumulating right-hand side for one column in an
+	// upsert's conflict branch: `tbl.col + EXCLUDED.col` (Postgres/SQLite) or
+	// `tbl.col + VALUES(col)` (MySQL). nil means the flavor cannot accumulate, so
+	// an IncrementOnConflict upsert errors loudly (see [Flavor.UpsertIncrementExpr])
+	// rather than silently overwriting a counter with the incoming value. Set on
+	// the predefined flavors.
+	//
+	// The stored-row reference is table-qualified because Postgres rejects the bare
+	// name as ambiguous between the target row and EXCLUDED.
+	IncrementExpr func(table, col string) string
+}
+
+// UpsertIncrementExpr renders the right-hand side of an accumulating conflict
+// assignment for col, or a loud [r3.ErrUpsertIncrementNotSupported] when the
+// flavor has no accumulation wired - a zero Flavor, which is what a driver gets
+// for a dialect it does not recognize.
+func (f Flavor) UpsertIncrementExpr(table, col string) (string, error) {
+	if f.IncrementExpr == nil {
+		return "", r3.ErrUpsertIncrementNotSupported
+	}
+	return f.IncrementExpr(table, col), nil
+}
+
+// excludedIncrementExpr accumulates against the ON CONFLICT pseudo-table
+// (Postgres, SQLite). The stored value is table-qualified: Postgres rejects a
+// bare name here as ambiguous between the target row and EXCLUDED.
+func excludedIncrementExpr(table, col string) string {
+	return fmt.Sprintf("%s.%s + EXCLUDED.%s", table, col, col)
+}
+
+// valuesIncrementExpr accumulates against MySQL's VALUES(col), matching the form
+// the overwrite path already emits.
+func valuesIncrementExpr(table, col string) string {
+	return fmt.Sprintf("%s.%s + VALUES(%s)", table, col, col)
 }
 
 // DateTruncExpr renders the flavor's truncation of col to unit, or a loud
@@ -119,6 +154,7 @@ var (
 		TimestampFunc:        "NOW()",
 		UsesOnConflictClause: true,
 		BucketExpr:           postgresBucketExpr,
+		IncrementExpr:        excludedIncrementExpr,
 	}
 	FlavorSQLite = Flavor{
 		Placeholder:          PlaceholderQuestion,
@@ -126,6 +162,7 @@ var (
 		TimestampFunc:        "datetime('now')",
 		UsesOnConflictClause: true,
 		BucketExpr:           sqliteBucketExpr,
+		IncrementExpr:        excludedIncrementExpr,
 	}
 	FlavorMySQL = Flavor{
 		Placeholder:       PlaceholderQuestion,
@@ -133,6 +170,7 @@ var (
 		TimestampFunc:     "CURRENT_TIMESTAMP",
 		IdentifierQuote:   "`",
 		BucketExpr:        mysqlBucketExpr,
+		IncrementExpr:     valuesIncrementExpr,
 	}
 )
 
@@ -185,33 +223,35 @@ func (f Flavor) WhereEq(column string, nextIdx int) string {
 // UpsertClause builds an upsert INSERT's trailing on-conflict clause:
 // `ON CONFLICT (target) DO UPDATE SET col = EXCLUDED.col, ...` (Postgres/SQLite)
 // or `ON DUPLICATE KEY UPDATE col = VALUES(col), ...` (MySQL). conflictCols is the
-// target (MySQL ignores it, keying off any unique index). Empty updateCols yields
-// DO NOTHING (a self-assign no-op on MySQL), leaving the existing row untouched.
-func (f Flavor) UpsertClause(conflictCols, updateCols []string) string {
+// target (MySQL ignores it, keying off any unique index).
+//
+// incrementCols are added to rather than overwritten
+// (`col = tbl.col + EXCLUDED.col`), the counter case behind
+// [r3.IncrementOnConflict]. table qualifies the stored value: Postgres rejects a
+// bare name there as ambiguous against EXCLUDED, and it is ignored when nothing
+// accumulates.
+//
+// Both sets empty yields DO NOTHING (a self-assign no-op on MySQL), leaving the
+// existing row untouched.
+func (f Flavor) UpsertClause(table string, conflictCols, updateCols, incrementCols []string) string {
 	if f.UsesOnConflictClause {
 		target := strings.Join(conflictCols, ", ")
-		if len(updateCols) == 0 {
+		sets := f.upsertSets(table, updateCols, incrementCols, "EXCLUDED.%s")
+		if len(sets) == 0 {
 			return fmt.Sprintf("ON CONFLICT (%s) DO NOTHING", target)
-		}
-		sets := make([]string, len(updateCols))
-		for i, c := range updateCols {
-			sets[i] = fmt.Sprintf("%s = EXCLUDED.%s", c, c)
 		}
 		return fmt.Sprintf("ON CONFLICT (%s) DO UPDATE SET %s", target, strings.Join(sets, ", "))
 	}
 
-	// MySQL: with no columns to update, self-assign the first conflict column so
+	sets := f.upsertSets(table, updateCols, incrementCols, "VALUES(%s)")
+	// MySQL: with no columns to write, self-assign the first conflict column so
 	// the statement still parses and no-ops on duplicate.
-	if len(updateCols) == 0 {
+	if len(sets) == 0 {
 		if len(conflictCols) == 0 {
 			return ""
 		}
 		c := conflictCols[0]
 		return fmt.Sprintf("ON DUPLICATE KEY UPDATE %s = %s", c, c)
-	}
-	sets := make([]string, len(updateCols))
-	for i, c := range updateCols {
-		sets[i] = fmt.Sprintf("%s = VALUES(%s)", c, c)
 	}
 	return "ON DUPLICATE KEY UPDATE " + strings.Join(sets, ", ")
 }
@@ -251,4 +291,24 @@ func (f Flavor) ConvertPlaceholders(clause string, startIdx int) (string, int) {
 		}
 	}
 	return b.String(), idx
+}
+
+// upsertSets renders the conflict branch's assignments: overwrites first, then
+// the accumulating ones. incoming is the flavor's format for the proposed row's
+// column (`EXCLUDED.%s` or `VALUES(%s)`), the only part that differs between
+// them. Accumulation goes through IncrementExpr so it is rendered in exactly one
+// place; a flavor without it silently drops those columns here, which is why
+// callers check [Flavor.UpsertIncrementExpr] before building a statement.
+func (f Flavor) upsertSets(table string, updateCols, incrementCols []string, incoming string) []string {
+	sets := make([]string, 0, len(updateCols)+len(incrementCols))
+	for _, c := range updateCols {
+		sets = append(sets, fmt.Sprintf("%s = "+incoming, c, c))
+	}
+	if f.IncrementExpr == nil {
+		return sets
+	}
+	for _, c := range incrementCols {
+		sets = append(sets, fmt.Sprintf("%s = %s", c, f.IncrementExpr(table, c)))
+	}
+	return sets
 }
