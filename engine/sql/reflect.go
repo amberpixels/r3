@@ -245,6 +245,20 @@ func (m *StructMeta) PKValue(entity any) any {
 	return nil
 }
 
+// PKIsZero reports whether the entity's primary key still holds its zero value.
+// After an insert that means the driver did not write a generated key back, so
+// there is no identity to re-read the persisted row by.
+func (m *StructMeta) PKIsZero(entity any) bool {
+	v := reflect.ValueOf(entity)
+	if v.Kind() == reflect.Pointer {
+		v = v.Elem()
+	}
+	if m.PKField < 0 || m.PKField >= len(m.Fields) {
+		return true
+	}
+	return v.Field(m.Fields[m.PKField]).IsZero()
+}
+
 // SetPKValue sets the primary key value on an entity (via pointer).
 func (m *StructMeta) SetPKValue(entityPtr, val any) {
 	v := reflect.ValueOf(entityPtr).Elem()

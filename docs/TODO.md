@@ -21,29 +21,6 @@ move it into the relevant plan/parity doc if that becomes its home).
 
 ## Open
 
-### Pagination
-
-- **GORM driver has no cursor / keyset pagination.** Cursor pagination is
-  implemented only in the raw SQL engine (`engine/sql.BaseCRUD`, see
-  `PreparedListQuery.IsCursorPaginated` / `CursorClause` / `CursorLimit`). The
-  GORM driver's `List` (`drivers/gorm/gormcrud.go`) honours only offset-based
-  pagination and silently ignores `Query.Cursor`. This is the reverse of the
-  usual "GORM ahead" gap. The shared query-prep already builds the cursor clause
-  (and now encodes codec'd cursor keys), so wiring it into the GORM `List` is
-  mostly consuming `prep.IsCursorPaginated` / `prep.CursorClause` /
-  `prep.CursorLimit` / `prep.OrderBySorts()` the way `engine/sql` does.
-
-### Write return values
-
-- **ORM `Create` returns the caller's input, not the persisted row.** The
-  same class of bug as H11 (`tasks.md`), which fixed it for `Update` on every
-  backend. `drivers/gorm` `Omit`s non-`Creatable` columns on insert and then
-  returns the input unchanged, so a DB default or a dropped readonly column comes
-  back zeroed - and `features/history` records that zero in the create diff.
-  `bun`/`gopg` return the input too. `engine/sql` `Create` is already correct: it
-  scans `RETURNING`. The fix is one `refreshPersisted` call per driver (the
-  helper H11 added), at the cost of one extra SELECT per `Create`.
-
 ### Field discovery
 
 - **`engine/sql` still drops an untagged relation-typed field silently.** A
@@ -66,10 +43,6 @@ increments:
   clean value pass-through; the scan path is the tricky bit - `ScanDest` hands
   live struct-field pointers to `rows.Scan`, so a codec needs a `sql.Scanner`
   wrapper (or an intermediate holder + post-scan decode), not a value map.
-- **`engine/mongo`.** Write has a clean choke-point (`ToBSONDoc`); **read has no
-  r3 hook** - `FindOne().Decode()` uses the driver's own bson unmarshaler, so
-  reads would need a bson custom registry / `ValueMarshaler` or a reworked read
-  path.
 - **`engine/file`.** Single clean choke-point per direction
   (`StructMeta.GetFieldValue` / `SetFieldValue`); apply the codec at the
   serialize/deserialize boundary so in-memory filter/sort/cursor compare decoded
@@ -129,9 +102,10 @@ copied here so they are visible from the r3 repo. Update both when one is closed
   Get/Delete fix is verified by p44's sqlite suite; add a string-PK case to R3's
   own Postgres gorm fixture suite for in-repo CI coverage.
 
-## Downstream adoption waiting on a release
+## Downstream adoption, unblocked
 
 - **runwell** can drop its hand-rolled `unixts` GORM serializer, switch entity
   tags from `gorm:"serializer:unixts"` to `r3:"…,codec:unixtime"`, and pass
-  `time.Time` bounds to `NeighborOf` (r3 now encodes filter args). Do this after
-  r3 tags a release with the field-codec core + GORM bridge.
+  `time.Time` bounds to `NeighborOf` (r3 now encodes filter args). The release
+  this was waiting on shipped as **v0.5.2**, which carries the field-codec core
+  and the GORM bridge, so this is actionable now.

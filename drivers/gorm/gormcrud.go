@@ -55,6 +55,7 @@ func NewGormCRUD[T any, ID comparable](db *gorm.DB, opts ...r3.Option) *GormCRUD
 	}
 }
 
+// Create inserts the entity and returns the row as persisted.
 func (r *GormCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 	db := r.db.WithContext(ctx)
 	// Omit non-creatable columns (readonly, soft-delete) so the DB fills defaults.
@@ -69,7 +70,12 @@ func (r *GormCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 	if err := r.syncAssociations(ctx, &entity); err != nil {
 		return entity, err
 	}
-	return entity, nil
+	// A PK still zero means GORM wrote no generated key back, so there is nothing
+	// to re-read by; return the row as written.
+	if r.meta.PKIsZero(entity) {
+		return entity, nil
+	}
+	return r.refreshPersisted(ctx, entity)
 }
 
 // writeOmit returns the non-PK columns to Omit for op, and stamps the managed
@@ -139,13 +145,25 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		query = query.Where(clause.Clause, clause.Args...)
 	}
 
-	for _, sort := range prep.Sorts {
+	// ORDER BY is reversed for a backward cursor; see OrderBySorts.
+	orderSorts, err := prep.OrderBySorts()
+	if err != nil {
+		return nil, 0, err
+	}
+	for _, sort := range orderSorts {
 		query = query.Order(sort.String())
 	}
 
-	// Pagination: count first, then limit/offset
+	// Pagination: keyset takes precedence over offset, and runs no count query.
 	var totalCount int64
-	if prep.IsPaginated {
+	switch {
+	case prep.IsCursorPaginated:
+		// An empty clause is the first page: limit only, no keyset predicate.
+		if prep.CursorClause.Clause != "" {
+			query = query.Where(prep.CursorClause.Clause, prep.CursorClause.Args...)
+		}
+		query = query.Limit(prep.CursorLimit)
+	case prep.IsPaginated:
 		if err := query.Count(&totalCount).Error; err != nil {
 			return nil, 0, err
 		}
@@ -160,6 +178,8 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		return nil, 0, err
 	}
 
+	entities, totalCount = enginesql.FinalizePage(&prep, entities, totalCount)
+
 	// Run R3-managed preloads after main query
 	if len(r3Preloads) > 0 && len(entities) > 0 {
 		if err := runR3Preloads(r.db.WithContext(ctx), entities, r3Preloads); err != nil {
@@ -167,7 +187,6 @@ func (r *GormCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		}
 	}
 
-	entities, totalCount = r3.FinalizeCount(entities, totalCount, prep.IsPaginated)
 	return entities, totalCount, nil
 }
 

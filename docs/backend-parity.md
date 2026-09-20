@@ -111,10 +111,35 @@ These are feature gaps (not backend-parity gaps) tracked in the p44 feedback log
 ## Already at parity (for reference)
 
 `Aggregator` (single-table `GROUP BY`), `Count`, `ErrNotFound` normalization,
-`Upserter` (GORM + engine/sql raw drivers + mongo + bun; file/gopg degrade to
-`ErrUpsertNotSupported`) and `BulkPatcher` (GORM + engine/sql raw drivers +
-mongo; file/bun/gopg degrade to `ErrBulkPatchNotSupported`). See each
-capability's doc comment for the authoritative per-backend status.
+write return values (`Create`, `Update` and `Patch` all return the row as
+persisted, not the caller's input), `Upserter` (GORM + engine/sql raw drivers +
+mongo + bun; file/gopg degrade to `ErrUpsertNotSupported`) and `BulkPatcher`
+(GORM + engine/sql raw drivers + mongo; file/bun/gopg degrade to
+`ErrBulkPatchNotSupported`). See each capability's doc comment for the
+authoritative per-backend status.
+
+### Cursor pagination - `Query.Cursor`
+
+Keyset pagination reaches every backend: `engine/sql` (the raw pq/pgx/mysql/sqlite3
+drivers), GORM, bun, go-pg, `engine/mongo` and `engine/file`. Forward (`after`) and
+backward (`before`) cursors both work, a cursor without a sort is
+`r3.ErrCursorRequiresSort`, and the total count is always `-1` - a keyset page
+cannot know the size of the set it is walking.
+
+It gets its own note because of how it drifted. The three ORM drivers read only
+`prep.IsPaginated`, so a query carrying a `Cursor` matched no pagination branch
+and fell through **unpaginated**: the whole table, with a real total count, and no
+error to notice. Unlike a missing operator, an ignored pagination spec still
+returns plausible-looking rows. The translation was never the gap - the shared
+`engine/sql.PreparedListQuery` had `IsCursorPaginated`, `CursorClause`,
+`CursorLimit`, `CursorBackward` and `OrderBySorts()` filled in all along; the
+drivers simply never read them.
+
+A backward cursor is the part worth knowing when porting to a new backend: it
+scans in **reversed** sort order so `LIMIT` takes the rows immediately preceding
+the cursor, then the driver reverses the slice back before returning it.
+`OrderBySorts()` owns the first half and the driver owns the second, so a backend
+that does one without the other returns the wrong page rather than a wrong order.
 
 ### Projection - `Query.Fields` and `Query.ExcludeFields`
 

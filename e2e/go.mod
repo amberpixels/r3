@@ -8,7 +8,7 @@ require (
 	github.com/expectto/be v1.0.0-rc.10
 	github.com/go-pg/pg/v10 v10.15.1
 	github.com/go-sql-driver/mysql v1.10.1
-	github.com/jackc/pgx/v5 v5.10.0
+	github.com/jackc/pgx/v5 v5.11.0
 	github.com/lib/pq v1.12.3
 	github.com/moby/moby/client v0.6.0
 	github.com/pressly/goose v2.7.0+incompatible
@@ -16,8 +16,8 @@ require (
 	github.com/testcontainers/testcontainers-go v0.44.0
 	github.com/uptrace/bun v1.2.18
 	github.com/uptrace/bun/dialect/pgdialect v1.2.18
-	go.mongodb.org/mongo-driver/v2 v2.9.0
-	gorm.io/driver/postgres v1.6.2
+	go.mongodb.org/mongo-driver/v2 v2.9.1
+	gorm.io/driver/postgres v1.6.3
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.2
 )
@@ -28,7 +28,7 @@ require (
 	github.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c // indirect
 	github.com/IGLOU-EU/go-wildcard v1.0.3 // indirect
 	github.com/Microsoft/go-winio v0.6.2 // indirect
-	github.com/amberpixels/years v0.4.0 // indirect
+	github.com/amberpixels/years v0.5.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/containerd/errdefs v1.0.0 // indirect
