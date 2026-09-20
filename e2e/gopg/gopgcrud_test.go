@@ -442,6 +442,63 @@ func TestGoPgRepository(t *testing.T) {
 		assert.Equal(t, "TxCity", got.Name)
 	})
 
+	// Create returns the persisted row, like Update since H11. go-pg omits no
+	// columns, so what this pins is the read-back's merge contract rather than a
+	// recovered value: the generated PK arrives and the caller's relations survive.
+	t.Run("Create returns the persisted row", func(t *testing.T) {
+		created, err := locRepo.Create(ctx, Location{
+			Name:       "Read-back Hall",
+			CityID:     cities[0].ID,
+			Popularity: 3,
+			// An association the read-back does not load: it must survive the merge,
+			// since a nil relation means "not loaded" everywhere else in r3.
+			City: &City{ID: cities[0].ID},
+		})
+		require.NoError(t, err, "create failed")
+
+		require.NotZero(t, created.ID, "the generated PK must come back")
+		require.NotNil(t, created.City, "caller-supplied association must survive the read-back")
+		assert.Equal(t, cities[0].ID, created.City.ID)
+
+		stored, err := locRepo.Get(ctx, created.ID)
+		require.NoError(t, err)
+		assert.Equal(t, stored.Name, created.Name)
+		assert.Equal(t, stored.Popularity, created.Popularity)
+	})
+
+	// List honours Query.Cursor; it previously fell through unpaginated and
+	// returned the whole table with a real total count.
+	t.Run("Cursor pagination returns one keyset page", func(t *testing.T) {
+		sortByID := r3.Sorts{r3.NewSortAscSpec(r3.NewFieldSpec("id"))}
+
+		ordered, _, err := locRepo.List(ctx, r3.Query{Sorts: sortByID})
+		require.NoError(t, err)
+		require.GreaterOrEqual(t, len(ordered), 5, "need enough rows to page through")
+
+		token, err := r3.EncodeCursor(r3.CursorValues{"id": ordered[1].ID})
+		require.NoError(t, err)
+		fwd, count, err := locRepo.List(ctx, r3.Query{
+			Sorts:  sortByID,
+			Cursor: r3.NewCursorAfter(token, 2),
+		})
+		require.NoError(t, err)
+		require.Len(t, fwd, 2, "a cursor page is CursorLimit rows, not the whole table")
+		assert.Equal(t, ordered[2].ID, fwd[0].ID)
+		assert.Equal(t, ordered[3].ID, fwd[1].ID)
+		assert.Equal(t, int64(-1), count, "keyset pagination has no total count")
+
+		beforeToken, err := r3.EncodeCursor(r3.CursorValues{"id": ordered[4].ID})
+		require.NoError(t, err)
+		bwd, _, err := locRepo.List(ctx, r3.Query{
+			Sorts:  sortByID,
+			Cursor: r3.NewCursorBefore(beforeToken, 2),
+		})
+		require.NoError(t, err)
+		require.Len(t, bwd, 2)
+		assert.Equal(t, ordered[2].ID, bwd[0].ID, "backward page scans reversed, then restores the requested order")
+		assert.Equal(t, ordered[3].ID, bwd[1].ID)
+	})
+
 	// Subtest: Delete an event and verify it no longer exists
 	t.Run("Delete event", func(t *testing.T) {
 		// Delete the first event

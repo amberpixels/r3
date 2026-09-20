@@ -2,6 +2,7 @@ package enginesql
 
 import (
 	"fmt"
+	"slices"
 
 	"github.com/amberpixels/r3"
 	r3sql "github.com/amberpixels/r3/dialects/sql"
@@ -159,6 +160,25 @@ func reverseSortDirections(sorts r3.Sorts) r3.Sorts {
 		reversed[i] = c
 	}
 	return reversed
+}
+
+// FinalizePage turns a scanned result set into what List returns: a backward
+// cursor page is reversed back into the requested order (it was scanned in
+// reverse so LIMIT would take the rows preceding the cursor - see OrderBySorts),
+// and the count follows the pagination mode, -1 for keyset, which cannot know
+// the size of the set it walks.
+//
+// Every SQL-family backend ends its List here. Splitting the two halves across
+// four hand-written List implementations is how three of them ended up honouring
+// neither.
+func FinalizePage[T any](p *PreparedListQuery, entities []T, totalCount int64) ([]T, int64) {
+	if p.CursorBackward {
+		slices.Reverse(entities)
+	}
+	if p.IsCursorPaginated {
+		return r3.FinalizeCountCursor(entities)
+	}
+	return r3.FinalizeCount(entities, totalCount, p.IsPaginated)
 }
 
 // Joins returns the deduplicated list of SQL joins from the clauses.

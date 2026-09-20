@@ -13,9 +13,9 @@ require (
 	github.com/pressly/goose v2.7.0+incompatible
 	github.com/stretchr/testify v1.12.1
 	github.com/uptrace/bun v1.2.18
-	go.mongodb.org/mongo-driver/v2 v2.9.0
+	go.mongodb.org/mongo-driver/v2 v2.9.1
 	gopkg.in/yaml.v3 v3.0.1
-	gorm.io/driver/postgres v1.6.2
+	gorm.io/driver/postgres v1.6.3
 	gorm.io/driver/sqlite v1.6.0
 	gorm.io/gorm v1.31.2
 )
@@ -24,7 +24,7 @@ require github.com/jackc/pgx/v5 v5.10.0 // indirect
 
 require (
 	github.com/IGLOU-EU/go-wildcard v1.0.3 // indirect
-	github.com/amberpixels/years v0.4.0
+	github.com/amberpixels/years v0.5.0
 	github.com/djherbis/times v1.6.0 // indirect
 	github.com/go-pg/zerochecker v0.2.0 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect

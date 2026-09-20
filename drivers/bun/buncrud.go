@@ -54,12 +54,18 @@ func (r *BunCRUD[T, ID]) DB() *bun.DB {
 	return r.sqlDB
 }
 
+// Create inserts the entity and returns the row as persisted.
 func (r *BunCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 	_, err := r.db.NewInsert().Model(&entity).Exec(ctx)
 	if err != nil {
 		return entity, err
 	}
-	return entity, nil
+	// A PK still zero means bun wrote no generated key back, so there is nothing
+	// to re-read by; return the row as written.
+	if meta := enginesql.GetStructMeta[T](); meta.PKIsZero(entity) {
+		return entity, nil
+	}
+	return r.refreshPersisted(ctx, entity)
 }
 
 func (r *BunCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, error) {
@@ -96,13 +102,25 @@ func (r *BunCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64
 		query = query.Where(clause.Clause, clause.Args...)
 	}
 
-	for _, sort := range prep.Sorts {
+	// ORDER BY is reversed for a backward cursor; see OrderBySorts.
+	orderSorts, err := prep.OrderBySorts()
+	if err != nil {
+		return nil, 0, err
+	}
+	for _, sort := range orderSorts {
 		query = query.OrderExpr(sort.String())
 	}
 
-	// Pagination: count first, then limit/offset
+	// Pagination: keyset takes precedence over offset, and runs no count query.
 	var totalCount int64
-	if prep.IsPaginated {
+	switch {
+	case prep.IsCursorPaginated:
+		// An empty clause is the first page: limit only, no keyset predicate.
+		if prep.CursorClause.Clause != "" {
+			query = query.Where(prep.CursorClause.Clause, prep.CursorClause.Args...)
+		}
+		query = query.Limit(prep.CursorLimit)
+	case prep.IsPaginated:
 		count, err := query.Count(ctx)
 		if err != nil {
 			return nil, 0, err
@@ -118,7 +136,7 @@ func (r *BunCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64
 		return nil, 0, err
 	}
 
-	entities, totalCount = r3.FinalizeCount(entities, totalCount, prep.IsPaginated)
+	entities, totalCount = enginesql.FinalizePage(&prep, entities, totalCount)
 	return entities, totalCount, nil
 }
 

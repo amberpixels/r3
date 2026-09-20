@@ -343,16 +343,7 @@ func (r *BaseCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 		return nil, 0, err
 	}
 
-	// A backward cursor scanned in reversed order; restore the requested order.
-	if prep.CursorBackward {
-		slices.Reverse(entities)
-	}
-
-	if prep.IsCursorPaginated {
-		entities, totalCount = r3.FinalizeCountCursor(entities)
-	} else {
-		entities, totalCount = FinalizeCount(entities, totalCount, prep.IsPaginated)
-	}
+	entities, totalCount = FinalizePage(&prep, entities, totalCount)
 
 	if len(prep.Query.Preloads) > 0 && len(r.Meta.Relations) > 0 {
 		if err := RunPreloads(ctx, r.Executor, &r.Meta, r.Flavor, &entities, prep.Query.Preloads); err != nil {
