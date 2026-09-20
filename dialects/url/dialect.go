@@ -16,6 +16,22 @@ import (
 func ParseQuery(values url.Values, opts ...Option) (r3.Query, error) {
 	cfg := resolveConfig(opts...)
 
+	q, err := parseByMode(values, cfg)
+	if err != nil {
+		return r3.Query{}, err
+	}
+	// A request naming both projection forms is a conflict, not a precedence for
+	// this dialect to invent. Defer to the rule the engines enforce, so the two
+	// can never disagree about what a conflict is.
+	if err := q.ValidateProjection(); err != nil {
+		return r3.Query{}, newError(err)
+	}
+	return q, nil
+}
+
+// parseByMode dispatches to the configured mode's parser. ModeAuto reads the
+// request as unified whenever the unified param is present.
+func parseByMode(values url.Values, cfg Config) (r3.Query, error) {
 	switch cfg.Mode {
 	case ModeUnified:
 		return parseUnified(values, cfg)
@@ -37,6 +53,12 @@ func ParseQuery(values url.Values, opts ...Option) (r3.Query, error) {
 //	// values.Encode() -> "fields=id,name&sort=name:asc&page=1&page_size=25"
 func FormatQuery(q r3.Query, opts ...Option) (url.Values, error) {
 	cfg := resolveConfig(opts...)
+
+	// Same rule as ParseQuery, or this would emit a URL the dialect refuses to
+	// read back.
+	if err := q.ValidateProjection(); err != nil {
+		return nil, newError(err)
+	}
 
 	switch cfg.Mode {
 	case ModeUnified:

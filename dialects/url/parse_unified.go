@@ -12,10 +12,13 @@ import (
 // unifiedQuery is the JSON shape of the unified "query" parameter. It mirrors the r3json
 // types so ?query={...} shares the JSON dialect's schema.
 type unifiedQuery struct {
-	Fields     r3json.JSONFields      `json:"fields,omitempty"`
-	Filters    r3json.JSONFilters     `json:"filters,omitempty"`
-	Sorts      []*r3json.JSONSort     `json:"sorts,omitempty"`
-	Pagination *r3json.JSONPagination `json:"pagination,omitempty"`
+	Fields r3json.JSONFields `json:"fields,omitempty"`
+	// ExcludeFields keys off the decomposed mode's param name, so both modes
+	// describe the projection the same way.
+	ExcludeFields r3json.JSONFields      `json:"exclude_fields,omitempty"`
+	Filters       r3json.JSONFilters     `json:"filters,omitempty"`
+	Sorts         []*r3json.JSONSort     `json:"sorts,omitempty"`
+	Pagination    *r3json.JSONPagination `json:"pagination,omitempty"`
 }
 
 // parseUnified parses the unified ?query={...} parameter into an r3.Query. An
@@ -48,13 +51,21 @@ func parseUnified(values url.Values, cfg Config) (r3.Query, error) {
 func convertUnifiedToQuery(uq unifiedQuery) (r3.Query, error) {
 	q := r3.NewQuery()
 
-	// Fields
+	// Fields (additive) and ExcludeFields (subtractive); naming both is a
+	// conflict, caught by ValidateProjection once the query is assembled.
 	if len(uq.Fields) > 0 {
 		fields, err := uq.Fields.ToFieldSpecs()
 		if err != nil {
 			return r3.Query{}, newError(fmt.Errorf("failed to convert fields: %w", err))
 		}
 		q.Fields = fields
+	}
+	if len(uq.ExcludeFields) > 0 {
+		fields, err := uq.ExcludeFields.ToFieldSpecs()
+		if err != nil {
+			return r3.Query{}, newError(fmt.Errorf("failed to convert exclude_fields: %w", err))
+		}
+		q.ExcludeFields = fields
 	}
 
 	// Filters

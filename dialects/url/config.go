@@ -34,6 +34,10 @@ type ParamNames struct {
 	Query string
 	// Fields is the parameter name for the fields list. Default: "fields".
 	Fields string
+	// ExcludeFields is the parameter name for the subtractive field list
+	// ("everything but these"). Default: "exclude_fields". Naming it alongside
+	// Fields in one request is [r3.ErrProjectionConflict].
+	ExcludeFields string
 	// Filters is the parameter name for the filters JSON array. Default: "filters".
 	Filters string
 	// Sort is the parameter name for the sort specification. Default: "sort".
@@ -61,17 +65,18 @@ type ParamNames struct {
 // DefaultParamNames returns parameter names with sensible defaults.
 func DefaultParamNames() ParamNames {
 	return ParamNames{
-		Query:        "query",
-		Fields:       "fields",
-		Filters:      "filters",
-		Sort:         "sort",
-		PageNum:      "page",
-		PageSize:     "page_size",
-		Offset:       "offset",
-		CursorAfter:  "after",
-		CursorBefore: "before",
-		CursorLimit:  "limit",
-		When:         "when",
+		Query:         "query",
+		Fields:        "fields",
+		ExcludeFields: "exclude_fields",
+		Filters:       "filters",
+		Sort:          "sort",
+		PageNum:       "page",
+		PageSize:      "page_size",
+		Offset:        "offset",
+		CursorAfter:   "after",
+		CursorBefore:  "before",
+		CursorLimit:   "limit",
+		When:          "when",
 	}
 }
 
@@ -195,16 +200,17 @@ func WithWhenFilter(field string) Option {
 // reservedParamNames returns the dialect's own param names, excluded from Django-style filters.
 func (c *Config) reservedParamNames() map[string]struct{} {
 	return map[string]struct{}{
-		c.ParamNames.Query:        {},
-		c.ParamNames.Fields:       {},
-		c.ParamNames.Filters:      {},
-		c.ParamNames.Sort:         {},
-		c.ParamNames.PageNum:      {},
-		c.ParamNames.PageSize:     {},
-		c.ParamNames.Offset:       {},
-		c.ParamNames.CursorAfter:  {},
-		c.ParamNames.CursorBefore: {},
-		c.ParamNames.CursorLimit:  {},
-		c.ParamNames.When:         {},
+		c.ParamNames.Query:         {},
+		c.ParamNames.Fields:        {},
+		c.ParamNames.ExcludeFields: {},
+		c.ParamNames.Filters:       {},
+		c.ParamNames.Sort:          {},
+		c.ParamNames.PageNum:       {},
+		c.ParamNames.PageSize:      {},
+		c.ParamNames.Offset:        {},
+		c.ParamNames.CursorAfter:   {},
+		c.ParamNames.CursorBefore:  {},
+		c.ParamNames.CursorLimit:   {},
+		c.ParamNames.When:          {},
 	}
 }

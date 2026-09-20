@@ -175,7 +175,13 @@ column and then passed to `Update` stores that column's zero value. Read
 unprojected when the value is going back to the store, or use `Patch`, which
 writes only the fields it names. This applies to both forms and to every backend.
 
-Not yet wired: the serialization dialects (`json`, `url`, `yaml`, `toml`) carry
-`Fields` but not `ExcludeFields`, so a REST layer built on `dialects/url` cannot
-express the subtractive form and a `Query` round-tripped through JSON drops it.
-See `tasks.md`.
+Serialization: `dialects/url` carries both forms, in each of its modes -
+`?fields=` / `?exclude_fields=` decomposed, `"fields"` / `"exclude_fields"`
+inside the unified `?query=` JSON. A request naming both is
+`r3.ErrProjectionConflict`, decided by core's `ValidateProjection` rather than by
+the dialect, so the wire and the engines cannot disagree about what a conflict is.
+
+`json`, `yaml` and `toml` have no query-level type at all - they are per-part
+converters (`JSONFields`, `JSONFilters`, `JSONSort`, ...), so nothing in them
+names a projection *form*, and their field-list converters already serve either
+one. There is no gap there to close; an earlier note here claimed otherwise.

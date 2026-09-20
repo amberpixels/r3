@@ -10,9 +10,13 @@ import (
 func formatDecomposed(q r3.Query, cfg Config) (url.Values, error) {
 	values := make(url.Values)
 
-	// Fields
+	// Fields (additive) / ExcludeFields (subtractive). A valid query carries at
+	// most one, so this never writes both.
 	if len(q.Fields) > 0 {
 		values.Set(cfg.ParamNames.Fields, FormatFields(q.Fields))
+	}
+	if len(q.ExcludeFields) > 0 {
+		values.Set(cfg.ParamNames.ExcludeFields, FormatFields(q.ExcludeFields))
 	}
 
 	// Filters: split simple ones (Django-style params) from complex ones (JSON).

@@ -5,6 +5,11 @@
 //   - Decomposed: one URL parameter per r3 component
 //     (?fields=a,b&filters=[...]&sort=name:asc&page=2&page_size=25).
 //
+// Projection has two mutually exclusive forms: ?fields= names what to keep,
+// ?exclude_fields= names what to drop. A request carrying both is
+// [r3.ErrProjectionConflict]. Both forms work in the unified mode too, as the
+// "fields" and "exclude_fields" keys of the ?query= JSON.
+//
 // [ModeAuto] (default) picks unified when a "query" param is present, else decomposed.
 // Param names, sort formats, and filter styles are configurable via [Option]. Django-style
 // shorthand filters (?status=active&age__gte=18) are opt-in ([WithDjangoStyleFilters]).
