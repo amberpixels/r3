@@ -224,7 +224,7 @@ Ready-to-use constructors that wire up an engine for a specific client library.
 | PostgreSQL | `drivers/pq` | [lib/pq](https://github.com/lib/pq) | `$1` placeholders, RETURNING |
 | PostgreSQL | `drivers/pgx` | [jackc/pgx](https://github.com/jackc/pgx) | `$1` placeholders, RETURNING |
 | MySQL | `drivers/mysql` | [go-sql-driver/mysql](https://github.com/go-sql-driver/mysql) | `?` placeholders, no RETURNING |
-| SQLite | `drivers/sqlite3` | [mattn/go-sqlite3](https://github.com/mattn/go-sqlite3) | `?` placeholders, RETURNING (3.35+) |
+| SQLite | `drivers/sqlite3` | any `database/sql` SQLite driver: [mattn/go-sqlite3](https://github.com/mattn/go-sqlite3) (CGo) or [modernc.org/sqlite](https://gitlab.com/cznic/sqlite) (pure Go) | `?` placeholders, RETURNING (3.35+) |
 
 **ORM drivers** (use ORM API natively, share `PreparedListQuery` for query translation):
 

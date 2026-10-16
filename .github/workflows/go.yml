@@ -39,6 +39,10 @@ jobs:
       - name: Test (short, no Docker)
         run: just test-short
 
+      # drivers/sqlite3 must keep working without CGo (static builds, cross-compiling).
+      - name: Test (cgo-free SQLite)
+        run: just test-nocgo
+
       # Guards the property the e2e module exists for: `go mod tidy` pulls in the
       # tests of packages you import, so one stray test import puts a whole
       # backend into every consumer's go.sum. Empirical, not a rule about imports.

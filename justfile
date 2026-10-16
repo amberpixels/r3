@@ -58,7 +58,7 @@ leak-check:
     ./scripts/leak-check.sh
 
 # run all checks - read-only, safe for CI
-ci: lint test floor leak-check
+ci: lint test test-nocgo floor leak-check
 
 # Integration tests for CI: the container-backed suites live in the e2e module,
 # which is why importing an r3 driver never drags testcontainers into a consumer's
@@ -71,6 +71,10 @@ test-integration:
 # Test only short tests (skip integration tests requiring Docker)
 test-short:
     go test -short ./...
+
+# guard cgo-free use of drivers/sqlite3: run it over modernc.org/sqlite with CGo off
+test-nocgo:
+    cd e2e && CGO_ENABLED=0 go test ./sqlite3nocgo/...
 
 # Run the pet store example (starts PostgreSQL in Docker + the Go server)
 example:

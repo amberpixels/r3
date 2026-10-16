@@ -76,6 +76,9 @@ run_case core \
 # sibling backend it has no business knowing about.
 run_case mongo "github.com/amberpixels/r3/drivers/mongo" "$container_stack $sql_stack" || failed=1
 run_case pq "github.com/amberpixels/r3/drivers/pq" "$container_stack gorm.io go-pg/pg uptrace/bun" || failed=1
+# The SQLite driver's own tests use mattn; the pure-Go modernc driver is tested in
+# e2e and must never reach consumers.
+run_case sqlite3 "github.com/amberpixels/r3/drivers/sqlite3" "$container_stack modernc.org gorm.io go-pg/pg uptrace/bun lib/pq jackc/pgx go-sql-driver/mysql" || failed=1
 run_case gorm "github.com/amberpixels/r3/drivers/gorm" "$container_stack go-pg/pg uptrace/bun lib/pq" || failed=1
 
 exit $failed

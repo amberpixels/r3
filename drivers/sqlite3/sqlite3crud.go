@@ -7,8 +7,8 @@ import (
 	enginesql "github.com/amberpixels/r3/engine/sql"
 )
 
-// Sqlite3CRUD is a mattn/go-sqlite3 repository; enginesql.BaseCRUD supplies the
-// r3.CRUD impl.
+// Sqlite3CRUD is a SQLite repository over any database/sql SQLite driver;
+// enginesql.BaseCRUD supplies the r3.CRUD impl.
 type Sqlite3CRUD[T any, ID comparable] struct {
 	*enginesql.BaseCRUD[T, ID]
 }
