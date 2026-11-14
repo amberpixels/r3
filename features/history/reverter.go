@@ -52,8 +52,8 @@ func (r *Reverter[T, ID]) RevertTo(ctx context.Context, id ID, version int64) (T
 		return zero, fmt.Errorf("r3history: failed to reconstruct version %d: %w", version, err)
 	}
 
-	// Fetch current state for the diff.
-	current, err := r.crud.Get(ctx, id)
+	// Fetch current state for the diff, with every relation the revert will sync.
+	current, err := r.crud.Get(ctx, id, relationPreloads(restored)...)
 	if err != nil {
 		return zero, fmt.Errorf("r3history: failed to get current state for diff: %w", err)
 	}
@@ -179,10 +179,17 @@ func (r *Reverter[T, ID]) Reconstruct(ctx context.Context, recordID string, vers
 }
 
 // applyChanges applies FieldChanges to an entity via a JSON-map round-trip:
-// backend-agnostic and handles nested dot-notation.
+// backend-agnostic and handles nested dot-notation. Relation changes hold member
+// lists that cannot unmarshal into the relation's element type, so they are set
+// by reflection after the round-trip.
 func applyChanges[T any](entity T, changes []FieldChange) (T, error) {
 	if len(changes) == 0 {
 		return entity, nil
+	}
+
+	var relational map[string]FieldChange
+	if t := reflect.TypeFor[T](); t.Kind() == reflect.Struct {
+		changes, relational = splitRelationChanges(t, changes)
 	}
 
 	data, err := json.Marshal(entity)
@@ -207,6 +214,12 @@ func applyChanges[T any](entity T, changes []FieldChange) (T, error) {
 	var result T
 	if err := json.Unmarshal(data, &result); err != nil {
 		return entity, fmt.Errorf("unmarshal to entity: %w", err)
+	}
+
+	if len(relational) > 0 {
+		if err := applyRelationChanges(reflect.ValueOf(&result).Elem(), relational); err != nil {
+			return entity, err
+		}
 	}
 
 	return result, nil

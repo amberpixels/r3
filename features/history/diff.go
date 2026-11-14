@@ -13,7 +13,9 @@ var timeType = reflect.TypeFor[time.Time]()
 
 // Diff computes field-level changes between two entities, comparing exported
 // fields with db/bson/r3 tags and flattening nested structs to dot-notation
-// (e.g. "address.city"). Returns nil when nothing changed.
+// (e.g. "address.city"). Many-to-many and owned has-many relations loaded on both
+// sides are compared too, and recorded as full member lists. Returns nil when
+// nothing changed.
 func Diff[T any](old, cur T) []FieldChange {
 	oldVal := reflect.ValueOf(old)
 	newVal := reflect.ValueOf(cur)
@@ -27,6 +29,7 @@ func Diff[T any](old, cur T) []FieldChange {
 
 	var changes []FieldChange
 	diffStructFields(oldVal, newVal, "", &changes)
+	diffRelations(oldVal, newVal, &changes)
 	return changes
 }
 
@@ -66,6 +69,7 @@ func DiffCreate[T any](entity T) []FieldChange {
 
 	var changes []FieldChange
 	createFields(val, "", &changes)
+	createRelations(val, &changes)
 	return changes
 }
 
@@ -79,6 +83,7 @@ func DiffDelete[T any](entity T) []FieldChange {
 
 	var changes []FieldChange
 	deleteFields(val, "", &changes)
+	deleteRelations(val, &changes)
 	return changes
 }
 
@@ -92,7 +97,8 @@ func diffStructFields(oldVal, newVal reflect.Value, prefix string, changes *[]Fi
 			continue
 		}
 
-		// Relations (slices, maps) are not diffed.
+		// Slices and maps are skipped here; declared relations are diffed by
+		// diffRelations, at the top level only.
 		if isRelationKind(field.Type) {
 			continue
 		}
