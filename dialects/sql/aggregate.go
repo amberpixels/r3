@@ -60,12 +60,17 @@ func AggregateToSQL(a *r3.AggregateSpec) (string, error) {
 // GroupByToSQL validates and quotes the group-by fields, returning one quoted
 // column expression per field.
 func GroupByToSQL(fields r3.Fields) ([]string, error) {
+	return GroupByToSQLWith(fields, RenderOptions{})
+}
+
+// GroupByToSQLWith is [GroupByToSQL] rendering JSON group fields through opts.
+func GroupByToSQLWith(fields r3.Fields, opts RenderOptions) ([]string, error) {
 	if len(fields) == 0 {
 		return nil, nil
 	}
 	out := make([]string, 0, len(fields))
 	for _, f := range fields {
-		safeCol, err := SafeColumnExpr(f)
+		safeCol, err := SafeFieldExpr(f, opts)
 		if err != nil {
 			return nil, fmt.Errorf("unsafe group field: %w", err)
 		}

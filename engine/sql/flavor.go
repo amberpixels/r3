@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/amberpixels/r3"
+	r3sql "github.com/amberpixels/r3/dialects/sql"
 )
 
 // PlaceholderStyle controls how SQL parameter placeholders are generated.
@@ -63,6 +64,48 @@ type Flavor struct {
 	// The stored-row reference is table-qualified because Postgres rejects the bare
 	// name as ambiguous between the target row and EXCLUDED.
 	IncrementExpr func(table, col string) string
+
+	// JSONPathExpr renders the extraction of a key path from a JSON column (see
+	// [r3.JSONField]), as text or, when numeric, as a number. nil means the flavor
+	// cannot query inside JSON, so such a query errors with
+	// [r3.ErrJSONFieldNotSupported]. Set on the predefined flavors.
+	JSONPathExpr r3sql.JSONPathExprFunc
+}
+
+// RenderOptions returns the dialect rendering hooks this flavor supplies.
+func (f Flavor) RenderOptions() r3sql.RenderOptions {
+	return r3sql.RenderOptions{JSONPathExpr: f.JSONPathExpr}
+}
+
+// sqliteJSONPathExpr uses json_extract, which returns a native integer for a
+// JSON number; text mode casts to TEXT because SQLite never equates an integer
+// with a text parameter.
+func sqliteJSONPathExpr(col string, path []string, numeric bool) (string, error) {
+	expr := fmt.Sprintf("json_extract(%s, '$.%s')", col, strings.Join(path, "."))
+	if numeric {
+		return "CAST(" + expr + " AS REAL)", nil
+	}
+	return "CAST(" + expr + " AS TEXT)", nil
+}
+
+// postgresJSONPathExpr uses #>> for any depth. The jsonb cast lets a text, json
+// or jsonb column all work (on jsonb it is a no-op).
+func postgresJSONPathExpr(col string, path []string, numeric bool) (string, error) {
+	expr := fmt.Sprintf("(%s::jsonb #>> '{%s}')", col, strings.Join(path, ","))
+	if numeric {
+		return expr + "::numeric", nil
+	}
+	return expr, nil
+}
+
+// mysqlJSONPathExpr uses the function form over ->>, since JSON_EXTRACT also
+// accepts a TEXT column holding JSON.
+func mysqlJSONPathExpr(col string, path []string, numeric bool) (string, error) {
+	extract := fmt.Sprintf("JSON_EXTRACT(%s, '$.%s')", col, strings.Join(path, "."))
+	if numeric {
+		return "CAST(" + extract + " AS DOUBLE)", nil
+	}
+	return "JSON_UNQUOTE(" + extract + ")", nil
 }
 
 // UpsertIncrementExpr renders the right-hand side of an accumulating conflict
@@ -155,6 +198,7 @@ var (
 		UsesOnConflictClause: true,
 		BucketExpr:           postgresBucketExpr,
 		IncrementExpr:        excludedIncrementExpr,
+		JSONPathExpr:         postgresJSONPathExpr,
 	}
 	FlavorSQLite = Flavor{
 		Placeholder:          PlaceholderQuestion,
@@ -163,6 +207,7 @@ var (
 		UsesOnConflictClause: true,
 		BucketExpr:           sqliteBucketExpr,
 		IncrementExpr:        excludedIncrementExpr,
+		JSONPathExpr:         sqliteJSONPathExpr,
 	}
 	FlavorMySQL = Flavor{
 		Placeholder:       PlaceholderQuestion,
@@ -171,6 +216,7 @@ var (
 		IdentifierQuote:   "`",
 		BucketExpr:        mysqlBucketExpr,
 		IncrementExpr:     valuesIncrementExpr,
+		JSONPathExpr:      mysqlJSONPathExpr,
 	}
 )
 

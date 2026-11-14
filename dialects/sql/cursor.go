@@ -18,6 +18,14 @@ import (
 //
 // direction picks > (forward) or < (backward), flipped per column sort direction.
 func CursorToSQLClause(values r3.CursorValues, sorts r3.Sorts, direction r3.CursorDirection) (SQLClause, error) {
+	return CursorToSQLClauseWith(values, sorts, direction, RenderOptions{})
+}
+
+// CursorToSQLClauseWith is [CursorToSQLClause] rendering JSON sort fields
+// through opts.
+func CursorToSQLClauseWith(
+	values r3.CursorValues, sorts r3.Sorts, direction r3.CursorDirection, opts RenderOptions,
+) (SQLClause, error) {
 	if len(sorts) == 0 {
 		return SQLClause{}, r3.ErrCursorRequiresSort
 	}
@@ -35,9 +43,9 @@ func CursorToSQLClause(values r3.CursorValues, sorts r3.Sorts, direction r3.Curs
 	}
 
 	if len(sorts) == 1 {
-		return singleColumnCursor(sorts[0], values, direction)
+		return singleColumnCursor(sorts[0], values, direction, opts)
 	}
-	return multiColumnCursor(sorts, values, direction)
+	return multiColumnCursor(sorts, values, direction, opts)
 }
 
 // cursorComparisonOp returns the keyset comparison operator: forward+ASC uses >,
@@ -56,9 +64,11 @@ func cursorComparisonOp(sortDir r3.SortDirection, cursorDir r3.CursorDirection) 
 	return SQLClauseOperatorLt
 }
 
-func singleColumnCursor(sort *r3.SortSpec, values r3.CursorValues, direction r3.CursorDirection) (SQLClause, error) {
+func singleColumnCursor(
+	sort *r3.SortSpec, values r3.CursorValues, direction r3.CursorDirection, opts RenderOptions,
+) (SQLClause, error) {
 	col := sort.Column.String()
-	safeCol, err := SafeColumnExpr(sort.Column)
+	safeCol, err := SafeFieldExpr(sort.Column, opts)
 	if err != nil {
 		return SQLClause{}, fmt.Errorf("unsafe cursor column: %w", err)
 	}
@@ -72,7 +82,9 @@ func singleColumnCursor(sort *r3.SortSpec, values r3.CursorValues, direction r3.
 	}, nil
 }
 
-func multiColumnCursor(sorts r3.Sorts, values r3.CursorValues, direction r3.CursorDirection) (SQLClause, error) {
+func multiColumnCursor(
+	sorts r3.Sorts, values r3.CursorValues, direction r3.CursorDirection, opts RenderOptions,
+) (SQLClause, error) {
 	// Compound OR for multi-column keyset. For sorts [a DESC, b ASC, c DESC]:
 	//   (a < ?)
 	//   OR (a = ? AND b > ?)
@@ -86,7 +98,7 @@ func multiColumnCursor(sorts r3.Sorts, values r3.CursorValues, direction r3.Curs
 
 		// All preceding columns must be equal.
 		for j := range i {
-			safeCol, err := SafeColumnExpr(sorts[j].Column)
+			safeCol, err := SafeFieldExpr(sorts[j].Column, opts)
 			if err != nil {
 				return SQLClause{}, fmt.Errorf("unsafe cursor column: %w", err)
 			}
@@ -95,7 +107,7 @@ func multiColumnCursor(sorts r3.Sorts, values r3.CursorValues, direction r3.Curs
 		}
 
 		// Current column uses the comparison operator.
-		safeCol, err := SafeColumnExpr(sorts[i].Column)
+		safeCol, err := SafeFieldExpr(sorts[i].Column, opts)
 		if err != nil {
 			return SQLClause{}, fmt.Errorf("unsafe cursor column: %w", err)
 		}

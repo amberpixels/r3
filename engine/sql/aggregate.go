@@ -72,13 +72,13 @@ func PrepareMergedAggregateQuery(schema r3.Schema, q r3.Query, flavor Flavor) (P
 	q.Sorts = q.AggregateSorts()
 	q.Cursor = nil
 
-	base, err := PrepareMergedListQuery(q)
+	base, err := PrepareMergedListQueryFlavor(r3.Schema{}, flavor, q)
 	if err != nil {
 		return p, err
 	}
 	p.PreparedListQuery = base
 
-	groupCols, err := r3sql.GroupByToSQL(q.GroupBy)
+	groupCols, err := r3sql.GroupByToSQLWith(q.GroupBy, flavor.RenderOptions())
 	if err != nil {
 		return p, err
 	}

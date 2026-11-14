@@ -60,6 +60,11 @@ func ParseDjangoFilters(values url.Values, cfg Config) (r3.Filters, error) {
 			}
 		}
 
+		// "__" already separates relation hops and the operator, so a JSON key
+		// path has no unambiguous django spelling; the other url formats carry it.
+		if r3.NewFieldSpec(field).IsJSONField() {
+			return nil, newError(fmt.Errorf("django-style field %q: %w", field, r3.ErrJSONFieldNotSupported))
+		}
 		if err := r3.ValidateIdentifier(field); err != nil {
 			return nil, newError(fmt.Errorf("invalid Django-style field %q: %w", field, err))
 		}

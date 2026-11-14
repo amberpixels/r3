@@ -65,7 +65,7 @@ func (r *BaseCRUD[T, ID]) PatchWhere(
 // placeholders start at startIdx, following the SET parameters. It rejects
 // relationship filters, which need a JOIN a bare UPDATE can't express portably.
 func (r *BaseCRUD[T, ID]) buildBulkWhere(filters r3.Filters, startIdx int) (string, []any, error) {
-	prep, err := PrepareMergedListQuery(r3.Query{Filters: filters})
+	prep, err := PrepareMergedListQueryFlavor(r3.Schema{}, r.Flavor, r3.Query{Filters: filters})
 	if err != nil {
 		return "", nil, err
 	}

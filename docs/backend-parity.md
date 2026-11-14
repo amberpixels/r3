@@ -28,7 +28,8 @@ it).
 | Value codecs - `r3:"codec:…"` reads/writes + filter args | ✅ | ❌ `RequireCodecSupport` panics at construction | ❌ panics | ✅ | ❌ panics |
 | Value codecs - aggregate `min`/`max` decode on a codec'd field | ✅ | ❌ | ❌ | ✅ | ❌ |
 | Time-pattern filters - `r3.WeekdayIn` / `r3.TimeOfDayBetween` | ❌ errors at SQL translation | ❌ | ❌ | ✅ `$expr` | ✅ |
-| Aggregation - time-bucket GROUP BY key (`r3.Bucket`) | ✅ | ✅ | gopg ✅ · bun ❌ loud | ✅ `$dateTrunc` | ✅ |
+| Aggregation - time-bucket GROUP BY key (`r3.Bucket`) | ✅ | ✅ | gopg ✅ · bun ✅ flavor from its dialect, no e2e yet | ✅ `$dateTrunc` | ✅ |
+| JSON keys in GROUP BY (`r3.JSONField`) | ✅ | ✅ | ✅ | ❌ `ErrJSONFieldNotSupported` | ✅ |
 
 Value codecs are the transparent Go-value ⇄ stored-value transform (flagship
 `time.Time` ⇄ unix int). Design + rollout status live in
@@ -128,6 +129,17 @@ mongo + bun; file/gopg degrade to `ErrUpsertNotSupported`) and `BulkPatcher`
 (GORM + engine/sql raw drivers + mongo; file/bun/gopg degrade to
 `ErrBulkPatchNotSupported`). See each capability's doc comment for the
 authoritative per-backend status.
+
+### Keys inside a JSON column - `r3.JSONField`
+
+Filters and sorts on a key inside a JSON column work on every backend, each
+covered by an e2e suite (`e2e/harness/jsonfield.go` runs the same cases on
+sqlite3, pgx, pq, mysql, gorm, bun and gopg). The SQL flavors render the key
+through `Flavor.JSONPathExpr`; Mongo maps it to the native path into the stored
+`JSONColumn`; the file engine walks the value in Go. Group-by is the one gap
+(Mongo, in the table above). Schema checks (JSON column, Queryable) need a
+schema, so bun and gopg, which carry none, skip them; the value-type and
+key-segment checks are structural and run everywhere.
 
 ### Increment on upsert - `r3.IncrementOnConflict`
 

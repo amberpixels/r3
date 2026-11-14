@@ -70,7 +70,7 @@ func (r *GoPgCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 }
 
 func (r *GoPgCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, error) {
-	prep, err := enginesql.PrepareListQuery(&r.DefaultsManager, qarg...)
+	prep, err := enginesql.PrepareListQueryFlavor(&r.DefaultsManager, enginesql.FlavorPostgres, qarg...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -143,7 +143,7 @@ func (r *GoPgCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int6
 
 // Count returns the number of records matching the query's filters.
 func (r *GoPgCRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, error) {
-	prep, err := enginesql.PrepareListQuery(&r.DefaultsManager, qarg...)
+	prep, err := enginesql.PrepareListQueryFlavor(&r.DefaultsManager, enginesql.FlavorPostgres, qarg...)
 	if err != nil {
 		return 0, err
 	}

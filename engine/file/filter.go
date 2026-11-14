@@ -14,6 +14,9 @@ func filterEntities[T any](entities []T, filters r3.Filters, meta *StructMeta) (
 	if len(filters) == 0 {
 		return entities, nil
 	}
+	if err := r3.ValidateJSONFieldFilters(filters); err != nil {
+		return nil, err
+	}
 
 	var result []T
 	for _, entity := range entities {
@@ -85,7 +88,11 @@ func matchesFilter[T any](entity T, filter *r3.FilterSpec, meta *StructMeta) (bo
 		return false, fmt.Errorf("unknown field %q in filter", fieldName)
 	}
 
-	return evaluateOperator(fieldVal, filter.Operator, filter.Value)
+	filterVal := filter.Value
+	if _, _, numeric, ok := filter.Field.JSONPath(); ok && numeric {
+		filterVal = r3.JSONFieldNumericValue(filterVal)
+	}
+	return evaluateOperator(fieldVal, filter.Operator, filterVal)
 }
 
 // evaluateOperator evaluates a filter operator against a field value.

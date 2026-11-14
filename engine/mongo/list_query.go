@@ -75,6 +75,9 @@ func PrepareMergedListQuery(schema r3.Schema, q r3.Query) (PreparedListQuery, er
 	if err := q.ValidateProjection(); err != nil {
 		return p, err
 	}
+	if err := r3.ValidateJSONFieldFilters(q.Filters); err != nil {
+		return p, err
+	}
 	switch {
 	case len(q.Fields) > 0:
 		p.Projection = r3bson.FieldsToBSON(q.Fields)

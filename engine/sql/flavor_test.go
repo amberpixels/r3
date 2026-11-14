@@ -106,3 +106,59 @@ func TestUpsertClauseWithIncrements(t *testing.T) {
 		be.AssertThat(t, got, be.Eq("ON CONFLICT (model) DO NOTHING"))
 	})
 }
+
+func TestJSONPathExpr(t *testing.T) {
+	tests := []struct {
+		name    string
+		flavor  enginesql.Flavor
+		path    []string
+		numeric bool
+		want    string
+	}{
+		{
+			"sqlite text", enginesql.FlavorSQLite,
+			[]string{"breed"},
+			false,
+			`CAST(json_extract("profile", '$.breed') AS TEXT)`,
+		},
+		{
+			"sqlite nested number", enginesql.FlavorSQLite,
+			[]string{"vaccinations", "count"},
+			true,
+			`CAST(json_extract("profile", '$.vaccinations.count') AS REAL)`,
+		},
+		{
+			"postgres text", enginesql.FlavorPostgres,
+			[]string{"breed"},
+			false,
+			`("profile"::jsonb #>> '{breed}')`,
+		},
+		{
+			"postgres nested number", enginesql.FlavorPostgres,
+			[]string{"vaccinations", "count"},
+			true,
+			`("profile"::jsonb #>> '{vaccinations,count}')::numeric`,
+		},
+		{
+			"mysql text", enginesql.FlavorMySQL,
+			[]string{"breed"},
+			false,
+			`JSON_UNQUOTE(JSON_EXTRACT("profile", '$.breed'))`,
+		},
+		{
+			"mysql nested number", enginesql.FlavorMySQL,
+			[]string{"vaccinations", "count"},
+			true,
+			`CAST(JSON_EXTRACT("profile", '$.vaccinations.count') AS DOUBLE)`,
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got, err := tc.flavor.JSONPathExpr(`"profile"`, tc.path, tc.numeric)
+			be.NoError(t, err)
+			be.AssertThat(t, got, be.Eq(tc.want))
+		})
+	}
+
+	be.AssertThat(t, enginesql.Flavor{}.RenderOptions().JSONPathExpr == nil, be.True())
+}

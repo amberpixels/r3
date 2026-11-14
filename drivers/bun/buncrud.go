@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/uptrace/bun"
+	"github.com/uptrace/bun/dialect"
 
 	"github.com/amberpixels/r3"
 	enginesql "github.com/amberpixels/r3/engine/sql"
@@ -69,7 +70,7 @@ func (r *BunCRUD[T, ID]) Create(ctx context.Context, entity T) (T, error) {
 }
 
 func (r *BunCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64, error) {
-	prep, err := enginesql.PrepareListQuery(&r.DefaultsManager, qarg...)
+	prep, err := enginesql.PrepareListQueryFlavor(&r.DefaultsManager, bunFlavor(r.db), qarg...)
 	if err != nil {
 		return nil, 0, err
 	}
@@ -142,7 +143,7 @@ func (r *BunCRUD[T, ID]) List(ctx context.Context, qarg ...r3.Query) ([]T, int64
 
 // Count returns the number of records matching the query's filters.
 func (r *BunCRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, error) {
-	prep, err := enginesql.PrepareListQuery(&r.DefaultsManager, qarg...)
+	prep, err := enginesql.PrepareListQueryFlavor(&r.DefaultsManager, bunFlavor(r.db), qarg...)
 	if err != nil {
 		return 0, err
 	}
@@ -171,10 +172,8 @@ func (r *BunCRUD[T, ID]) Count(ctx context.Context, qarg ...r3.Query) (int64, er
 // See r3.Aggregator for the query semantics.
 func (r *BunCRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3.AggregateRow, error) {
 	// Bun repos carry no r3.Schema; a zero schema still validates the aggregate
-	// structure. A zero Flavor has no date-truncation hook, so time-bucket group
-	// keys degrade loudly (r3.ErrBucketNotSupported) until bun's dialect is mapped
-	// to a Flavor; plain aggregates are unaffected.
-	prep, err := enginesql.PrepareAggregateQuery(&r.DefaultsManager, r3.Schema{}, enginesql.Flavor{}, qarg...)
+	// structure. The flavor comes from bun's dialect (see bunFlavor).
+	prep, err := enginesql.PrepareAggregateQuery(&r.DefaultsManager, r3.Schema{}, bunFlavor(r.db), qarg...)
 	if err != nil {
 		return nil, err
 	}
@@ -355,3 +354,20 @@ func NewBunQuerier[T any, ID comparable](db *bun.DB, opts ...r3.Option) r3.Queri
 
 // Raw returns the BunRaw escape hatch for custom queries.
 func (r *BunCRUD[T, ID]) Raw() *BunRaw[T, ID] { return r.raw }
+
+// bunFlavor maps bun's dialect to the engine/sql Flavor that renders its
+// flavor-specific expressions (time buckets, JSON fields). An unknown dialect
+// yields a zero Flavor, so those queries fail loudly instead of emitting SQL the
+// database would reject.
+func bunFlavor(db bun.IDB) enginesql.Flavor {
+	switch db.Dialect().Name() {
+	case dialect.PG:
+		return enginesql.FlavorPostgres
+	case dialect.SQLite:
+		return enginesql.FlavorSQLite
+	case dialect.MySQL:
+		return enginesql.FlavorMySQL
+	default:
+		return enginesql.Flavor{}
+	}
+}
