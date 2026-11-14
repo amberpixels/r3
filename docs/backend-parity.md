@@ -110,6 +110,14 @@ These are feature gaps (not backend-parity gaps) tracked in the p44 feedback log
   the pair. A tag-declared many-to-many does not resolve on Mongo regardless of
   this predicate: `engine/mongo`'s `buildRelationMeta` carries neither the join
   collection nor the ref field, so Mongo M2M is spec-declared only.
+- **Relation changes in history (`features/history`)** - works wherever the
+  driver writes relations through the parent and preloads them, which is GORM
+  only today. History itself is backend-agnostic: it records a many-to-many or
+  owned has-many the caller passed non-nil, and reads the old membership by
+  preloading that relation in its pre-write `Get`. On other backends relations
+  are never written through the parent, so there is nothing to record. A
+  reorder is recorded only for an `order:` relation, so it follows the M2M
+  order column's parity above.
 
 ## Already at parity (for reference)
 

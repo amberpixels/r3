@@ -59,7 +59,9 @@ type ChangeRecord struct {
 	// Changes is the field-level diff: create -> every field with OldValue=nil;
 	// delete -> every field with NewValue=nil; update/patch -> only changed fields;
 	// revert -> pre-revert vs reverted-to. Reconstruction ([Reverter.Reconstruct])
-	// works purely from diffs because v1 always carries every field. Stored as JSON.
+	// works purely from diffs because v1 always carries every field. Loaded
+	// many-to-many and owned has-many relations appear as member lists (see the
+	// package doc's Relations section). Stored as JSON.
 	Changes r3.JSONColumn[[]FieldChange] `json:"changes" db:"changes" bson:"changes"`
 
 	// ParentType is the parent entity's record type (for tree queries); empty if
@@ -95,7 +97,8 @@ type ChangeRecord struct {
 }
 
 // FieldChange is a single field-level change. Field uses flat dot-notation (e.g.
-// "address.city") matching the storage column names.
+// "address.city") matching the storage column names; for a relation it is the
+// snake_case Go field name and the values are member lists.
 type FieldChange struct {
 	// Field is the changed column/field name (dot-notation for nested structs).
 	Field string `json:"field"`

@@ -93,7 +93,13 @@ func preloadM2M[T any](db *gorm.DB, entities []T, meta enginesql.StructMeta, rel
 		return err
 	}
 
+	// A loaded relation with no rows is empty, not nil: nil means "not loaded",
+	// and a caller diffing or re-saving the entity must be able to tell them apart.
 	if len(rows) == 0 {
+		for i := range entities {
+			ev := reflect.ValueOf(&entities[i]).Elem()
+			ev.Field(rel.FieldIndex).Set(reflect.MakeSlice(ev.Field(rel.FieldIndex).Type(), 0, 0))
+		}
 		return nil
 	}
 

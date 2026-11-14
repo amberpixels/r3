@@ -140,3 +140,24 @@ func TestM2MOrderColumn_RoundTrip(t *testing.T) {
 		t.Fatalf("sort_order values: got %v, want %v", orders, want)
 	}
 }
+
+// A preloaded M2M relation with no join rows comes back empty, not nil: nil
+// means "not loaded", and an empty loaded relation must not read as one.
+func TestM2MPreload_NoRowsIsEmptyNotNil(t *testing.T) {
+	db := setupOrdDB(t)
+	albums := r3gorm.NewGormCRUD[ordAlbum, int64](db)
+	ctx := context.Background()
+
+	created, err := albums.Create(ctx, ordAlbum{ID: 1, Name: "A"})
+	if err != nil {
+		t.Fatalf("create: %v", err)
+	}
+
+	got, err := albums.Get(ctx, created.ID, r3.Query{Preloads: r3.Preloads{r3.NewPreloadSpec("Photos")}})
+	if err != nil {
+		t.Fatalf("get: %v", err)
+	}
+	if got.Photos == nil || len(got.Photos) != 0 {
+		t.Fatalf("photos: got %#v, want an empty non-nil slice", got.Photos)
+	}
+}

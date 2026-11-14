@@ -148,12 +148,13 @@ func (h *CRUD[T, ID]) AggregateThroughRelation(
 
 // Update modifies an entity and records an "update" change with field-level diff.
 func (h *CRUD[T, ID]) Update(ctx context.Context, entity T) (T, error) {
-	// Fetch old state for diffing.
+	// Fetch old state for diffing, with the old membership of every relation this
+	// write will sync.
 	var old T
 	var hasOld bool
 	if h.opts.IDFunc != nil {
 		id := h.opts.IDFunc(entity)
-		oldEntity, err := h.inner.Get(ctx, id)
+		oldEntity, err := h.inner.Get(ctx, id, relationPreloads(entity)...)
 		if err == nil {
 			old = oldEntity
 			hasOld = true
