@@ -41,12 +41,22 @@ type PreparedListQuery struct {
 	// Query is the merged r3.Query (defaults + args), for Preloads, IncludeTrashed,
 	// and other driver-specific fields.
 	Query r3.Query
+
+	// render is the flavor's rendering hooks, kept so OrderBySorts re-renders
+	// JSON sort fields the same way.
+	render r3sql.RenderOptions
 }
 
 // PrepareListQuery merges defaults with args, then converts filters, sorts, and
 // pagination into SQL components. Drivers call it once at the start of List().
 func PrepareListQuery(dm *DefaultsManager, qarg ...r3.Query) (PreparedListQuery, error) {
 	return PrepareMergedListQuery(dm.MergeListQuery(qarg...))
+}
+
+// PrepareListQueryFlavor is [PrepareListQuery] rendering flavor-specific
+// expressions (JSON fields) through flavor.
+func PrepareListQueryFlavor(dm *DefaultsManager, flavor Flavor, qarg ...r3.Query) (PreparedListQuery, error) {
+	return PrepareMergedListQueryFlavor(r3.Schema{}, flavor, dm.MergeListQuery(qarg...))
 }
 
 // PrepareMergedListQuery builds the SQL components for an already-merged query -
@@ -65,9 +75,24 @@ func PrepareMergedListQuery(q r3.Query) (PreparedListQuery, error) {
 // are encoded to stored form so predicates compare against stored column values.
 // A zero schema (no codecs) behaves exactly like PrepareMergedListQuery.
 //
-//nolint:lostfield // every PreparedListQuery field is assigned imperatively below; some branches are conditional by design (zero value means "not requested")
+// A JSON field is rejected; use [PrepareMergedListQueryFlavor] to render one.
 func PrepareMergedListQuerySchema(schema r3.Schema, q r3.Query) (PreparedListQuery, error) {
+	return PrepareMergedListQueryFlavor(schema, Flavor{}, q)
+}
+
+// PrepareMergedListQueryFlavor is [PrepareMergedListQuerySchema] rendering
+// flavor-specific expressions (JSON fields in filters, sorts and the cursor
+// keyset) through flavor. A zero flavor rejects a JSON field.
+//
+//nolint:lostfield // every PreparedListQuery field is assigned imperatively below; some branches are conditional by design (zero value means "not requested")
+func PrepareMergedListQueryFlavor(schema r3.Schema, flavor Flavor, q r3.Query) (PreparedListQuery, error) {
 	var p PreparedListQuery
+	p.render = flavor.RenderOptions()
+
+	// Structural, so it holds for drivers that carry no schema (bun, go-pg).
+	if err := r3.ValidateJSONFieldFilters(q.Filters); err != nil {
+		return p, err
+	}
 
 	// Encode codec'd filter args to stored form before conversion.
 	filters, err := r3.EncodeFilterCodecs(schema, q.Filters)
@@ -77,14 +102,14 @@ func PrepareMergedListQuerySchema(schema r3.Schema, q r3.Query) (PreparedListQue
 	q.Filters = filters
 	p.Query = q
 
-	clauses, err := r3sql.FiltersToSQL(q.Filters)
+	clauses, err := r3sql.FiltersToSQLWith(q.Filters, p.render)
 	if err != nil {
 		return p, fmt.Errorf("failed to convert filters to SQL: %w", err)
 	}
 	p.Clauses = clauses
 
 	if len(q.Sorts) > 0 {
-		sorts, err := r3sql.SortsToSQL(q.Sorts)
+		sorts, err := r3sql.SortsToSQLWith(q.Sorts, p.render)
 		if err != nil {
 			return p, fmt.Errorf("failed to convert sorts to SQL: %w", err)
 		}
@@ -112,7 +137,7 @@ func PrepareMergedListQuerySchema(schema r3.Schema, q r3.Query) (PreparedListQue
 			if err != nil {
 				return p, fmt.Errorf("failed to encode cursor codecs: %w", err)
 			}
-			cursorClause, err := r3sql.CursorToSQLClause(values, q.Sorts, q.Cursor.Direction())
+			cursorClause, err := r3sql.CursorToSQLClauseWith(values, q.Sorts, q.Cursor.Direction(), p.render)
 			if err != nil {
 				return p, fmt.Errorf("failed to build cursor clause: %w", err)
 			}
@@ -134,7 +159,7 @@ func (p *PreparedListQuery) OrderBySorts() ([]r3sql.SQLSort, error) {
 	if !p.CursorBackward {
 		return p.Sorts, nil
 	}
-	return r3sql.SortsToSQL(reverseSortDirections(p.Query.Sorts))
+	return r3sql.SortsToSQLWith(reverseSortDirections(p.Query.Sorts), p.render)
 }
 
 // reverseSortDirections copies sorts with each direction and NULLS position

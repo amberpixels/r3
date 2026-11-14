@@ -3,6 +3,7 @@ package r3bson
 import (
 	"errors"
 	"fmt"
+	"strings"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 
@@ -70,10 +71,14 @@ func FilterToBSON(f *r3.FilterSpec) (bson.D, error) {
 
 	// Simple filter (Field set).
 	if f.Field != nil {
-		fieldName := f.Field.String()
-
-		if err := r3.ValidateIdentifier(fieldName); err != nil {
+		fieldName, err := fieldKey(f.Field)
+		if err != nil {
 			return nil, fmt.Errorf("unsafe filter field: %w", err)
+		}
+		if _, _, numeric, ok := f.Field.JSONPath(); ok && numeric {
+			numericFilter := *f
+			numericFilter.Value = r3.JSONFieldNumericValue(f.Value)
+			f = &numericFilter
 		}
 
 		// Nil value: $eq null / $ne null.
@@ -191,8 +196,8 @@ func SortToBSON(s *r3.SortSpec) (bson.E, error) {
 		return bson.E{}, errors.New("sort spec cannot be nil")
 	}
 
-	fieldName := s.Column.String()
-	if err := r3.ValidateIdentifier(fieldName); err != nil {
+	fieldName, err := fieldKey(s.Column)
+	if err != nil {
 		return bson.E{}, fmt.Errorf("unsafe sort field: %w", err)
 	}
 
@@ -222,6 +227,29 @@ func SortsToBSON(sorts r3.Sorts) (bson.D, error) {
 		result = append(result, elem)
 	}
 	return result, nil
+}
+
+// jsonColumnValueKey is the key r3.JSONColumn's wrapped value lands under when
+// the bson codec encodes the struct ({val: ...}); a JSON field path starts there.
+const jsonColumnValueKey = "val"
+
+// fieldKey validates a filter or sort field and returns its document key. A JSON
+// field (see [r3.JSONField]) becomes the native dotted path into the stored
+// r3.JSONColumn, `profile->breed` => `profile.val.breed`. Keys inside follow the
+// bson codec's naming of the wrapped value, not its json tags.
+func fieldKey(f *r3.FieldSpec) (string, error) {
+	name := f.String()
+	if !f.IsJSONField() {
+		if err := r3.ValidateIdentifier(name); err != nil {
+			return "", err
+		}
+		return name, nil
+	}
+	if err := r3.ValidateJSONField(name); err != nil {
+		return "", err
+	}
+	col, path, _, _ := f.JSONPath()
+	return col + "." + jsonColumnValueKey + "." + strings.Join(path, "."), nil
 }
 
 // FieldToBSON converts a FieldSpec to a BSON field name string.

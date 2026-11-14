@@ -106,8 +106,14 @@ func SQLToOperator(op SQLClauseOperator) (r3.FilterOperatorSpec, error) {
 	}
 }
 
-// FilterToSQL converts a FilterSpec to an SQLClause.
+// FilterToSQL converts a FilterSpec to an SQLClause. A JSON field is rejected;
+// use [FilterToSQLWith] with a flavor's [RenderOptions] to render one.
 func FilterToSQL(cf *r3.FilterSpec) (SQLClause, error) {
+	return FilterToSQLWith(cf, RenderOptions{})
+}
+
+// FilterToSQLWith is [FilterToSQL] rendering JSON fields through opts.
+func FilterToSQLWith(cf *r3.FilterSpec, opts RenderOptions) (SQLClause, error) {
 	// A relationship ("has") filter has no direct SQL form: the driver must
 	// resolve it into a key-set In filter before translation. Reaching here
 	// means the driver didn't lower it — fail loudly rather than emit bad SQL.
@@ -119,14 +125,18 @@ func FilterToSQL(cf *r3.FilterSpec) (SQLClause, error) {
 
 	// Simple filter: Field is set.
 	if cf.Field != nil {
-		safeCol, err := SafeColumnExpr(cf.Field)
+		safeCol, err := SafeFieldExpr(cf.Field, opts)
 		if err != nil {
 			return SQLClause{}, fmt.Errorf("unsafe filter field: %w", err)
 		}
 
-		joins, err := extractJoinFromField(cf.Field.String())
-		if err != nil {
-			return SQLClause{}, fmt.Errorf("unsafe join in filter field: %w", err)
+		// A JSON field's column belongs to the root table: no join.
+		var joins []SQLColumn
+		if !cf.Field.IsJSONField() {
+			joins, err = extractJoinFromField(cf.Field.String())
+			if err != nil {
+				return SQLClause{}, fmt.Errorf("unsafe join in filter field: %w", err)
+			}
 		}
 
 		// A nil value means IS NULL (Eq) or IS NOT NULL (Ne).
@@ -148,7 +158,9 @@ func FilterToSQL(cf *r3.FilterSpec) (SQLClause, error) {
 		}
 
 		if isBetweenOperator(cf.Operator) {
-			return betweenToSQL(safeCol, cf.Operator, cf.Value, joins)
+			clause, err := betweenToSQL(safeCol, cf.Operator, cf.Value, joins)
+			clause.Args = jsonNumericArgs(cf.Field, clause.Args)
+			return clause, err
 		}
 
 		// IN / NOT IN: the value is a set, so it needs one placeholder per
@@ -159,7 +171,9 @@ func FilterToSQL(cf *r3.FilterSpec) (SQLClause, error) {
 			if err != nil {
 				return SQLClause{}, err
 			}
-			return inToSQL(safeCol, sqlOp, cf.Value, joins), nil
+			clause := inToSQL(safeCol, sqlOp, cf.Value, joins)
+			clause.Args = jsonNumericArgs(cf.Field, clause.Args)
+			return clause, nil
 		}
 
 		sqlClauseOperator, err := OperatorToSQL(cf.Operator)
@@ -170,7 +184,7 @@ func FilterToSQL(cf *r3.FilterSpec) (SQLClause, error) {
 		clause := fmt.Sprintf("%s %s ?", safeCol, sqlClauseOperator)
 		return SQLClause{
 			Clause: clause,
-			Args:   []any{cf.Value},
+			Args:   jsonNumericArgs(cf.Field, []any{cf.Value}),
 			Joins:  joins,
 		}, nil
 	}
@@ -190,7 +204,7 @@ func FilterToSQL(cf *r3.FilterSpec) (SQLClause, error) {
 	var joins []SQLColumn
 
 	for _, child := range children {
-		childClause, err := FilterToSQL(child)
+		childClause, err := FilterToSQLWith(child, opts)
 		if err != nil {
 			return SQLClause{}, fmt.Errorf("failed to translate child filter: %w", err)
 		}
@@ -207,15 +221,21 @@ func FilterToSQL(cf *r3.FilterSpec) (SQLClause, error) {
 	}, nil
 }
 
-// FiltersToSQL translates a list of r3.Filters into SQLClauses.
+// FiltersToSQL translates a list of r3.Filters into SQLClauses. A JSON field is
+// rejected; use [FiltersToSQLWith] to render one.
 func FiltersToSQL(filters r3.Filters) (SQLClauses, error) {
+	return FiltersToSQLWith(filters, RenderOptions{})
+}
+
+// FiltersToSQLWith is [FiltersToSQL] rendering JSON fields through opts.
+func FiltersToSQLWith(filters r3.Filters, opts RenderOptions) (SQLClauses, error) {
 	if len(filters) == 0 {
 		return SQLClauses{}, nil
 	}
 
 	result := make(SQLClauses, len(filters))
 	for i, f := range filters {
-		clause, err := FilterToSQL(f)
+		clause, err := FilterToSQLWith(f, opts)
 		if err != nil {
 			return nil, newError(err)
 		}
@@ -232,13 +252,19 @@ func FiltersToSQLClauses(filters r3.Filters) (SQLClauses, error) {
 	return FiltersToSQL(filters)
 }
 
-// SortToSQL converts a SortSpec to an SQLSort.
+// SortToSQL converts a SortSpec to an SQLSort. A JSON field is rejected; use
+// [SortToSQLWith] to render one.
 func SortToSQL(s *r3.SortSpec) (SQLSort, error) {
+	return SortToSQLWith(s, RenderOptions{})
+}
+
+// SortToSQLWith is [SortToSQL] rendering a JSON field through opts.
+func SortToSQLWith(s *r3.SortSpec, opts RenderOptions) (SQLSort, error) {
 	if s == nil {
 		return "", errors.New("sort spec cannot be nil")
 	}
 
-	safeCol, err := SafeColumnExpr(s.Column)
+	safeCol, err := SafeFieldExpr(s.Column, opts)
 	if err != nil {
 		return "", fmt.Errorf("unsafe sort column: %w", err)
 	}
@@ -254,9 +280,14 @@ func SortToSQL(s *r3.SortSpec) (SQLSort, error) {
 
 // SortsToSQL converts a slice of SortSpec to a slice of SQLSort.
 func SortsToSQL(ss r3.Sorts) ([]SQLSort, error) {
+	return SortsToSQLWith(ss, RenderOptions{})
+}
+
+// SortsToSQLWith is [SortsToSQL] rendering JSON fields through opts.
+func SortsToSQLWith(ss r3.Sorts, opts RenderOptions) ([]SQLSort, error) {
 	result := make([]SQLSort, len(ss))
 	for i, s := range ss {
-		sqlSort, err := SortToSQL(s)
+		sqlSort, err := SortToSQLWith(s, opts)
 		if err != nil {
 			return nil, err
 		}

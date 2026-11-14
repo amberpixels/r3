@@ -65,6 +65,9 @@ func (s Schema) ValidateQuery(q Query) error {
 	if err := q.ValidateProjection(); err != nil {
 		return err
 	}
+	if err := ValidateJSONFieldFilters(q.Filters); err != nil {
+		return err
+	}
 	if s.IsZero() {
 		return nil
 	}
@@ -111,6 +114,9 @@ func (s Schema) ValidateQuery(q Query) error {
 // inherited repo default, invisible to the caller.
 func (s Schema) ValidateAggregateQuery(q Query) error {
 	if err := validateAggregateShape(q); err != nil {
+		return err
+	}
+	if err := ValidateJSONFieldFilters(q.Filters); err != nil {
 		return err
 	}
 	if s.IsZero() {
@@ -176,7 +182,7 @@ func validateAggregateShape(q Query) error {
 
 	groups := make(map[string]struct{}, len(q.GroupBy))
 	for _, g := range q.GroupBy {
-		if err := ValidateIdentifier(g.String()); err != nil {
+		if err := ValidateFieldName(g.String()); err != nil {
 			return fmt.Errorf("%w: invalid group field %q", ErrInvalidAggregate, g.String())
 		}
 		groups[g.String()] = struct{}{}
@@ -306,6 +312,35 @@ func (s Schema) validateFilter(f *FilterSpec) error {
 	return s.validateField(f.Field.String(), Filterable, ErrFieldNotFilterable)
 }
 
+// validateJSONField checks a JSON field (see [JSONField]) used in a filter,
+// sort or group-by: the column must be declared with [TypeJSON], and reading
+// keys inside it requires the column to be Queryable rather than
+// Filterable/Sortable. JSON columns carry neither of those by default and tags
+// cannot widen, while a caller allowed to read the whole blob learns nothing new
+// from a key comparison; a nooutput column stays closed, since filtering on it
+// would leak its contents one comparison at a time. A JSON field is never valid
+// in a projection (required == Queryable).
+func (s Schema) validateJSONField(name string, required Capability) error {
+	if err := ValidateJSONField(name); err != nil {
+		return err
+	}
+	if required == Queryable {
+		return fmt.Errorf("%w: %q cannot be projected", ErrInvalidJSONField, name)
+	}
+	col, _, _, _ := NewFieldSpec(name).JSONPath()
+	a, ok := s.Lookup(col)
+	if !ok {
+		return fmt.Errorf("%w: %q", ErrUnknownField, col)
+	}
+	if a.Type != TypeJSON {
+		return fmt.Errorf("%w: %q is %s", ErrJSONFieldNotJSONColumn, col, a.Type)
+	}
+	if !a.Has(Queryable) {
+		return fmt.Errorf("%w: %q", ErrFieldNotQueryable, col)
+	}
+	return nil
+}
+
 // validateFieldExists checks only that a field is declared, with no capability
 // requirement. It backs ExcludeFields: dropping a column that is already not
 // returned is a harmless no-op, but a name that matches nothing excludes nothing,
@@ -324,6 +359,9 @@ func (s Schema) validateFieldExists(name string) error {
 // field lacking the required capability yields capErr. Empty and dotted
 // (relation-path) names are skipped - see [Schema.ValidateQuery].
 func (s Schema) validateField(name string, required Capability, capErr error) error {
+	if NewFieldSpec(name).IsJSONField() {
+		return s.validateJSONField(name, required)
+	}
 	if name == "" || strings.Contains(name, ".") {
 		return nil
 	}

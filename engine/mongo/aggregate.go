@@ -60,7 +60,10 @@ func (r *BaseCRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3
 // path), so flattened group keys must be plain names.
 func aggregateGroupNames(q r3.Query) ([]string, error) {
 	groupNames := r3.FieldsToStrings(q.GroupBy)
-	for _, name := range groupNames {
+	for i, name := range groupNames {
+		if q.GroupBy[i].IsJSONField() {
+			return nil, fmt.Errorf("mongo aggregate: group by %q: %w", name, r3.ErrJSONFieldNotSupported)
+		}
 		if strings.Contains(name, ".") {
 			return nil, fmt.Errorf("mongo aggregate: nested group field %q is not supported", name)
 		}

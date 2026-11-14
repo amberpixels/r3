@@ -222,7 +222,7 @@ func (r *BaseCRUD[T, ID]) prepareList(qarg ...r3.Query) (PreparedListQuery, erro
 	if err := r.Schema.ValidateQuery(merged); err != nil {
 		return PreparedListQuery{}, err
 	}
-	return PrepareMergedListQuery(merged)
+	return PrepareMergedListQueryFlavor(r3.Schema{}, r.Flavor, merged)
 }
 
 // Count returns the number of records matching the query's filters.

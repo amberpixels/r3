@@ -250,7 +250,13 @@ func (r *GormCRUD[T, ID]) Aggregate(ctx context.Context, qarg ...r3.Query) ([]r3
 	// Group by raw field names one at a time: gorm quotes each per its dialect
 	// (a pre-quoted name would be quoted twice; a joined "a, b" string only
 	// works by accident of gorm's raw-string comma heuristic).
-	for _, g := range prep.Query.GroupBy {
+	// A JSON group field is already a rendered (quoted) expression, so it goes
+	// in verbatim like a bucket key.
+	for i, g := range prep.Query.GroupBy {
+		if g.IsJSONField() {
+			query = query.Group(prep.GroupBy[i])
+			continue
+		}
 		query = query.Group(g.String())
 	}
 	// Time-bucket group keys are already rendered as flavor-specific expressions
@@ -609,7 +615,7 @@ func (r *GormCRUD[T, ID]) prepareList(
 		}
 		merged.Filters = lowered
 	}
-	return enginesql.PrepareMergedListQuerySchema(r.schema, merged)
+	return enginesql.PrepareMergedListQueryFlavor(r.schema, gormFlavor(r.db), merged)
 }
 
 // Raw returns the GormRaw escape hatch for custom queries.

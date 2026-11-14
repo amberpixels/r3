@@ -359,6 +359,49 @@ Backend support: the file engine and Mongo execute these operators today (Mongo
 lowers them to an indexless `$expr`); the SQL dialect returns a loud error until
 per-flavor weekday/hour extraction lands (see `docs/plan-when-filters.md`).
 
+### Keys inside a JSON column
+
+A dotted name is a relation path, so `profile.breed` would join a `profile`
+table. To filter, sort or group on a key inside a JSON column (an
+`r3.JSONColumn[T]` field), name it with `r3.JSONField`:
+
+```go
+breed := r3.JSONField("profile", "breed")                        // profile -> breed
+shots := r3.JSONField("profile", "vaccinations", "count").AsNumber() // nested, numeric
+
+repo.List(ctx, r3.Query{
+    Filters: r3.Filters{r3.F(breed, "beagle"), r3.Fop(shots, r3.OperatorGte, 2)},
+    Sorts:   r3.Sorts{r3.NewSortDescSpec(shots)},
+})
+```
+
+- A key compares as **text** unless you call `AsNumber()`. Without it a sort puts
+  `"10"` before `"9"`, and a numeric Go value is rejected with
+  `r3.ErrJSONFieldValueType` rather than compared differently per database.
+  Boolean keys are not portable (`true` on Postgres/MySQL, `1` on SQLite).
+- A **missing key is NULL**: `Eq` and `Ne` do not match it, `Eq(nil)` does.
+- Each key segment must match `[a-zA-Z_][a-zA-Z0-9_]*`; anything else fails with
+  `r3.ErrInvalidJSONField` before any SQL is built. Array indexes are not supported.
+- With a schema, the column must be a JSON column (`r3.ErrJSONFieldNotJSONColumn`)
+  and **Queryable**: a caller who may read the blob may filter on its keys, while a
+  `no-output` column stays closed.
+- In URLs the field travels as its string form, `profile->breed` and
+  `profile->age~number`, in the bracket/unified filter and every sort format.
+  Django-style params reject it, since `__` already means relation hop and operator.
+
+Each SQL flavor renders the key as:
+
+| flavor | text | `AsNumber()` |
+|---|---|---|
+| SQLite | `CAST(json_extract(col, '$.a.b') AS TEXT)` | `CAST(json_extract(col, '$.a.b') AS REAL)` |
+| Postgres (pgx, pq, bun, gopg, gorm) | `(col::jsonb #>> '{a,b}')` | `(col::jsonb #>> '{a,b}')::numeric` |
+| MySQL | `JSON_UNQUOTE(JSON_EXTRACT(col, '$.a.b'))` | `CAST(JSON_EXTRACT(col, '$.a.b') AS DOUBLE)` |
+
+These queries use no index unless you create an expression index on exactly that
+expression in your own migration. Mongo reads the native path into the stored
+`JSONColumn` (`profile.val.breed`, keys named by the bson codec, not json tags);
+the file engine walks the value in Go. Group-by on a JSON key is SQL and file only.
+
 ## Schema & Capabilities
 
 `r3.SchemaOf[T]()` reflects an entity's struct tags into a **`Schema`** - an

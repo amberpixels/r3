@@ -180,6 +180,15 @@ func (m *StructMeta) SetPKValue(entityPtr, val any) {
 
 // GetFieldValue extracts a field value from an entity by field name (storage name).
 func (m *StructMeta) GetFieldValue(entity any, fieldName string) (any, bool) {
+	// A JSON field (r3.JSONField) reads a key inside its column's value.
+	if f := r3.NewFieldSpec(fieldName); f.IsJSONField() {
+		col, path, numeric, _ := f.JSONPath()
+		colVal, ok := m.GetFieldValue(entity, col)
+		if !ok || r3.ValidateJSONField(fieldName) != nil {
+			return nil, false
+		}
+		return jsonFieldValue(colVal, path, numeric), true
+	}
 	v := reflect.ValueOf(entity)
 	if v.Kind() == reflect.Pointer {
 		v = v.Elem()

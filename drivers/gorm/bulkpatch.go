@@ -44,7 +44,7 @@ func (r *GormCRUD[T, ID]) PatchWhere(
 		}
 		filters = lowered
 	}
-	prep, err := enginesql.PrepareMergedListQuery(r3.Query{Filters: filters})
+	prep, err := enginesql.PrepareMergedListQueryFlavor(r3.Schema{}, gormFlavor(r.db), r3.Query{Filters: filters})
 	if err != nil {
 		return 0, err
 	}
