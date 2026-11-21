@@ -8,7 +8,7 @@ require (
 	github.com/expectto/be v1.0.0-rc.10
 	github.com/go-pg/pg/v10 v10.15.1
 	github.com/google/uuid v1.6.0
-	github.com/mattn/go-sqlite3 v1.14.52
+	github.com/mattn/go-sqlite3 v1.14.53
 	github.com/pelletier/go-toml/v2 v2.4.3
 	github.com/pressly/goose v2.7.0+incompatible
 	github.com/stretchr/testify v1.12.1
